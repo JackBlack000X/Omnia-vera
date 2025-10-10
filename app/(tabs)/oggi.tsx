@@ -406,7 +406,7 @@ export default function OggiScreen() {
       )}
 
       {/* Timeline */}
-      <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: hourRowHeight / 2, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: (hourRowHeight / 2) - 10, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
         <View style={styles.timeline}>
           {hours.map((hour, index) => (
             <View key={hour} style={[styles.hourRow, { height: hourRowHeight }]}>
