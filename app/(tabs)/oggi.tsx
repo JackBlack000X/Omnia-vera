@@ -406,7 +406,7 @@ export default function OggiScreen() {
       )}
 
       {/* Timeline */}
-      <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: 0, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: hourRowHeight / 2, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
         <View style={styles.timeline}>
           {hours.map((hour, index) => (
             <View key={hour} style={[styles.hourRow, { height: hourRowHeight }]}>
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     paddingLeft: -23, // Spostato di 163px a destra (da 140 a -23)
     paddingRight: 0,
-    marginTop: -30
+    marginTop: 0
   },
   hourRow: {
     flexDirection: 'row',
