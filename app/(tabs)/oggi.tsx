@@ -117,9 +117,9 @@ export default function OggiScreen() {
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   // Dynamic scale: pixels per minute = hourRowHeight / 60
   const clampedVisibleHours = Math.max(5, Math.min(24, visibleHours));
-  // Apply a small per-hour gap to both 24h and 23h modes so that
-  // when switching to 23h the layout "slides down" (nach rutschen)
-  const isGapMode = clampedVisibleHours >= 23; // 24h or 23h
+  // Apply a small per-hour gap to 24h, 23h, and 22h so that
+  // when switching to these modes the layout "slides down" (nach rutschen)
+  const isGapMode = clampedVisibleHours >= 22; // 24h, 23h, 22h
   const hourGapPx = isGapMode ? 1 : 0; // extra 1px between hours only for 23h/24h
   // Calibrated so that the visual matches the selected hours.
   // Base: 96px/hour ~ 7h. Apply a correction to eliminate the +1h offset.
