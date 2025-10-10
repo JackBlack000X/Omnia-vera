@@ -646,7 +646,7 @@ const styles = StyleSheet.create({
     position: 'relative'
   },
   hourText: {
-    color: '#10b981',
+    color: '#ffffff',
     fontSize: 16,
     width: 50,
     textAlign: 'right',
