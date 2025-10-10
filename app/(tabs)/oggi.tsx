@@ -117,8 +117,10 @@ export default function OggiScreen() {
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   // Dynamic scale: pixels per minute = hourRowHeight / 60
   const clampedVisibleHours = Math.max(5, Math.min(24, visibleHours));
-  const isFullDayWindow = clampedVisibleHours === 24;
-  const hourGapPx = isFullDayWindow ? 1 : 0; // extra 1px between hours only for 24h
+  // Apply a small per-hour gap to both 24h and 23h modes so that
+  // when switching to 23h the layout "slides down" (nach rutschen)
+  const isGapMode = clampedVisibleHours >= 23; // 24h or 23h
+  const hourGapPx = isGapMode ? 1 : 0; // extra 1px between hours only for 23h/24h
   // Calibrated so that the visual matches the selected hours.
   // Base: 96px/hour ~ 7h. Apply a correction to eliminate the +1h offset.
   const basePerHour = 96 * (7 / clampedVisibleHours);
@@ -420,15 +422,15 @@ export default function OggiScreen() {
       {/* Timeline */}
       <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: (hourRowHeight / 2) - 10, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
         <View style={styles.timeline}>
-          {hours.map((hour, index) => (
-            <View
-              key={hour}
-              style={[
-                styles.hourRow,
-                { height: hourRowHeight },
-                isFullDayWindow && index < hours.length - 1 ? { marginBottom: hourGapPx } : null,
-              ]}
-            > 
+            {hours.map((hour, index) => (
+              <View
+                key={hour}
+                style={[
+                  styles.hourRow,
+                  { height: hourRowHeight },
+                  isGapMode && index < hours.length - 1 ? { marginBottom: hourGapPx } : null,
+                ]}
+              > 
               <Text style={styles.hourText}>{hour}</Text>
               <View style={styles.hourLine} />
             </View>
