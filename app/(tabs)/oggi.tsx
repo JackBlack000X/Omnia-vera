@@ -117,6 +117,8 @@ export default function OggiScreen() {
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   // Dynamic scale: pixels per minute = hourRowHeight / 60
   const clampedVisibleHours = Math.max(5, Math.min(24, visibleHours));
+  const isFullDayWindow = clampedVisibleHours === 24;
+  const hourGapPx = isFullDayWindow ? 1 : 0; // extra 1px between hours only for 24h
   // Calibrated so that the visual matches the selected hours.
   // Base: 96px/hour ~ 7h. Apply a correction to eliminate the +1h offset.
   const basePerHour = 96 * (7 / clampedVisibleHours);
@@ -151,8 +153,16 @@ export default function OggiScreen() {
     const visibleEnd = Math.min(endMinutes, windowEndMin);
     if (visibleEnd <= visibleStart) return { top: -1, height: 0 };
 
-    const top = (visibleStart - windowStartMin) * scalePxPerMin;
+    const topBase = (visibleStart - windowStartMin) * scalePxPerMin;
+    // add extra gap pixels for each full hour boundary passed within the visible window
+    const fullHourStepsFromWindowStart = Math.max(0, Math.floor((visibleStart - windowStartMin) / 60));
+    const extraTop = fullHourStepsFromWindowStart * hourGapPx;
+    const top = topBase + extraTop;
     let height = (visibleEnd - visibleStart) * scalePxPerMin;
+    // add extra height for each full hour boundary crossed within the event span
+    const extraHeightSteps = Math.max(0, Math.floor((visibleEnd - windowStartMin) / 60) - Math.floor((visibleStart - windowStartMin) / 60));
+    const extraHeight = extraHeightSteps * hourGapPx;
+    height += extraHeight;
     // Prevent bottom edge from crossing the hour line when ending exactly on an hour
     const endsOnHour = (visibleEnd % 60) === 0;
     const bottomGapPx = 2; // adjusted gap at the bottom
@@ -176,10 +186,12 @@ export default function OggiScreen() {
       return null;
     }
     
-    const top = (currentMinutes - windowStartMin) * scalePxPerMin;
+    const topBase = (currentMinutes - windowStartMin) * scalePxPerMin;
     const firstLineOffset = hourRowHeight / 2; // align to the middle line of first hour row
-    
-    return top + firstLineOffset;
+    // add extra gap pixels for each full hour boundary passed within the visible window
+    const steps = Math.max(0, Math.floor((currentMinutes - windowStartMin) / 60));
+    const extra = steps * hourGapPx;
+    return topBase + firstLineOffset + extra;
   };
 
   // Build events from habits for the selected day
@@ -409,7 +421,14 @@ export default function OggiScreen() {
       <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: (hourRowHeight / 2) - 10, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
         <View style={styles.timeline}>
           {hours.map((hour, index) => (
-            <View key={hour} style={[styles.hourRow, { height: hourRowHeight }]}>
+            <View
+              key={hour}
+              style={[
+                styles.hourRow,
+                { height: hourRowHeight },
+                isFullDayWindow && index < hours.length - 1 ? { marginBottom: hourGapPx } : null,
+              ]}
+            > 
               <Text style={styles.hourText}>{hour}</Text>
               <View style={styles.hourLine} />
             </View>
