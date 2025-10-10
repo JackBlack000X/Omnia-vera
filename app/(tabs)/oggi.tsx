@@ -3,7 +3,7 @@ import { isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -45,6 +45,7 @@ function isLightColor(hex: string): boolean {
 export default function OggiScreen() {
   const { habits, history, getDay } = useHabits();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [showSettings, setShowSettings] = useState(false);
   const [windowStart, setWindowStart] = useState<string>('06:00');
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
@@ -63,6 +64,21 @@ export default function OggiScreen() {
     const pct = total ? Math.round((done / total) * 100) : 0;
     return { total, done, pct };
   }, [habits, history, today]);
+
+  // Update current time every minute
+  useEffect(() => {
+    const updateTime = () => {
+      setCurrentTime(new Date());
+    };
+    
+    // Update immediately
+    updateTime();
+    
+    // Set up interval to update every minute
+    const interval = setInterval(updateTime, 60000); // 60000ms = 1 minute
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Load/save viewing window
   useEffect(() => {
@@ -146,6 +162,24 @@ export default function OggiScreen() {
       height = Math.max(20, height);
     }
     return { top, height };
+  };
+
+  // Calculate current time line position
+  const getCurrentTimePosition = () => {
+    const now = currentTime;
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentMinutes = currentHour * 60 + currentMinute;
+    
+    // Check if current time is within the visible window
+    if (currentMinutes < windowStartMin || currentMinutes > windowEndMin) {
+      return null;
+    }
+    
+    const top = (currentMinutes - windowStartMin) * scalePxPerMin;
+    const firstLineOffset = hourRowHeight / 2; // align to the middle line of first hour row
+    
+    return top + firstLineOffset;
   };
 
   // Build events from habits for the selected day
@@ -383,6 +417,24 @@ export default function OggiScreen() {
           
           {/* Events positioned absolutely */}
           {timedEvents.map(renderEvent)}
+          
+          {/* Current time line */}
+          {(() => {
+            const timePosition = getCurrentTimePosition();
+            if (timePosition === null) return null;
+            
+            return (
+              <View
+                style={[
+                  styles.currentTimeLine,
+                  { top: timePosition }
+                ]}
+              >
+                <View style={styles.currentTimeDot} />
+                <View style={styles.currentTimeLineRed} />
+              </View>
+            );
+          })()}
         </View>
       </ScrollView>
 
@@ -623,6 +675,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
     fontWeight: '700'
+  },
+
+  currentTimeLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  currentTimeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ff3b30',
+    marginLeft: 8
+  },
+  currentTimeLineRed: {
+    flex: 1,
+    height: 2,
+    backgroundColor: '#ff3b30',
+    marginRight: 8
   },
 
   modalBackdrop: {
