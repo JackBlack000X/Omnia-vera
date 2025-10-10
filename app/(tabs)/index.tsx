@@ -154,6 +154,10 @@ export default function IndexScreen() {
           <Ionicons name="add" size={28} color="#fff" />
         </TouchableOpacity>
       </Link>
+
+      <TouchableOpacity accessibilityRole="button" style={styles.redFab}>
+        <Ionicons name="settings" size={28} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -244,6 +248,23 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center', 
     shadowColor: '#1d4ed8', 
+    shadowOpacity: 0.6, 
+    shadowRadius: 20, 
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 12
+  },
+
+  redFab: { 
+    position: 'absolute', 
+    left: 20, 
+    bottom: 98, 
+    backgroundColor: '#dc2626', 
+    width: 83, 
+    height: 83, 
+    borderRadius: 42, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    shadowColor: '#dc2626', 
     shadowOpacity: 0.6, 
     shadowRadius: 20, 
     shadowOffset: { width: 0, height: 0 },
