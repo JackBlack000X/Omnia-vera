@@ -430,7 +430,6 @@ export default function OggiScreen() {
                   { top: timePosition }
                 ]}
               >
-                <View style={styles.currentTimeDot} />
                 <View style={styles.currentTimeLineRed} />
               </View>
             );
@@ -682,22 +681,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 2,
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  currentTimeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ff3b30',
-    marginLeft: 8
+    zIndex: 10
   },
   currentTimeLineRed: {
     flex: 1,
     height: 2,
-    backgroundColor: '#ff3b30',
-    marginRight: 8
+    backgroundColor: '#ff3b30'
   },
 
   modalBackdrop: {
