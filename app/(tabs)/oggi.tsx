@@ -123,12 +123,15 @@ export default function OggiScreen() {
   const referenceHourRowHeight = 31; // Fixed height for 24h reference (31px per hour)
   const totalHeight = 24 * referenceHourRowHeight; // Total height for 24h (744px)
   
-  // Calculate dynamic spacing between hours
-  // minposi = 00:00 position (fixed), maxposi = last hour position (fixed)
-  const minposi = 0; // 00:00 always at top
-  const maxposi = totalHeight; // Last hour always at bottom (where 24:00 was)
-  const availableHeight = maxposi - minposi; // Total space between fixed points
-  const hourRowHeight = availableHeight / clampedVisibleHours; // Distribute evenly based on visible hours
+  // Fixed anchor point for first hour (00:00 or startHour) - anchored to red line
+  const topY = 15; // 00:00 anchored to red debug line position
+  const bottomY = totalHeight; // Bottom of available space
+  
+  // Calculate spacing between hours - only the gap changes, not the origin
+  const availableHeight = bottomY - topY; // Total usable height
+  const hourGap = availableHeight / clampedVisibleHours; // Space between each hour
+  const hourRowHeight = hourGap; // Each hour row takes the full gap
+  
   const scalePxPerMin = hourRowHeight / 60;
 
   // Generate hourly timeline based on viewing window (include end label)
@@ -158,8 +161,17 @@ export default function OggiScreen() {
     const visibleEnd = Math.min(endMinutes, windowEndMin);
     if (visibleEnd <= visibleStart) return { top: -1, height: 0 };
 
-    const top = (visibleStart - windowStartMin) * scalePxPerMin;
-    let height = (visibleEnd - visibleStart) * scalePxPerMin;
+    // Use ratio-based positioning (topY is handled by ScrollView padding)
+    const startHourIndex = Math.floor((visibleStart - windowStartMin) / 60);
+    const startMinuteOffset = (visibleStart - windowStartMin) % 60;
+    const top = startHourIndex * hourGap + (startMinuteOffset / 60) * hourGap;
+    
+    const endHourIndex = Math.floor((visibleEnd - windowStartMin) / 60);
+    const endMinuteOffset = (visibleEnd - windowStartMin) % 60;
+    const endTop = endHourIndex * hourGap + (endMinuteOffset / 60) * hourGap;
+    
+    let height = endTop - top;
+    
     // Prevent bottom edge from crossing the hour line when ending exactly on an hour
     const endsOnHour = (visibleEnd % 60) === 0;
     const bottomGapPx = 2; // adjusted gap at the bottom
@@ -183,7 +195,11 @@ export default function OggiScreen() {
       return null;
     }
     
-    const top = (currentMinutes - windowStartMin) * scalePxPerMin;
+    // Use ratio-based positioning (topY is handled by ScrollView padding)
+    const hourIndex = Math.floor((currentMinutes - windowStartMin) / 60);
+    const minuteOffset = (currentMinutes - windowStartMin) % 60;
+    const top = hourIndex * hourGap + (minuteOffset / 60) * hourGap;
+    
     const firstLineOffset = hourRowHeight / 2; // align to the middle line of first hour row
     
     return top + firstLineOffset;
@@ -413,7 +429,7 @@ export default function OggiScreen() {
       )}
 
       {/* Timeline */}
-      <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: 0, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: topY, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
         <View style={styles.timeline}>
             {hours.map((hour, index) => (
               <View key={hour} style={[styles.hourRow, { height: hourRowHeight }]}>
@@ -441,6 +457,9 @@ export default function OggiScreen() {
               </View>
             );
           })()}
+          
+          {/* Debug line at 00:00 position - at start of content (topY handled by padding) */}
+          <View style={[styles.debugLine, { top: 0, backgroundColor: 'rgba(255, 0, 0, 0.8)' }]} />
         </View>
       </ScrollView>
 
@@ -762,6 +781,14 @@ const styles = StyleSheet.create({
   actionText: {
     color: THEME.text,
     fontWeight: '700'
+  },
+
+  debugLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    zIndex: 100
   },
 
 });
