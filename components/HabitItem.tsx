@@ -132,7 +132,9 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
     (s.daysOfWeek.length === 0 || s.daysOfWeek.length === 7) &&
     (!s.monthDays || s.monthDays.length === 0) &&
     !s.yearMonth &&
-    !s.yearDay
+    !s.yearDay &&
+    !s.time &&
+    !s.endTime
   );
   
   // Don't show frequency text for daily tasks since white circle already indicates this
