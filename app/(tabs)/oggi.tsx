@@ -115,21 +115,13 @@ export default function OggiScreen() {
   };
   const windowStartMin = toMinutes(windowStart);
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
-  // Dynamic scale: pixels per minute = hourRowHeight / 60
-  const clampedVisibleHours = Math.max(5, Math.min(24, visibleHours));
-  // Dynamic scale: pixels per minute = hourRowHeight / 60
-  // Keep 00:00 (minposi) and last hour (maxposi) in fixed positions
-  // Distribute hours evenly between these two fixed points
-  const referenceHourRowHeight = 31; // Fixed height for 24h reference (31px per hour)
-  const totalHeight = 24 * referenceHourRowHeight; // Total height for 24h (744px)
   
-  // Calculate dynamic spacing between hours
-  // minposi = 00:00 position (fixed), maxposi = last hour position (fixed)
-  const minposi = 0; // 00:00 always at top
-  const maxposi = totalHeight; // Last hour always at bottom (where 24:00 was)
-  const availableHeight = maxposi - minposi; // Total space between fixed points
-  const hourRowHeight = availableHeight / clampedVisibleHours; // Distribute evenly based on visible hours
-  const scalePxPerMin = hourRowHeight / 60;
+  // Calculate hourGap based on visibleHours - 00:00 stays at top, others distribute evenly
+  const clampedVisibleHours = Math.max(5, Math.min(24, visibleHours));
+  const baseHourGap = 31; // Base spacing between hours
+  const firstHourGap = clampedVisibleHours === 23 ? 32.35 : baseHourGap; // Special spacing for first hour when 23 visible
+  const hourGap = baseHourGap; // Regular spacing for all other hours
+  const scalePxPerMin = hourGap / 60; // Pixels per minute
 
   // Generate hourly timeline based on viewing window (include end label)
   const hours = useMemo(() => {
@@ -154,14 +146,18 @@ export default function OggiScreen() {
     const startMinutes = startHour * 60 + startMin;
     const endMinutes = endHour * 60 + endMin;
 
-    const visibleStart = Math.max(startMinutes, windowStartMin);
-    const visibleEnd = Math.min(endMinutes, windowEndMin);
-    if (visibleEnd <= visibleStart) return { top: -1, height: 0 };
-
-    const top = (visibleStart - windowStartMin) * scalePxPerMin;
-    let height = (visibleEnd - visibleStart) * scalePxPerMin;
+    // Calculate position using the same logic as hour rows
+    let top = 0;
+    if (startHour === 0) {
+      top = startMinutes * (firstHourGap / 60);
+    } else {
+      // All other hours (01:00-24:00) move down together with special spacing
+      top = firstHourGap + (startHour - 1) * firstHourGap + (startMinutes - startHour * 60) * (firstHourGap / 60);
+    }
+    
+    let height = (endMinutes - startMinutes) * (hourGap / 60);
     // Prevent bottom edge from crossing the hour line when ending exactly on an hour
-    const endsOnHour = (visibleEnd % 60) === 0;
+    const endsOnHour = (endMinutes % 60) === 0;
     const bottomGapPx = 2; // adjusted gap at the bottom
     if (endsOnHour) {
       height = Math.max(20, height - bottomGapPx);
@@ -183,10 +179,16 @@ export default function OggiScreen() {
       return null;
     }
     
-    const top = (currentMinutes - windowStartMin) * scalePxPerMin;
-    const firstLineOffset = hourRowHeight / 2; // align to the middle line of first hour row
+    // Use same positioning logic as hour rows and events
+    let top = 0;
+    if (currentHour === 0) {
+      top = currentMinutes * (firstHourGap / 60);
+    } else {
+      // All other hours (01:00-24:00) move down together with special spacing
+      top = firstHourGap + (currentHour - 1) * firstHourGap + (currentMinutes - currentHour * 60) * (firstHourGap / 60);
+    }
     
-    return top + firstLineOffset;
+    return top;
   };
 
   // Build events from habits for the selected day
@@ -316,7 +318,7 @@ export default function OggiScreen() {
     return out;
   }, [timedEvents]);
 
-  const renderEvent = (event: typeof mockEvents[0]) => {
+  const renderEvent = (event: OggiEvent) => {
     if (event.isAllDay) {
       return (
         <View key={event.id} style={styles.allDayEvent}>
@@ -339,11 +341,6 @@ export default function OggiScreen() {
     const leftPx = baseLeft + layout.col * colWidth + (layout.col * spacing);
     const widthPx = Math.max(0, colWidth - spacing);
 
-    // Dynamically compute hour row height to approximate showing `visibleHours` at once.
-    // Baseline: 96px per hour shows ~7 hours.
-    const hourRowHeight = Math.max(24, Math.min(192, 96 * (7 / Math.max(5, Math.min(24, visibleHours)))));
-    const firstLineOffset = hourRowHeight / 2; // align to the middle line of first hour row
-
     const light = isLightColor(event.color);
     return (
       <View
@@ -351,7 +348,7 @@ export default function OggiScreen() {
         style={[
           styles.timedEvent,
           {
-            top: top + firstLineOffset,
+            top: top,
             height: Math.max(height, 20),
             backgroundColor: event.color,
             left: leftPx,
@@ -413,36 +410,66 @@ export default function OggiScreen() {
       )}
 
       {/* Timeline */}
-      <ScrollView style={styles.timelineContainer} contentContainerStyle={{ paddingTop: 0, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
-        <View style={styles.timeline}>
-            {hours.map((hour, index) => (
-              <View key={hour} style={[styles.hourRow, { height: hourRowHeight }]}>
-                <Text style={styles.hourText}>{hour}</Text>
-                <View style={styles.hourLine} />
-              </View>
-            ))}
-          
-          {/* Events positioned absolutely */}
-          {timedEvents.map(renderEvent)}
-          
-          {/* Current time line */}
-          {(() => {
-            const timePosition = getCurrentTimePosition();
-            if (timePosition === null) return null;
+      <View style={styles.timelineContainer}>
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={{ height: 24 * hourGap }}
+          showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+        >
+          <View style={[styles.timeline, { height: 24 * hourGap }]}>
+            {/* Hour rows positioned absolutely - 00:00 always at top */}
+            {hours.map((hour, index) => {
+              const hourIndex = Math.floor(toMinutes(hour) / 60);
+              // Special positioning: only 00:00 stays fixed, all other hours move down together
+              let top = 0;
+              if (hourIndex === 0) {
+                top = 0; // 00:00 always at top
+              } else {
+                // All other hours (01:00-24:00) move down together with special spacing
+                top = firstHourGap + (hourIndex - 1) * firstHourGap;
+              }
+              
+              return (
+                <View 
+                  key={hour} 
+                  style={[
+                    styles.hourRowAbsolute, 
+                    { 
+                      top: top,
+                      height: hourGap
+                    }
+                  ]}
+                >
+                  <Text style={styles.hourText}>{hour}</Text>
+                  <View style={styles.hourLine} />
+                </View>
+              );
+            })}
             
-            return (
-              <View
-                style={[
-                  styles.currentTimeLine,
-                  { top: timePosition }
-                ]}
-              >
-                <View style={styles.currentTimeLineRed} />
-              </View>
-            );
-          })()}
-        </View>
-      </ScrollView>
+            {/* Events positioned absolutely */}
+            {timedEvents.map(renderEvent)}
+            
+            {/* Current time line */}
+            {(() => {
+              const timePosition = getCurrentTimePosition();
+              if (timePosition === null) return null;
+              
+              return (
+                <View
+                  style={[
+                    styles.currentTimeLine,
+                    { top: timePosition }
+                  ]}
+                >
+                  <View style={styles.currentTimeLineRed} />
+                </View>
+              );
+            })()}
+          </View>
+        </ScrollView>
+      </View>
 
       {/* Settings Modal */}
       <Modal visible={showSettings} animationType="slide" transparent onRequestClose={() => setShowSettings(false)}>
@@ -640,17 +667,21 @@ const styles = StyleSheet.create({
   timelineContainer: {
     flex: 1
   },
+  scrollView: {
+    flex: 1
+  },
   timeline: {
     position: 'relative',
     paddingLeft: -23, // Spostato di 163px a destra (da 140 a -23)
     paddingRight: 0,
     marginTop: 0 // Mantieni sempre lo stesso distacco fisso dall'header
   },
-  hourRow: {
+  hourRowAbsolute: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    alignItems: 'center',
-    height: 96, // Raddoppiato da 48 a 96 per mostrare solo 7 ore contemporaneamente
-    position: 'relative'
+    alignItems: 'center'
   },
   hourText: {
     color: '#ffffff',
@@ -662,7 +693,9 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   hourLine: {
-    flex: 1,
+    position: 'absolute',
+    left: 65,
+    right: 0,
     height: 2,
     backgroundColor: '#374151'
   },
