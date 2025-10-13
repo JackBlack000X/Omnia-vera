@@ -153,8 +153,8 @@ export default function OggiScreen() {
   const scrollHeightPx = isFullDayWindow ? (24 * firstHourGap) : timelineHeightPx;
   // Extra bottom space so the last hour is fully reachable past the selection bar
   const selectionBarPx = 80;
-  // Reduce bottom space by 7px total as requested
-  const totalScrollHeightPx = scrollHeightPx + selectionBarPx - 7;
+  // Reduce bottom space by 10px total as requested
+  const totalScrollHeightPx = scrollHeightPx + selectionBarPx - 10;
 
   // Generate hourly timeline based on viewing window (include end label)
   const hours = useMemo(() => {
@@ -777,7 +777,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     paddingLeft: -23, // Spostato di 163px a destra (da 140 a -23)
     paddingRight: 0,
-    marginTop: 0 // Mantieni sempre lo stesso distacco fisso dall'header
+    marginTop: -4 // Riduce lo spazio sopra 00:00 di 4px
   },
   hourRowAbsolute: {
     position: 'absolute',
