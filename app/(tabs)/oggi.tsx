@@ -149,8 +149,8 @@ export default function OggiScreen() {
   const visibleHourCount = Math.max(1, Math.floor((windowEndMin - windowStartMin) / 60) + 1);
   const timelineHeightPx = (visibleHourCount - 1) * firstHourGap + hourGap;
   const isFullDayWindow = windowStartMin === 0 && windowEndMin === 1440;
-  // For full-day window, allow scroll as if 24 hours, regardless of visibleHours
-  const scrollHeightPx = isFullDayWindow ? (24 * firstHourGap) : timelineHeightPx;
+  // For full-day window, use 24 hours only if visibleHours is 24, otherwise use visibleHourCount
+  const scrollHeightPx = isFullDayWindow && visibleHours === 24 ? (24 * firstHourGap) : timelineHeightPx;
   // Extra bottom space so the last hour is fully reachable past the selection bar
   const selectionBarPx = 80;
   // Reduce bottom space by 10px total as requested
