@@ -116,28 +116,32 @@ export default function OggiScreen() {
   const windowStartMin = toMinutes(windowStart);
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   
-  // Calculate hourGap based on visibleHours - 00:00 stays at top, others distribute evenly
+  // Calculate hourGap based on effective visible hours:
+  // if window spans less than selected visibleHours (e.g., 00:00-23:00 with 24 selected),
+  // behave as if visibleHours equals the window span in hours.
   const clampedVisibleHours = Math.max(5, Math.min(24, visibleHours));
+  const windowSpanHours = Math.max(1, Math.floor((windowEndMin - windowStartMin) / 60));
+  const effectiveVisibleHours = Math.max(5, Math.min(24, Math.min(clampedVisibleHours, windowSpanHours)));
   const baseHourGap = 31; // Base spacing between hours
-  const firstHourGap = clampedVisibleHours === 23 ? 32.35 : 
-                      clampedVisibleHours === 22 ? 33.82 : 
-                      clampedVisibleHours === 21 ? 35.43 : 
-                      clampedVisibleHours === 20 ? 37.2 : 
-                      clampedVisibleHours === 19 ? 39.15 : 
-                      clampedVisibleHours === 18 ? 41.34 : 
-                      clampedVisibleHours === 17 ? 43.77 : 
-                      clampedVisibleHours === 16 ? 46.5 : 
-                      clampedVisibleHours === 15 ? 49.6 : 
-                      clampedVisibleHours === 14 ? 53.15 : 
-                      clampedVisibleHours === 13 ? 57.23 : 
-                      clampedVisibleHours === 12 ? 62.0 : 
-                      clampedVisibleHours === 11 ? 67.65 : 
-                      clampedVisibleHours === 10 ? 74.4 : 
-                      clampedVisibleHours === 9 ? 82.68 : 
-                      clampedVisibleHours === 8 ? 93 : 
-                      clampedVisibleHours === 7 ? 106.30 : 
-                      clampedVisibleHours === 6 ? 124 : 
-                      clampedVisibleHours === 5 ? 148.82 : baseHourGap; // Special spacing for first hour when 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, or 5 visible
+  const firstHourGap = effectiveVisibleHours === 23 ? 32.35 : 
+                      effectiveVisibleHours === 22 ? 33.82 : 
+                      effectiveVisibleHours === 21 ? 35.43 : 
+                      effectiveVisibleHours === 20 ? 37.2 : 
+                      effectiveVisibleHours === 19 ? 39.15 : 
+                      effectiveVisibleHours === 18 ? 41.34 : 
+                      effectiveVisibleHours === 17 ? 43.77 : 
+                      effectiveVisibleHours === 16 ? 46.5 : 
+                      effectiveVisibleHours === 15 ? 49.6 : 
+                      effectiveVisibleHours === 14 ? 53.15 : 
+                      effectiveVisibleHours === 13 ? 57.23 : 
+                      effectiveVisibleHours === 12 ? 62.0 : 
+                      effectiveVisibleHours === 11 ? 67.65 : 
+                      effectiveVisibleHours === 10 ? 74.4 : 
+                      effectiveVisibleHours === 9 ? 82.68 : 
+                      effectiveVisibleHours === 8 ? 93 : 
+                      effectiveVisibleHours === 7 ? 106.30 : 
+                      effectiveVisibleHours === 6 ? 124 : 
+                      effectiveVisibleHours === 5 ? 148.82 : baseHourGap; // Special spacing for first hour using effective visible hours
   const hourGap = baseHourGap; // Regular spacing for all other hours
   const scalePxPerMin = hourGap / 60; // Pixels per minute
 
@@ -164,13 +168,15 @@ export default function OggiScreen() {
     const startMinutes = startHour * 60 + startMin;
     const endMinutes = endHour * 60 + endMin;
 
-    // Calculate position using the same logic as hour rows
+    // Position relative to windowStart
+    const minutesFromWindowStart = Math.max(0, startMinutes - windowStartMin);
+    const fullHoursAfterStart = Math.floor(minutesFromWindowStart / 60);
+    const minutesIntoCurrentHour = minutesFromWindowStart % 60;
     let top = 0;
-    if (startHour === 0) {
-      top = startMinutes * (firstHourGap / 60);
+    if (fullHoursAfterStart === 0) {
+      top = minutesIntoCurrentHour * (firstHourGap / 60);
     } else {
-      // All other hours (01:00-24:00) move down together with special spacing
-      top = firstHourGap + (startHour - 1) * firstHourGap + (startMinutes - startHour * 60) * (firstHourGap / 60);
+      top = firstHourGap + (fullHoursAfterStart - 1) * firstHourGap + minutesIntoCurrentHour * (firstHourGap / 60);
     }
     
     let height = (endMinutes - startMinutes) * (hourGap / 60);
@@ -197,13 +203,15 @@ export default function OggiScreen() {
       return null;
     }
     
-    // Use same positioning logic as hour rows and events
+    // Position relative to windowStart
+    const minutesFromWindowStart = Math.max(0, currentMinutes - windowStartMin);
+    const fullHoursAfterStart = Math.floor(minutesFromWindowStart / 60);
+    const minutesIntoCurrentHour = minutesFromWindowStart % 60;
     let top = 0;
-    if (currentHour === 0) {
-      top = currentMinutes * (firstHourGap / 60);
+    if (fullHoursAfterStart === 0) {
+      top = minutesIntoCurrentHour * (firstHourGap / 60);
     } else {
-      // All other hours (01:00-24:00) move down together with special spacing
-      top = firstHourGap + (currentHour - 1) * firstHourGap + (currentMinutes - currentHour * 60) * (firstHourGap / 60);
+      top = firstHourGap + (fullHoursAfterStart - 1) * firstHourGap + minutesIntoCurrentHour * (firstHourGap / 60);
     }
     
     return top;
@@ -440,13 +448,14 @@ export default function OggiScreen() {
             {/* Hour rows positioned absolutely - 00:00 always at top */}
             {hours.map((hour, index) => {
               const hourIndex = Math.floor(toMinutes(hour) / 60);
-              // Special positioning: only 00:00 stays fixed, all other hours move down together
+              const startHour = Math.floor(windowStartMin / 60);
+              const relativeIndex = Math.max(0, hourIndex - startHour);
+              // Position rows relative to windowStart: first visible hour at top 0
               let top = 0;
-              if (hourIndex === 0) {
-                top = 0; // 00:00 always at top
+              if (relativeIndex === 0) {
+                top = 0;
               } else {
-                // All other hours (01:00-24:00) move down together with special spacing
-                top = firstHourGap + (hourIndex - 1) * firstHourGap;
+                top = firstHourGap + (relativeIndex - 1) * firstHourGap;
               }
               
               return (
