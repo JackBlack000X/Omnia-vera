@@ -237,20 +237,23 @@ export default function OggiScreen() {
     }
     
     // Position relative to windowStart
-    const minutesFromWindowStart = Math.max(0, currentMinutes - windowStartMin);
+    // Calcolo identico alle task, con un blocco virtuale di 30 minuti, per seguire lo stesso spostamento
+    const visualStart = Math.max(currentMinutes, windowStartMin);
+    const visualEnd = Math.min(visualStart + 30, windowEndMin);
+    const minutesFromWindowStart = Math.max(0, visualStart - windowStartMin);
     const fullHoursAfterStart = Math.floor(minutesFromWindowStart / 60);
     const minutesIntoCurrentHour = minutesFromWindowStart % 60;
-    let top = 0;
-    if (fullHoursAfterStart === 0) {
-      top = minutesIntoCurrentHour * (firstHourGap / 60);
-    } else {
-      top = firstHourGap + (fullHoursAfterStart - 1) * firstHourGap + minutesIntoCurrentHour * (firstHourGap / 60);
-    }
-    // Allinea alla scelta visiva delle task: sposta avanti di 20 minuti
-    const visualOffsetMinutes = 20;
-    const visualOffsetPx = visualOffsetMinutes * (firstHourGap / 60);
-    top += visualOffsetPx;
-    
+    const topBlocks = fullHoursAfterStart === 0 ? 0 : (firstHourGap + (fullHoursAfterStart - 1) * firstHourGap);
+    let top = topBlocks + minutesIntoCurrentHour * (firstHourGap / 60);
+    const visualOffsetMinutes = 30;
+    top += visualOffsetMinutes * (firstHourGap / 60);
+    // Replica la correzione del centro applicata alle task
+    const applyTrim = (h: number, endsOnHour: boolean) => endsOnHour ? Math.max(20, h - 2) : Math.max(20, h);
+    const endsOnHour = (visualEnd % 60) === 0;
+    const prevHeight = applyTrim((visualEnd - visualStart) * (hourGap / 60), endsOnHour);
+    const height = applyTrim((visualEnd - visualStart) * (firstHourGap / 60), endsOnHour);
+    const delta = height - prevHeight;
+    top -= delta; // compensazione completa del delta
     return top;
   };
 
@@ -513,15 +516,10 @@ export default function OggiScreen() {
                 </View>
               );
             })}
-            
-            {/* Events positioned absolutely */}
-            {timedEvents.map(renderEvent)}
-            
-            {/* Current time line */}
+            {/* Adaptive current time line (fits window start/end and scaling) */}
             {(() => {
               const timePosition = getCurrentTimePosition();
               if (timePosition === null) return null;
-              
               return (
                 <View
                   style={[
@@ -533,6 +531,10 @@ export default function OggiScreen() {
                 </View>
               );
             })()}
+            {/* Events positioned absolutely */}
+            {timedEvents.map(renderEvent)}
+            
+            
             {/* Bottom space accounted in totalScrollHeightPx */}
           </View>
         </ScrollView>

@@ -125,7 +125,15 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
   
   const timeText = getTimeText();
   const frequencyText = getFrequencyText();
-  const isDaily = !habit.schedule || (habit.schedule.daysOfWeek.length === 0 || habit.schedule.daysOfWeek.length === 7) && !habit.schedule.monthDays;
+  // White circle ONLY if truly "every day":
+  // no monthly-specific days, no annual date, and daysOfWeek is empty or all 7
+  const s = habit.schedule;
+  const isDaily = !s || (
+    (s.daysOfWeek.length === 0 || s.daysOfWeek.length === 7) &&
+    (!s.monthDays || s.monthDays.length === 0) &&
+    !s.yearMonth &&
+    !s.yearDay
+  );
   
   // Don't show frequency text for daily tasks since white circle already indicates this
   const shouldShowFrequency = !isDaily;
