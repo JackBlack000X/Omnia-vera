@@ -145,6 +145,17 @@ export default function OggiScreen() {
   const hourGap = baseHourGap; // Regular spacing for all other hours
   const scalePxPerMin = hourGap / 60; // Pixels per minute
 
+  // Scroll/timeline height should end at the last visible hour
+  const visibleHourCount = Math.max(1, Math.floor((windowEndMin - windowStartMin) / 60) + 1);
+  const timelineHeightPx = (visibleHourCount - 1) * firstHourGap + hourGap;
+  const isFullDayWindow = windowStartMin === 0 && windowEndMin === 1440;
+  // For full-day window, allow scroll as if 24 hours, regardless of visibleHours
+  const scrollHeightPx = isFullDayWindow ? (24 * firstHourGap) : timelineHeightPx;
+  // Extra bottom space so the last hour is fully reachable past the selection bar
+  const selectionBarPx = 80;
+  // Reduce bottom space by 7px total as requested
+  const totalScrollHeightPx = scrollHeightPx + selectionBarPx - 7;
+
   // Generate hourly timeline based on viewing window (include end label)
   const hours = useMemo(() => {
     const startHour = Math.floor(windowStartMin / 60);
@@ -235,8 +246,8 @@ export default function OggiScreen() {
     } else {
       top = firstHourGap + (fullHoursAfterStart - 1) * firstHourGap + minutesIntoCurrentHour * (firstHourGap / 60);
     }
-    // Allinea alla scelta visiva delle task: sposta avanti di 30 minuti
-    const visualOffsetMinutes = 30;
+    // Allinea alla scelta visiva delle task: sposta avanti di 20 minuti
+    const visualOffsetMinutes = 20;
     const visualOffsetPx = visualOffsetMinutes * (firstHourGap / 60);
     top += visualOffsetPx;
     
@@ -409,7 +420,9 @@ export default function OggiScreen() {
         ]}
       >
         <Text style={[styles.eventTitle, light ? { color: '#111111' } : { color: THEME.text }]}>{event.title}</Text>
-        <Text style={[styles.eventTime, light ? { color: '#111111' } : { color: THEME.text }]}>{event.startTime} - {event.endTime}</Text>
+        {height >= 37 ? (
+          <Text style={[styles.eventTime, light ? { color: '#111111' } : { color: THEME.text }]}>{event.startTime} - {event.endTime}</Text>
+        ) : null}
       </View>
     );
   };
@@ -465,12 +478,12 @@ export default function OggiScreen() {
       <View style={styles.timelineContainer}>
         <ScrollView 
           style={styles.scrollView}
-          contentContainerStyle={{ height: 24 * firstHourGap }}
+          contentContainerStyle={{ height: totalScrollHeightPx }}
           showsVerticalScrollIndicator={false}
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
         >
-          <View style={[styles.timeline, { height: 24 * firstHourGap }]}>
+          <View style={[styles.timeline, { height: totalScrollHeightPx }]}>
             {/* Hour rows positioned absolutely - 00:00 always at top */}
             {hours.map((hour, index) => {
               const hourIndex = Math.floor(toMinutes(hour) / 60);
@@ -520,6 +533,7 @@ export default function OggiScreen() {
                 </View>
               );
             })()}
+            {/* Bottom space accounted in totalScrollHeightPx */}
           </View>
         </ScrollView>
       </View>
