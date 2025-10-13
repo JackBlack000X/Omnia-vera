@@ -178,6 +178,10 @@ export default function OggiScreen() {
     } else {
       top = firstHourGap + (fullHoursAfterStart - 1) * firstHourGap + minutesIntoCurrentHour * (firstHourGap / 60);
     }
+    // Offset visivo: sposta SOLO il blocco evento di 30 minuti verso il basso
+    const visualOffsetMinutes = 30;
+    const visualOffsetPx = visualOffsetMinutes * (firstHourGap / 60);
+    top += visualOffsetPx;
     
     let height = (endMinutes - startMinutes) * (hourGap / 60);
     // Prevent bottom edge from crossing the hour line when ending exactly on an hour
@@ -439,12 +443,12 @@ export default function OggiScreen() {
       <View style={styles.timelineContainer}>
         <ScrollView 
           style={styles.scrollView}
-          contentContainerStyle={{ height: 24 * hourGap }}
+          contentContainerStyle={{ height: 24 * firstHourGap }}
           showsVerticalScrollIndicator={false}
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
         >
-          <View style={[styles.timeline, { height: 24 * hourGap }]}>
+          <View style={[styles.timeline, { height: 24 * firstHourGap }]}>
             {/* Hour rows positioned absolutely - 00:00 always at top */}
             {hours.map((hour, index) => {
               const hourIndex = Math.floor(toMinutes(hour) / 60);
