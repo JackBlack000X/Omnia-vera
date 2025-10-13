@@ -500,34 +500,50 @@ export default function OggiScreen() {
               <View style={styles.counterRow}>
                 <Pressable
                   accessibilityRole="button"
-                  style={styles.stepBtn}
+                  style={[styles.stepBtn, (() => {
+                    const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
+                    return startH <= 0 ? styles.stepBtnDisabled : {};
+                  })()]}
                   onPress={() => {
                     const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
-                    const newStart = Math.max(0, startH - 1);
                     const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
-                    let newEnd = endH;
-                    if (newStart >= endH) newEnd = Math.min(24, newStart + 1);
+                    if (startH <= 0) return;
+                    
+                    const newStart = Math.max(0, startH - 1);
+                    // Mantieni almeno 5 ore di distacco
+                    const newEnd = Math.max(endH, newStart + 5);
                     setWindowStart(`${String(newStart).padStart(2, '0')}:00`);
                     setWindowEnd(newEnd === 24 ? '24:00' : `${String(newEnd).padStart(2, '0')}:00`);
                   }}
                 >
-                  <Text style={styles.stepBtnText}>-</Text>
+                  <Text style={[styles.stepBtnText, (() => {
+                    const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
+                    return startH <= 0 ? styles.stepBtnTextDisabled : {};
+                  })()]}>-</Text>
                 </Pressable>
                 <Text style={styles.timeText}>{windowStart}</Text>
                 <Pressable
                   accessibilityRole="button"
-                  style={styles.stepBtn}
+                  style={[styles.stepBtn, (() => {
+                    const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
+                    return startH >= 19 ? styles.stepBtnDisabled : {};
+                  })()]}
                   onPress={() => {
                     const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
-                    const newStart = Math.min(23, startH + 1);
                     const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
-                    let newEnd = endH;
-                    if (newStart >= endH) newEnd = Math.min(24, newStart + 1);
+                    if (startH >= 19) return;
+                    
+                    const newStart = Math.min(19, startH + 1);
+                    // Mantieni almeno 5 ore di distacco
+                    const newEnd = Math.max(endH, newStart + 5);
                     setWindowStart(`${String(newStart).padStart(2, '0')}:00`);
                     setWindowEnd(newEnd === 24 ? '24:00' : `${String(newEnd).padStart(2, '0')}:00`);
                   }}
                 >
-                  <Text style={styles.stepBtnText}>+</Text>
+                  <Text style={[styles.stepBtnText, (() => {
+                    const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
+                    return startH >= 19 ? styles.stepBtnTextDisabled : {};
+                  })()]}>+</Text>
                 </Pressable>
               </View>
             </View>
@@ -537,34 +553,54 @@ export default function OggiScreen() {
               <View style={styles.counterRow}>
                 <Pressable
                   accessibilityRole="button"
-                  style={styles.stepBtn}
-                  onPress={() => {
-                    const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
-                    const newEnd = Math.max(0, endH - 1);
+                  style={[styles.stepBtn, (() => {
                     const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
-                    let newStart = startH;
-                    if (newEnd <= startH) newStart = Math.max(0, newEnd - 1);
-                    setWindowEnd(newEnd === 24 ? '24:00' : `${String(newEnd).padStart(2, '0')}:00`);
-                    setWindowStart(`${String(Math.min(newStart, 23)).padStart(2, '0')}:00`);
+                    const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
+                    return (startH === 0 && endH === 5) ? styles.stepBtnDisabled : {};
+                  })()]}
+                  onPress={() => {
+                    const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
+                    const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
+                    if (startH === 0 && endH === 5) return;
+                    
+                    // Se siamo a 5 ore esatte, scendi entrambi mantenendo 5 ore
+                    if (endH - startH === 5) {
+                      const newEnd = endH - 1;
+                      const newStart = startH - 1;
+                      setWindowEnd(newEnd === 24 ? '24:00' : `${String(newEnd).padStart(2, '0')}:00`);
+                      setWindowStart(`${String(newStart).padStart(2, '0')}:00`);
+                    } else {
+                      // Altrimenti scendi solo la fine mantenendo almeno 5 ore
+                      const newEnd = Math.max(startH + 5, endH - 1);
+                      setWindowEnd(newEnd === 24 ? '24:00' : `${String(newEnd).padStart(2, '0')}:00`);
+                    }
                   }}
                 >
-                  <Text style={styles.stepBtnText}>-</Text>
+                  <Text style={[styles.stepBtnText, (() => {
+                    const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
+                    const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
+                    return (startH === 0 && endH === 5) ? styles.stepBtnTextDisabled : {};
+                  })()]}>-</Text>
                 </Pressable>
                 <Text style={styles.timeText}>{windowEnd}</Text>
                 <Pressable
                   accessibilityRole="button"
-                  style={styles.stepBtn}
+                  style={[styles.stepBtn, (() => {
+                    const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
+                    return endH >= 24 ? styles.stepBtnDisabled : {};
+                  })()]}
                   onPress={() => {
                     const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
+                    if (endH >= 24) return;
+                    
                     const newEnd = Math.min(24, endH + 1);
-                    const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
-                    let newStart = startH;
-                    if (newEnd <= startH) newStart = Math.max(0, newEnd - 1);
                     setWindowEnd(newEnd === 24 ? '24:00' : `${String(newEnd).padStart(2, '0')}:00`);
-                    setWindowStart(`${String(Math.min(newStart, 23)).padStart(2, '0')}:00`);
                   }}
                 >
-                  <Text style={styles.stepBtnText}>+</Text>
+                  <Text style={[styles.stepBtnText, (() => {
+                    const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
+                    return endH >= 24 ? styles.stepBtnTextDisabled : {};
+                  })()]}>+</Text>
                 </Pressable>
               </View>
             </View>
@@ -574,18 +610,18 @@ export default function OggiScreen() {
               <View style={styles.counterRow}>
                 <Pressable
                   accessibilityRole="button"
-                  style={styles.stepBtn}
+                  style={[styles.stepBtn, visibleHours <= 5 ? styles.stepBtnDisabled : {}]}
                   onPress={() => setVisibleHours(h => Math.max(5, h - 1))}
                 >
-                  <Text style={styles.stepBtnText}>-</Text>
+                  <Text style={[styles.stepBtnText, visibleHours <= 5 ? styles.stepBtnTextDisabled : {}]}>-</Text>
                 </Pressable>
                 <Text style={styles.timeText}>{visibleHours}</Text>
                 <Pressable
                   accessibilityRole="button"
-                  style={styles.stepBtn}
+                  style={[styles.stepBtn, visibleHours >= 24 ? styles.stepBtnDisabled : {}]}
                   onPress={() => setVisibleHours(h => Math.min(24, h + 1))}
                 >
-                  <Text style={styles.stepBtnText}>+</Text>
+                  <Text style={[styles.stepBtnText, visibleHours >= 24 ? styles.stepBtnTextDisabled : {}]}>+</Text>
                 </Pressable>
               </View>
             </View>
@@ -788,10 +824,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#374151'
   },
+  stepBtnDisabled: {
+    backgroundColor: '#0f172a',
+    borderColor: '#1e293b',
+    opacity: 0.5
+  },
   stepBtnText: {
     color: THEME.text,
     fontSize: 18,
     fontWeight: '700'
+  },
+  stepBtnTextDisabled: {
+    color: '#6b7280'
   },
   timeText: {
     color: THEME.text,
