@@ -169,29 +169,47 @@ export default function OggiScreen() {
     const endMinutes = endHour * 60 + endMin;
 
     // Position relative to windowStart
-    const minutesFromWindowStart = Math.max(0, startMinutes - windowStartMin);
+    // Hide tasks outside the visible window
+    if (endMinutes <= windowStartMin || startMinutes >= windowEndMin) {
+      return { top: -1, height: 0 };
+    }
+
+    // Clamp to visible window for positioning and size
+    const visibleStart = Math.max(startMinutes, windowStartMin);
+    const visibleEnd = Math.min(endMinutes, windowEndMin);
+
+    const minutesFromWindowStart = Math.max(0, visibleStart - windowStartMin);
     const fullHoursAfterStart = Math.floor(minutesFromWindowStart / 60);
     const minutesIntoCurrentHour = minutesFromWindowStart % 60;
-    let top = 0;
-    if (fullHoursAfterStart === 0) {
-      top = minutesIntoCurrentHour * (firstHourGap / 60);
-    } else {
-      top = firstHourGap + (fullHoursAfterStart - 1) * firstHourGap + minutesIntoCurrentHour * (firstHourGap / 60);
-    }
+    // Ancoriamo alla stessa logica delle righe: prima ora a 0, poi blocchi da firstHourGap
+    const topBlocks = fullHoursAfterStart === 0 ? 0 : (firstHourGap + (fullHoursAfterStart - 1) * firstHourGap);
+    let top = topBlocks + minutesIntoCurrentHour * (firstHourGap / 60);
     // Offset visivo: sposta SOLO il blocco evento di 30 minuti verso il basso
     const visualOffsetMinutes = 30;
     const visualOffsetPx = visualOffsetMinutes * (firstHourGap / 60);
     top += visualOffsetPx;
+
+    // Current height with hourGap (baseline used so center stays fixed after resize)
+    let prevHeight = (visibleEnd - visibleStart) * (hourGap / 60);
+    // Target height so that 60min == firstHourGap per current scale
+    let height = (visibleEnd - visibleStart) * (firstHourGap / 60);
     
-    let height = (endMinutes - startMinutes) * (hourGap / 60);
     // Prevent bottom edge from crossing the hour line when ending exactly on an hour
     const endsOnHour = (endMinutes % 60) === 0;
     const bottomGapPx = 2; // adjusted gap at the bottom
-    if (endsOnHour) {
-      height = Math.max(20, height - bottomGapPx);
-    } else {
-      height = Math.max(20, height);
-    }
+    const applyTrim = (h: number) => {
+      if (endsOnHour) {
+        return Math.max(20, h - bottomGapPx);
+      }
+      return Math.max(20, h);
+    };
+    prevHeight = applyTrim(prevHeight);
+    height = applyTrim(height);
+
+    // Keep the visual center unchanged: adjust top by half the delta
+    const delta = height - prevHeight;
+    top -= delta / 2;
+
     return { top, height };
   };
 
@@ -217,6 +235,10 @@ export default function OggiScreen() {
     } else {
       top = firstHourGap + (fullHoursAfterStart - 1) * firstHourGap + minutesIntoCurrentHour * (firstHourGap / 60);
     }
+    // Allinea alla scelta visiva delle task: sposta avanti di 30 minuti
+    const visualOffsetMinutes = 30;
+    const visualOffsetPx = visualOffsetMinutes * (firstHourGap / 60);
+    top += visualOffsetPx;
     
     return top;
   };
