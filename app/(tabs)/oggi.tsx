@@ -129,7 +129,15 @@ export default function OggiScreen() {
                       clampedVisibleHours === 16 ? 46.5 : 
                       clampedVisibleHours === 15 ? 49.6 : 
                       clampedVisibleHours === 14 ? 53.15 : 
-                      clampedVisibleHours === 13 ? 57.23 : baseHourGap; // Special spacing for first hour when 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, or 13 visible
+                      clampedVisibleHours === 13 ? 57.23 : 
+                      clampedVisibleHours === 12 ? 62.0 : 
+                      clampedVisibleHours === 11 ? 67.65 : 
+                      clampedVisibleHours === 10 ? 74.4 : 
+                      clampedVisibleHours === 9 ? 82.68 : 
+                      clampedVisibleHours === 8 ? 93 : 
+                      clampedVisibleHours === 7 ? 106.30 : 
+                      clampedVisibleHours === 6 ? 124 : 
+                      clampedVisibleHours === 5 ? 148.82 : baseHourGap; // Special spacing for first hour when 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, or 5 visible
   const hourGap = baseHourGap; // Regular spacing for all other hours
   const scalePxPerMin = hourGap / 60; // Pixels per minute
 
