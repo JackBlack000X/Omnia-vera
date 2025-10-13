@@ -1,14 +1,18 @@
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHabits } from '@/lib/habits/Provider';
+import { Habit } from '@/lib/habits/schema';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+const STORAGE_HABITS = 'habitcheck_habits_v1';
+
 // Helpers
 function pad(n: number) { return String(n).padStart(2, '0'); }
-function minutesToHhmm(min: number) { const h = Math.floor(min / 60); const m = min % 60; return `${pad(h)}:${pad(m)}`; }
+function minutesToHhmm(min: number): string { const h = Math.floor(min / 60); const m = min % 60; return `${pad(h)}:${pad(m)}`; }
 function hhmmToMinutes(hhmm: string | null | undefined) { if (!hhmm) return null; const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; }
 function formatDuration(minutes: number) {
   const hours = Math.floor(minutes / 60);
@@ -163,37 +167,44 @@ export default function ModalScreen() {
   });
 
   // schedule state
-  const hasOneOff = useMemo(() => {
-    if (!existing) return false;
-    const schedDays = existing.schedule?.daysOfWeek ?? [];
-    const schedMonth = existing.schedule?.monthDays ?? [];
-    const overrides = existing.timeOverrides ? Object.keys(existing.timeOverrides) : [];
-    return schedDays.length === 0 && schedMonth.length === 0 && overrides.length > 0;
-  }, [existing]);
 
-  const initialSpecificDate = useMemo(() => {
-    if (!existing || !existing.timeOverrides) return null;
-    const keys = Object.keys(existing.timeOverrides);
-    if (keys.length === 0) return null;
-    // pick the latest date key
-    const latest = keys.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))[0];
-    const [y, m, d] = latest.split('-').map(Number);
-    if (!y || !m || !d) return null;
-    const dt = new Date(y, m - 1, d);
-    return isNaN(dt.getTime()) ? null : dt;
-  }, [existing]);
   const initialDays = existing?.schedule?.daysOfWeek ?? [];
   const initialStart = existing?.schedule?.time ?? null;
   const initialEnd = existing?.schedule?.endTime ?? null;
-  const [mode, setMode] = useState<'allDay' | 'timed' | 'specificDate'>(hasOneOff ? 'specificDate' : (initialStart ? 'timed' : 'allDay'));
-  const [specificDate, setSpecificDate] = useState<Date | null>(initialSpecificDate);
+  // Compute initial mode: if any recurring selection (weekly/monthly/annual) or any time is configured, default to 'timed'.
+  const scheduleObj = existing?.schedule;
+  const hasRecurringSelection = (initialDays.length > 0)
+    || ((scheduleObj?.monthDays?.length ?? 0) > 0)
+    || (!!scheduleObj?.yearMonth && !!scheduleObj?.yearDay);
+  const hasAnyTimeConfigured = !!initialStart || !!initialEnd || !!scheduleObj?.weeklyTimes || !!scheduleObj?.monthlyTimes;
+  // Check if it's all-day: no time configured and no weekly/monthly times
+  // Also check if timeOverrides only contain "00:00" (all-day markers)
+  const hasTimeOverrides = existing?.timeOverrides && Object.keys(existing.timeOverrides).length > 0;
+  const hasSpecificTimeOverrides = hasTimeOverrides && Object.values(existing?.timeOverrides ?? {}).some(time => time !== '00:00');
+  const isAllDay = !hasAnyTimeConfigured && !scheduleObj?.weeklyTimes && !scheduleObj?.monthlyTimes && !hasSpecificTimeOverrides;
+  const initialMode: 'allDay' | 'timed' = isAllDay ? 'allDay' : 'timed';
+  const [mode, setMode] = useState<'allDay' | 'timed'>(initialMode);
   const [freq, setFreq] = useState<'single' | 'daily' | 'weekly' | 'monthly' | 'annual'>(() => {
     if (existing) {
       const overrides = existing.timeOverrides ? Object.keys(existing.timeOverrides) : [];
-      if (overrides.length > 0 && (existing.schedule?.daysOfWeek?.length ?? 0) === 0 && !(existing.schedule?.monthDays?.length)) return 'single';
+      const hasTimeOverrides = overrides.length > 0;
+      const hasSpecificSchedule = (existing.schedule?.daysOfWeek?.length ?? 0) > 0 || 
+                                 (existing.schedule?.monthDays?.length ?? 0) > 0 || 
+                                 existing.schedule?.yearMonth || 
+                                 existing.schedule?.yearDay;
+      
+      // If it has time overrides but no specific schedule, it's single
+      if (hasTimeOverrides && !hasSpecificSchedule) return 'single';
+      
+      // Check specific schedules first
       if (existing?.schedule?.monthDays && existing.schedule.monthDays.length > 0) return 'monthly';
       if (existing?.schedule?.yearMonth && existing?.schedule?.yearDay) return 'annual';
       if (initialDays.length > 0) return 'weekly';
+      
+      // If it has a schedule but no specific recurring pattern and no timeOverrides, it's daily
+      if (existing.schedule && 
+          !hasSpecificSchedule && 
+          !hasTimeOverrides) return 'daily';
     }
     return 'single';
   });
@@ -217,6 +228,22 @@ export default function ModalScreen() {
   const [annualMonth, setAnnualMonth] = useState<number>(existing?.schedule?.yearMonth ?? (new Date().getMonth() + 1));
   const [annualDay, setAnnualDay] = useState<number>(existing?.schedule?.yearDay ?? new Date().getDate());
   const [annualYear, setAnnualYear] = useState<number>(new Date().getFullYear());
+  
+  // Check if selected date is today
+  const isToday = useMemo(() => {
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
+    
+    if (freq === 'annual') {
+      return annualDay === currentDay && annualMonth === currentMonth;
+    } else if (freq === 'single') {
+      return annualDay === currentDay && annualMonth === currentMonth && annualYear === currentYear;
+    }
+    return false;
+  }, [freq, annualDay, annualMonth, annualYear]);
+  
   const [startMin, setStartMin] = useState<number>(hhmmToMinutes(initialStart ?? '08:00') ?? 8 * 60);
   const [endMin, setEndMin] = useState<number | null>(hhmmToMinutes(initialEnd) ?? null);
   // Per-day weekly times (minutes)
@@ -320,6 +347,8 @@ export default function ModalScreen() {
           setPerDayTimes(p => ({ ...p, [d]: { startMin, endMin } }));
           if (next.length > 1) setSelectedDow(d);
         }
+        // ensure UI shows 'timed' when user selects weekly days
+        if (mode !== 'timed') setMode('timed');
         return next;
       });
     } else {
@@ -362,11 +391,130 @@ export default function ModalScreen() {
         });
         return;
       }
-      setMonthDays(prev => [...prev, d].sort());
+      setMonthDays(prev => {
+        const next = [...prev, d].sort();
+        if (mode !== 'timed') setMode('timed');
+        return next;
+      });
     } else {
       // Removing a day - no confirmation needed
       setMonthDays(prev => prev.filter(x => x !== d));
     }
+  }
+
+  function setModeWithConfirmation(newMode: 'allDay' | 'timed') {
+    // If switching from timed to allDay, clear all time-related data
+    if (mode === 'timed' && newMode === 'allDay') {
+      setConfirmationModal({
+        visible: true,
+        title: 'Conferma cancellazione',
+        message: 'Passando a "Tutto il giorno" cancellerai tutti gli orari specifici. Sei sicuro?',
+        onConfirm: () => {
+          // Clear all time-related data
+          setStartMin(8 * 60); // Reset to default 8:00
+          setEndMin(null);
+          setPerDayTimes({});
+          setPerMonthTimes({});
+          setMode('allDay');
+          setConfirmationModal(prev => ({ ...prev, visible: false }));
+          
+          // Auto-save the changes
+          if (existing) {
+            if (freq === 'daily') {
+              // Clear time fields for daily all-day tasks
+              setHabits(prev => prev.map(h => {
+                if (h.id !== existing.id) return h;
+                const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+                schedule.time = null;
+                schedule.endTime = null;
+                schedule.daysOfWeek = [];
+                schedule.monthDays = undefined;
+                schedule.yearMonth = undefined;
+                schedule.yearDay = undefined;
+                return { ...h, timeOverrides: {}, schedule };
+              }));
+            } else if (freq === 'single') {
+              // For single frequency, save as one-off override for selected date without time
+              const y = annualYear;
+              const m = String(annualMonth).padStart(2, '0');
+              const d = String(annualDay).padStart(2, '0');
+              const ymd = `${y}-${m}-${d}`;
+              setHabits(prev => prev.map(h => {
+                if (h.id !== existing.id) return h;
+                const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
+                next[ymd] = '00:00'; // All day marker
+                const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+                schedule.daysOfWeek = [];
+                schedule.monthDays = undefined;
+                schedule.time = null;
+                schedule.endTime = null;
+                return { ...h, timeOverrides: next, schedule };
+              }));
+            }
+            // Save to AsyncStorage - use the updated habits from setHabits
+            setHabits(prev => {
+              AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(prev)).catch(() => {});
+              return prev;
+            });
+          }
+        },
+      });
+      return;
+    }
+    setMode(newMode);
+  }
+
+  function setFreqWithConfirmation(newFreq: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual') {
+    // Check if we need confirmation when switching between different frequency types
+    const hasWeeklyDays = daysOfWeek.length > 0;
+    const hasMonthlyDays = monthDays.length > 0;
+    const hasAnnualDate = annualMonth && annualDay;
+    const hasSingleDate = false;
+    
+    const currentFreqHasSelection = (freq === 'weekly' && hasWeeklyDays) || 
+                                   (freq === 'monthly' && hasMonthlyDays) || 
+                                   (freq === 'annual' && hasAnnualDate) || 
+                                   (freq === 'single' && hasSingleDate);
+    
+    const newFreqNeedsSelection = (newFreq === 'weekly' || newFreq === 'monthly' || newFreq === 'annual' || newFreq === 'single');
+    
+    if (currentFreqHasSelection && newFreqNeedsSelection && freq !== newFreq) {
+      let message = '';
+      if (freq === 'weekly' && hasWeeklyDays) {
+        const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+        const weeklyDaysText = [...daysOfWeek].sort((a, b) => a - b).map(day => dayNames[day]).join(', ');
+        message = `Cambiando a ${newFreq === 'monthly' ? 'mensile' : newFreq === 'annual' ? 'annuale' : 'singola'} cancellerai i giorni ${weeklyDaysText}. Sei sicuro?`;
+      } else if (freq === 'monthly' && hasMonthlyDays) {
+        const monthlyDaysText = [...monthDays].sort((a, b) => a - b).join(', ');
+        message = `Cambiando a ${newFreq === 'weekly' ? 'settimanale' : newFreq === 'annual' ? 'annuale' : 'singola'} cancellerai i giorni ${monthlyDaysText}. Sei sicuro?`;
+      } else if (freq === 'annual' && hasAnnualDate) {
+        message = `Cambiando a ${newFreq === 'weekly' ? 'settimanale' : newFreq === 'monthly' ? 'mensile' : 'singola'} cancellerai la data annuale. Sei sicuro?`;
+      } else if (freq === 'single' && hasSingleDate) {
+        message = `Cambiando a ${newFreq === 'weekly' ? 'settimanale' : newFreq === 'monthly' ? 'mensile' : 'annuale'} cancellerai la data specifica. Sei sicuro?`;
+      }
+      
+      setConfirmationModal({
+        visible: true,
+        title: 'Conferma cancellazione',
+        message: message,
+        onConfirm: () => {
+          // Clear previous selections
+          if (freq === 'weekly') setDaysOfWeek([]);
+          if (freq === 'monthly') setMonthDays([]);
+          if (freq === 'annual') {
+            setAnnualMonth(new Date().getMonth() + 1);
+            setAnnualDay(new Date().getDate());
+          }
+          
+          setFreq(newFreq);
+          setConfirmationModal(prev => ({ ...prev, visible: false }));
+        },
+      });
+      return;
+    }
+    
+    // No confirmation needed, just change frequency
+    setFreq(newFreq);
   }
 
   function close() { router.back(); }
@@ -382,17 +530,16 @@ export default function ModalScreen() {
         }
         // Se è una task temporizzata, aggiungi anche la programmazione
         if (mode === 'timed') {
-          const time = minutesToHhmm(startMin);
-          const endTime = endMin ? minutesToHhmm(endMin) : null;
+          const time = minutesToHhmm(startMin) as string;
+          const endTime = endMin !== null ? minutesToHhmm(endMin) as string : null;
           
           if (freq === 'single') {
-            // save one-off override on picked date (specificDate or today)
-            const base = specificDate ?? new Date();
-            const y = base.getFullYear();
-            const m = String(base.getMonth() + 1).padStart(2, '0');
-            const d = String(base.getDate()).padStart(2, '0');
+            // save one-off override for selected date
+            const y = annualYear;
+            const m = String(annualMonth).padStart(2, '0');
+            const d = String(annualDay).padStart(2, '0');
             const ymd = `${y}-${m}-${d}`;
-            updateScheduleTimes(newHabitId, time, endTime);
+            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
               const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
@@ -404,10 +551,19 @@ export default function ModalScreen() {
               return { ...h, timeOverrides: next, schedule };
             }));
           } else if (freq === 'daily') {
-            updateScheduleTimes(newHabitId, time, endTime);
+            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
+            // Clear one-off overrides for recurring daily tasks
+            setHabits(prev => prev.map(h => {
+              if (h.id !== newHabitId) return h;
+              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+              schedule.daysOfWeek = [];
+              schedule.monthDays = undefined;
+              schedule.yearMonth = undefined;
+              schedule.yearDay = undefined;
+              return { ...h, timeOverrides: {}, schedule };
+            }));
           } else if (freq === 'weekly') {
-            updateScheduleTimes(newHabitId, time, endTime);
-            updateSchedule(newHabitId, daysOfWeek, time);
+            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
             // Clear monthly days for weekly tasks
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -468,7 +624,7 @@ export default function ModalScreen() {
               return; // wait user choice
             }
           } else if (freq === 'monthly') {
-            updateScheduleTimes(newHabitId, time, endTime);
+            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
             // Update monthly days and clear weekly days
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -495,7 +651,7 @@ export default function ModalScreen() {
             // Clear one-off overrides for recurring monthly tasks
             setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
           } else if (freq === 'annual') {
-            updateScheduleTimes(newHabitId, time, endTime);
+            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
             // Annual: set yearMonth/yearDay and clear weekly/monthly fields
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -510,30 +666,76 @@ export default function ModalScreen() {
             setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
           }
         }
-        if (mode === 'specificDate' && specificDate && freq === 'single') {
-          // Salva come one-off sul giorno scelto via timeOverrides
-          const y = specificDate.getFullYear();
-          const m = String(specificDate.getMonth() + 1).padStart(2, '0');
-          const d = String(specificDate.getDate()).padStart(2, '0');
+        // Se è "Tutto il giorno", salva solo la frequenza senza orari
+        if (mode === 'allDay') {
+          if (freq === 'single') {
+            // For single frequency, save as one-off override for selected date without time
+            const y = annualYear;
+            const m = String(annualMonth).padStart(2, '0');
+            const d = String(annualDay).padStart(2, '0');
           const ymd = `${y}-${m}-${d}`;
-          // one-off: se non hai scelto orari, default 08:00-09:00
-          const time = minutesToHhmm(startMin);
-          updateScheduleTimes(newHabitId, time, endMin ? minutesToHhmm(endMin) : null);
-          // override solo per start (coerente col provider)
           setHabits(prev => prev.map(h => {
             if (h.id !== newHabitId) return h;
             const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
-            next[ymd] = time;
-            return { ...h, timeOverrides: next };
+              next[ymd] = '00:00'; // All day marker
+              // clear recurring fields
+              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+              schedule.daysOfWeek = [];
+              schedule.monthDays = undefined;
+              schedule.time = null;
+              schedule.endTime = null;
+              return { ...h, timeOverrides: next, schedule };
+            }));
+          } else if (freq === 'daily') {
+            // Clear time fields for daily all-day tasks
+            setHabits(prev => prev.map(h => {
+              if (h.id !== newHabitId) return h;
+              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+              schedule.time = null;
+              schedule.endTime = null;
+              schedule.daysOfWeek = [];
+              schedule.monthDays = undefined;
+              schedule.yearMonth = undefined;
+              schedule.yearDay = undefined;
+              return { ...h, timeOverrides: {}, schedule };
+            }));
+          } else if (freq === 'weekly') {
+            // Clear time fields for weekly all-day tasks
+            setHabits(prev => prev.map(h => {
+              if (h.id !== newHabitId) return h;
+              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+              schedule.daysOfWeek = daysOfWeek;
+              schedule.time = null;
+              schedule.endTime = null;
+              schedule.weeklyTimes = undefined;
+              return { ...h, schedule };
+            }));
+          } else if (freq === 'monthly') {
+            // Clear time fields for monthly all-day tasks
+            setHabits(prev => prev.map(h => {
+              if (h.id !== newHabitId) return h;
+              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+              schedule.monthDays = monthDays;
+              schedule.daysOfWeek = [];
+              schedule.time = null;
+              schedule.endTime = null;
+              schedule.monthlyTimes = undefined;
+              return { ...h, schedule };
+            }));
+          } else if (freq === 'annual') {
+            // Clear time fields for annual all-day tasks
+            setHabits(prev => prev.map(h => {
+              if (h.id !== newHabitId) return h;
+              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+              schedule.yearMonth = annualMonth;
+              schedule.yearDay = annualDay;
+              schedule.daysOfWeek = [];
+              schedule.monthDays = undefined;
+              schedule.time = null;
+              schedule.endTime = null;
+              return { ...h, schedule };
           }));
         }
-        // If user chose a specific start date and the frequency is recurring, set createdAt to that date
-        if (specificDate && freq !== 'single') {
-          const y = specificDate.getFullYear();
-          const m = String(specificDate.getMonth() + 1).padStart(2, '0');
-          const d = String(specificDate.getDate()).padStart(2, '0');
-          const ymd = `${y}-${m}-${d}`;
-          setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, createdAt: ymd } : h));
         }
       }
     } else if (type === 'rename' && existing) {
@@ -542,14 +744,14 @@ export default function ModalScreen() {
     } else if (type === 'color' && existing) {
       updateHabitColor(existing.id, color);
     } else if (type === 'schedule' && existing) {
-      const time = mode === 'timed' ? minutesToHhmm(startMin) : null;
-      const endTime = mode === 'timed' && endMin ? minutesToHhmm(endMin) : null;
+      const time = mode === 'timed' ? minutesToHhmm(startMin) as string : null;
+      const endTime = mode === 'timed' && endMin !== null ? minutesToHhmm(endMin) as string : null;
       
       if (freq === 'single') {
-        const base = specificDate ?? new Date();
-        const y = base.getFullYear();
-        const m = String(base.getMonth() + 1).padStart(2, '0');
-        const d = String(base.getDate()).padStart(2, '0');
+        // For single frequency, save as one-off override for selected date
+        const y = annualYear;
+        const m = String(annualMonth).padStart(2, '0');
+        const d = String(annualDay).padStart(2, '0');
         const ymd = `${y}-${m}-${d}`;
         updateScheduleTimes(existing.id, time, endTime);
         setHabits(prev => prev.map(h => {
@@ -564,7 +766,15 @@ export default function ModalScreen() {
       } else if (freq === 'daily') {
         updateScheduleTimes(existing.id, time, endTime);
         // Clear one-off overrides for recurring daily tasks
-        setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, timeOverrides: {} } : h));
+        setHabits(prev => prev.map(h => {
+          if (h.id !== existing.id) return h;
+          const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+          schedule.daysOfWeek = [];
+          schedule.monthDays = undefined;
+          schedule.yearMonth = undefined;
+          schedule.yearDay = undefined;
+          return { ...h, timeOverrides: {}, schedule };
+        }));
       } else if (freq === 'weekly') {
         updateScheduleTimes(existing.id, time, endTime);
         updateSchedule(existing.id, daysOfWeek, time);
@@ -664,13 +874,75 @@ export default function ModalScreen() {
         // Clear one-off overrides for recurring annual tasks
         setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, timeOverrides: {} } : h));
       }
-      // If a specific date was selected while scheduling a recurring task, set createdAt to that date
-      if (specificDate && freq !== 'single') {
-        const y = specificDate.getFullYear();
-        const m = String(specificDate.getMonth() + 1).padStart(2, '0');
-        const d = String(specificDate.getDate()).padStart(2, '0');
+      // Se è "Tutto il giorno", salva solo la frequenza senza orari
+      if (mode === 'allDay') {
+        if (freq === 'single') {
+          // For single frequency, save as one-off override for selected date without time
+          const y = annualYear;
+          const m = String(annualMonth).padStart(2, '0');
+          const d = String(annualDay).padStart(2, '0');
         const ymd = `${y}-${m}-${d}`;
-        setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, createdAt: ymd } : h));
+          setHabits(prev => prev.map(h => {
+            if (h.id !== existing.id) return h;
+            const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
+            next[ymd] = '00:00'; // All day marker
+            const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+            schedule.daysOfWeek = [];
+            schedule.monthDays = undefined;
+            schedule.time = null;
+            schedule.endTime = null;
+            return { ...h, timeOverrides: next, schedule };
+          }));
+        } else if (freq === 'daily') {
+          // Clear time fields for daily all-day tasks
+          setHabits(prev => prev.map(h => {
+            if (h.id !== existing.id) return h;
+            const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+            schedule.time = null;
+            schedule.endTime = null;
+            schedule.daysOfWeek = [];
+            schedule.monthDays = undefined;
+            schedule.yearMonth = undefined;
+            schedule.yearDay = undefined;
+            return { ...h, timeOverrides: {}, schedule };
+          }));
+        } else if (freq === 'weekly') {
+          // Clear time fields for weekly all-day tasks
+          setHabits(prev => prev.map(h => {
+            if (h.id !== existing.id) return h;
+            const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+            schedule.daysOfWeek = daysOfWeek;
+            schedule.time = null;
+            schedule.endTime = null;
+            schedule.weeklyTimes = undefined;
+            return { ...h, schedule };
+          }));
+        } else if (freq === 'monthly') {
+          // Clear time fields for monthly all-day tasks
+          setHabits(prev => prev.map(h => {
+            if (h.id !== existing.id) return h;
+            const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+            schedule.monthDays = monthDays;
+            schedule.daysOfWeek = [];
+            schedule.time = null;
+            schedule.endTime = null;
+            schedule.monthlyTimes = undefined;
+            return { ...h, schedule };
+          }));
+        } else if (freq === 'annual') {
+          // Clear time fields for annual all-day tasks
+          setHabits(prev => prev.map(h => {
+            if (h.id !== existing.id) return h;
+            const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+            schedule.yearMonth = annualMonth;
+            schedule.yearDay = annualDay;
+            schedule.daysOfWeek = [];
+            schedule.monthDays = undefined;
+            schedule.time = null;
+            schedule.endTime = null;
+            return { ...h, schedule };
+          }));
+        }
       }
     }
     close();
@@ -717,15 +989,128 @@ export default function ModalScreen() {
 
           {(type === 'schedule' || type === 'new' || type === 'edit') && (
             <View>
+              <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Frequenza</Text></View>
               <View style={styles.row}>
-                <TouchableOpacity onPress={() => setMode('allDay')} style={[styles.chip, mode === 'allDay' ? styles.chipActive : styles.chipGhost]}>
+                <TouchableOpacity onPress={() => setFreqWithConfirmation('single')} style={[styles.chip, freq === 'single' ? styles.chipActive : styles.chipGhost]}>
+                  <Text style={freq === 'single' ? styles.chipActiveText : styles.chipGhostText}>Singola</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setFreqWithConfirmation('daily')} style={[styles.chip, freq === 'daily' ? styles.chipActive : styles.chipGhost]}>
+                  <Text style={freq === 'daily' ? styles.chipActiveText : styles.chipGhostText}>Ogni giorno</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.row, { marginTop: 8 }]}>
+                <TouchableOpacity onPress={() => { setFreqWithConfirmation('weekly'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, freq === 'weekly' ? styles.chipActive : styles.chipGhost]}>
+                  <Text style={freq === 'weekly' ? styles.chipActiveText : styles.chipGhostText}>Settimanale</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setFreqWithConfirmation('monthly'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, freq === 'monthly' ? styles.chipActive : styles.chipGhost]}>
+                  <Text style={freq === 'monthly' ? styles.chipActiveText : styles.chipGhostText}>Mensile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setFreqWithConfirmation('annual'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, freq === 'annual' ? styles.chipActive : styles.chipGhost]}>
+                  <Text style={freq === 'annual' ? styles.chipActiveText : styles.chipGhostText}>Annuale</Text>
+                </TouchableOpacity>
+              </View>
+
+
+              {freq === 'weekly' && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.subtle}>Giorni della settimana</Text>
+                  <View style={styles.daysWrap}>
+                    {['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map((d, i) => {
+                      const sundayIndex = (i + 1) % 7; // map Mon->1 ... Sun->0
+                      const selected = daysOfWeek.includes(sundayIndex);
+                      return (
+                        <TouchableOpacity key={i} onPress={() => toggleDow(sundayIndex)} style={[styles.dayPill, selected ? styles.dayPillOn : styles.dayPillOff]}>
+                          <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{d}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {freq === 'monthly' && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.subtle}>Giorni del mese</Text>
+                  <View style={styles.monthlyDaysWrap}>
+                    {Array.from({ length: 31 }).map((_, i) => (
+                      <TouchableOpacity key={i} onPress={() => toggleMonthDay(i + 1)} style={[styles.monthlyDayPill, monthDays.includes(i + 1) ? styles.dayPillOn : styles.dayPillOff]}>
+                        <Text style={monthDays.includes(i + 1) ? styles.dayTextOn : styles.dayTextOff}>{i + 1}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+
+              {freq === 'annual' && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.subtle}>Giorno dell'anno</Text>
+                  <View style={[
+                    { flexDirection: 'row', gap: 12, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
+                    isToday && { borderWidth: 2, borderColor: '#ff3b30', borderRadius: 12, padding: 8 }
+                  ]}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TouchableOpacity onPress={() => setAnnualDay(d => Math.max(1, d - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{annualDay}</Text>
+                        <TouchableOpacity onPress={() => setAnnualDay(d => Math.min(31, d + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TouchableOpacity onPress={() => setAnnualMonth(m => Math.max(1, m - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{annualMonth}</Text>
+                        <TouchableOpacity onPress={() => setAnnualMonth(m => Math.min(12, m + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {freq === 'single' && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.subtle}>Giorno specifico</Text>
+                  <View style={[
+                    { flexDirection: 'row', gap: 12, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
+                    isToday && { borderWidth: 2, borderColor: '#ff3b30', borderRadius: 12, padding: 8 }
+                  ]}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TouchableOpacity onPress={() => setAnnualDay(d => Math.max(1, d - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{annualDay}</Text>
+                        <TouchableOpacity onPress={() => setAnnualDay(d => Math.min(31, d + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TouchableOpacity onPress={() => setAnnualMonth(m => Math.max(1, m - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{annualMonth}</Text>
+                        <TouchableOpacity onPress={() => setAnnualMonth(m => Math.min(12, m + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TouchableOpacity onPress={() => setAnnualYear(y => y - 1)} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{annualYear}</Text>
+                        <TouchableOpacity onPress={() => setAnnualYear(y => y + 1)} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Orario</Text></View>
+              <View style={styles.row}>
+                <TouchableOpacity onPress={() => setModeWithConfirmation('allDay')} style={[styles.chip, mode === 'allDay' ? styles.chipActive : styles.chipGhost]}>
                   <Text style={mode === 'allDay' ? styles.chipActiveText : styles.chipGhostText}>Tutto il giorno</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setMode('timed')} style={[styles.chip, mode === 'timed' ? styles.chipActive : styles.chipGhost]}>
+                <TouchableOpacity onPress={() => setModeWithConfirmation('timed')} style={[styles.chip, mode === 'timed' ? styles.chipActive : styles.chipGhost]}>
                   <Text style={mode === 'timed' ? styles.chipActiveText : styles.chipGhostText}>Orario specifico</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setMode('specificDate')} style={[styles.chip, mode === 'specificDate' ? styles.chipActive : styles.chipGhost]}>
-                  <Text style={mode === 'specificDate' ? styles.chipActiveText : styles.chipGhostText}>Data specifica</Text>
                 </TouchableOpacity>
               </View>
 
@@ -855,137 +1240,6 @@ export default function ModalScreen() {
                     </View>
                   </View>
                   <Text style={styles.duration}>{formatDuration((currentEndMin ?? (currentStartMin + 60)) - currentStartMin)}</Text>
-                </View>
-              )}
-
-              {mode === 'specificDate' && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Scegli una data (può essere nel passato)</Text>
-                  {(() => {
-                    const now = new Date();
-                    const sel = specificDate ?? new Date();
-                    const same = sel.getFullYear() === now.getFullYear() && sel.getMonth() === now.getMonth() && sel.getDate() === now.getDate();
-                    return (
-                      <View style={{ backgroundColor: '#1f2937', borderRadius: 14, padding: 12, position: 'relative', borderWidth: 1, borderColor: same ? '#ff3b30' : '#334155' }}>
-                        {same && (
-                          <View style={{ position: 'absolute', top: 6, left: 8, backgroundColor: 'transparent' }}>
-                            <Text style={{ color: '#ff3b30', fontWeight: '700', fontSize: 12 }}>Oggi</Text>
-                          </View>
-                        )}
-                        {/* no label when not today */}
-                        {/* Stacked selectors: Year, Month, Day */}
-                        <View style={{ marginTop: 4 }}>
-                      <View style={{ alignItems: 'center', marginBottom: 12 }}>
-                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <TouchableOpacity onPress={() => setSpecificDate(prev => { const d = new Date(prev ?? new Date()); d.setFullYear(d.getFullYear() - 1); return d; })} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
-                          <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{(specificDate ?? new Date()).getFullYear()}</Text>
-                          <TouchableOpacity onPress={() => setSpecificDate(prev => { const d = new Date(prev ?? new Date()); d.setFullYear(d.getFullYear() + 1); return d; })} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
-                        </View>
-                      </View>
-                      <View style={{ alignItems: 'center', marginBottom: 12 }}>
-                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <TouchableOpacity onPress={() => setSpecificDate(prev => { const d = new Date(prev ?? new Date()); d.setMonth(d.getMonth() - 1); return d; })} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
-                          <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{(specificDate ?? new Date()).getMonth() + 1}</Text>
-                          <TouchableOpacity onPress={() => setSpecificDate(prev => { const d = new Date(prev ?? new Date()); d.setMonth(d.getMonth() + 1); return d; })} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
-                        </View>
-                      </View>
-                      <View style={{ alignItems: 'center' }}>
-                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <TouchableOpacity onPress={() => setSpecificDate(prev => { const d = new Date(prev ?? new Date()); d.setDate(d.getDate() - 1); return d; })} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
-                          <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{(specificDate ?? new Date()).getDate()}</Text>
-                          <TouchableOpacity onPress={() => setSpecificDate(prev => { const d = new Date(prev ?? new Date()); d.setDate(d.getDate() + 1); return d; })} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
-                        </View>
-                      </View>
-                        </View>
-                      </View>
-                    );
-                  })()}
-                </View>
-              )}
-
-              <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Frequenza</Text></View>
-              <View style={styles.row}>
-                <TouchableOpacity onPress={() => setFreq('single')} style={[styles.chip, freq === 'single' ? styles.chipActive : styles.chipGhost]}>
-                  <Text style={freq === 'single' ? styles.chipActiveText : styles.chipGhostText}>Singola</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setFreq('daily')} style={[styles.chip, freq === 'daily' ? styles.chipActive : styles.chipGhost]}>
-                  <Text style={freq === 'daily' ? styles.chipActiveText : styles.chipGhostText}>Ogni giorno</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => { setFreq('weekly'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, freq === 'weekly' ? styles.chipActive : styles.chipGhost]}>
-                  <Text style={freq === 'weekly' ? styles.chipActiveText : styles.chipGhostText}>Settimanale</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => { setFreq('monthly'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, freq === 'monthly' ? styles.chipActive : styles.chipGhost]}>
-                  <Text style={freq === 'monthly' ? styles.chipActiveText : styles.chipGhostText}>Mensile</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={[styles.row, { marginTop: 8 }]}>
-                <TouchableOpacity onPress={() => { setFreq('annual'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, freq === 'annual' ? styles.chipActive : styles.chipGhost]}>
-                  <Text style={freq === 'annual' ? styles.chipActiveText : styles.chipGhostText}>Annuale</Text>
-                </TouchableOpacity>
-              </View>
-
-              {freq === 'weekly' && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Giorni della settimana</Text>
-                  <View style={styles.daysWrap}>
-                    {['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map((d, i) => {
-                      const sundayIndex = (i + 1) % 7; // map Mon->1 ... Sun->0
-                      const selected = daysOfWeek.includes(sundayIndex);
-                      return (
-                        <TouchableOpacity key={i} onPress={() => toggleDow(sundayIndex)} style={[styles.dayPill, selected ? styles.dayPillOn : styles.dayPillOff]}>
-                          <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{d}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-
-              {freq === 'monthly' && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Giorni del mese</Text>
-                  <View style={styles.monthlyDaysWrap}>
-                    {Array.from({ length: 31 }).map((_, i) => (
-                      <TouchableOpacity key={i} onPress={() => toggleMonthDay(i + 1)} style={[styles.monthlyDayPill, monthDays.includes(i + 1) ? styles.dayPillOn : styles.dayPillOff]}>
-                        <Text style={monthDays.includes(i + 1) ? styles.dayTextOn : styles.dayTextOff}>{i + 1}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {freq === 'annual' && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Giorno dell'anno</Text>
-                  <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity onPress={() => setAnnualYear(y => y - 1)} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
-                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{annualYear}</Text>
-                        <TouchableOpacity onPress={() => setAnnualYear(y => y + 1)} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity onPress={() => setAnnualMonth(m => Math.max(1, m - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
-                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{annualMonth}</Text>
-                        <TouchableOpacity onPress={() => setAnnualMonth(m => Math.min(12, m + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity onPress={() => setAnnualDay(d => Math.max(1, d - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
-                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{annualDay}</Text>
-                        <TouchableOpacity onPress={() => setAnnualDay(d => Math.min(31, d + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
                 </View>
               )}
             </View>
