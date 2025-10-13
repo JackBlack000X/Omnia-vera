@@ -431,6 +431,8 @@ export default function ModalScreen() {
               }
               return { ...h, schedule };
             }));
+            // Clear one-off overrides for recurring weekly tasks
+            setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
             // After creating weekly, check for merge candidates by same text+color
             const created = habits.find(h => h.id === newHabitId) ?? { id: newHabitId, text, color, schedule: { daysOfWeek, time, endTime } } as any;
             const candidates = habits.filter(h => h.id !== newHabitId && h.text.trim().toLowerCase() === created.text.trim().toLowerCase() && (h.color ?? '') === (created.color ?? ''));
@@ -490,6 +492,8 @@ export default function ModalScreen() {
               }
               return { ...h, schedule };
             }));
+            // Clear one-off overrides for recurring monthly tasks
+            setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
           } else if (freq === 'annual') {
             updateScheduleTimes(newHabitId, time, endTime);
             // Annual: set yearMonth/yearDay and clear weekly/monthly fields
@@ -502,6 +506,8 @@ export default function ModalScreen() {
               schedule.monthDays = undefined;
               return { ...h, schedule };
             }));
+            // Clear one-off overrides for recurring annual tasks
+            setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
           }
         }
         if (mode === 'specificDate' && specificDate && freq === 'single') {
@@ -557,6 +563,8 @@ export default function ModalScreen() {
         }));
       } else if (freq === 'daily') {
         updateScheduleTimes(existing.id, time, endTime);
+        // Clear one-off overrides for recurring daily tasks
+        setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, timeOverrides: {} } : h));
       } else if (freq === 'weekly') {
         updateScheduleTimes(existing.id, time, endTime);
         updateSchedule(existing.id, daysOfWeek, time);
@@ -582,6 +590,8 @@ export default function ModalScreen() {
           }
           return { ...h, schedule };
         }));
+        // Clear one-off overrides for recurring weekly tasks
+        setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, timeOverrides: {} } : h));
         // Prompt to merge for edits as well
         const candidates = habits.filter(h => h.id !== existing.id && h.text.trim().toLowerCase() === text.trim().toLowerCase() && (h.color ?? '') === (color ?? ''));
         if (candidates.length > 0) {
@@ -637,6 +647,8 @@ export default function ModalScreen() {
           }
           return { ...h, schedule };
         }));
+        // Clear one-off overrides for recurring monthly tasks
+        setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, timeOverrides: {} } : h));
       } else if (freq === 'annual') {
         updateScheduleTimes(existing.id, time, endTime);
         // Annual: set yearMonth/yearDay and clear weekly/monthly
@@ -649,6 +661,8 @@ export default function ModalScreen() {
           schedule.monthDays = undefined;
           return { ...h, schedule };
         }));
+        // Clear one-off overrides for recurring annual tasks
+        setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, timeOverrides: {} } : h));
       }
       // If a specific date was selected while scheduling a recurring task, set createdAt to that date
       if (specificDate && freq !== 'single') {

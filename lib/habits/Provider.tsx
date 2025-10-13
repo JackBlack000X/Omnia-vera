@@ -235,39 +235,55 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, [dayResetTime]);
 
   const setTimeOverride = useCallback((id: string, date: string, hhmm: string | null) => {
-    setHabits(prev => prev.map(h => {
-      if (h.id !== id) return h;
-      const nextOverrides = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
-      if (hhmm) nextOverrides[date] = hhmm; else delete nextOverrides[date];
-      return { ...h, timeOverrides: nextOverrides };
-    }));
+    setHabits(prev => {
+      const next = prev.map(h => {
+        if (h.id !== id) return h;
+        const nextOverrides = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
+        if (hhmm) nextOverrides[date] = hhmm; else delete nextOverrides[date];
+        return { ...h, timeOverrides: nextOverrides };
+      });
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const updateScheduleTime = useCallback((id: string, hhmm: string | null) => {
-    setHabits(prev => prev.map(h => {
-      if (h.id !== id) return h;
-      const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as NonNullable<Habit['schedule']>;
-      schedule.time = hhmm ?? null;
-      return { ...h, schedule };
-    }));
+    setHabits(prev => {
+      const next = prev.map(h => {
+        if (h.id !== id) return h;
+        const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as NonNullable<Habit['schedule']>;
+        schedule.time = hhmm ?? null;
+        return { ...h, schedule };
+      });
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const updateScheduleTimes = useCallback((id: string, startTime: string | null, endTime: string | null) => {
-    setHabits(prev => prev.map(h => {
-      if (h.id !== id) return h;
-      const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as NonNullable<Habit['schedule']>;
-      schedule.time = startTime ?? null;
-      schedule.endTime = endTime ?? null;
-      return { ...h, schedule };
-    }));
+    setHabits(prev => {
+      const next = prev.map(h => {
+        if (h.id !== id) return h;
+        const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as NonNullable<Habit['schedule']>;
+        schedule.time = startTime ?? null;
+        schedule.endTime = endTime ?? null;
+        return { ...h, schedule };
+      });
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const updateSchedule = useCallback((id: string, daysOfWeek: number[], hhmm: string | null) => {
-    setHabits(prev => prev.map(h => {
-      if (h.id !== id) return h;
-      const existingSchedule = h.schedule ?? { daysOfWeek: [] };
-      return { ...h, schedule: { ...existingSchedule, daysOfWeek, time: hhmm ?? null } };
-    }));
+    setHabits(prev => {
+      const next = prev.map(h => {
+        if (h.id !== id) return h;
+        const existingSchedule = h.schedule ?? { daysOfWeek: [] };
+        return { ...h, schedule: { ...existingSchedule, daysOfWeek, time: hhmm ?? null } };
+      });
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const setDayResetTime = useCallback(async (time: string) => {
