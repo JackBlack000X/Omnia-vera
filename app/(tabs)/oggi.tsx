@@ -199,7 +199,20 @@ export default function OggiScreen() {
     const visualOffsetMinutes = 30;
     const visualOffsetPx = visualOffsetMinutes * (firstHourGap / 60);
     top += visualOffsetPx;
-
+    
+    // Correzione per task di diverse lunghezze basata su formula generica
+    const taskDurationHours = (visibleEnd - visibleStart) / 60;
+    
+    // Applica correzione solo per task di durata > 1 ora
+    if (taskDurationHours > 1.1) {
+      // Formula generica basata sul pattern identificato:
+      // correzione = -1.25 * (durata_ore - 1) * ore_visibili + 30 * (durata_ore - 1)
+      const durationFactor = taskDurationHours - 1;
+      const correctionMinutes = Math.max(0, -1.25 * durationFactor * visibleHours + 30 * durationFactor);
+      const correctionPx = correctionMinutes * (firstHourGap / 60);
+      top += correctionPx;
+    }
+ 
     // Current height with hourGap (baseline used so center stays fixed after resize)
     let prevHeight = (visibleEnd - visibleStart) * (hourGap / 60);
     // Target height so that 60min == firstHourGap per current scale
