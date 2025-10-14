@@ -212,6 +212,41 @@ export default function OggiScreen() {
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
+    
+    // Correzione specifica SOLO per 10 minuti (0.1667 ore)
+    if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // Range più stretto per 10 minuti
+      const correctionMinutes = -23; // Sposta in su
+      const correctionPx = correctionMinutes * (firstHourGap / 60);
+      top += correctionPx;
+    }
+    
+    // Correzione specifica SOLO per 5 minuti (0.0833 ore)
+    if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // Range più stretto per 5 minuti
+      const correctionMinutes = -23.75; // Sposta in su
+      const correctionPx = correctionMinutes * (firstHourGap / 60);
+      top += correctionPx;
+    }
+    
+    // Correzione specifica SOLO per 15 minuti (0.25 ore)
+    if (Math.abs(taskDurationHours - 0.25) < 0.05) { // Range più stretto per 15 minuti
+      const correctionMinutes = -20.20; // Sposta in su
+      const correctionPx = correctionMinutes * (firstHourGap / 60);
+      top += correctionPx;
+    }
+    
+    // Correzione specifica SOLO per 30 minuti (0.5 ore)
+    if (Math.abs(taskDurationHours - 0.5) < 0.05) { // Range più stretto per 30 minuti
+      const correctionMinutes = -12.75; // Sposta in su
+      const correctionPx = correctionMinutes * (firstHourGap / 60);
+      top += correctionPx;
+    }
+    
+    // Correzione specifica SOLO per 45 minuti (0.75 ore)
+    if (Math.abs(taskDurationHours - 0.75) < 0.05) { // Range più stretto per 45 minuti
+      const correctionMinutes = -6; // Sposta in su
+      const correctionPx = correctionMinutes * (firstHourGap / 60);
+      top += correctionPx;
+    }
  
     // Current height with hourGap (baseline used so center stays fixed after resize)
     let prevHeight = (visibleEnd - visibleStart) * (hourGap / 60);
