@@ -215,28 +215,28 @@ export default function OggiScreen() {
     
     // Correzione specifica SOLO per 10 minuti (0.1667 ore)
     if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // Range più stretto per 10 minuti
-      const correctionMinutes = -22.5; // Sposta in su
+      const correctionMinutes = 1; // Sposta in giù di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 5 minuti (0.0833 ore)
     if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // Range più stretto per 5 minuti
-      const correctionMinutes = -23.5; // Sposta in su
+      const correctionMinutes = 1; // Sposta in giù di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 15 minuti (0.25 ore)
     if (Math.abs(taskDurationHours - 0.25) < 0.05) { // Range più stretto per 15 minuti
-      const correctionMinutes = -20.0; // Sposta in su
+      const correctionMinutes = 1; // Sposta in giù di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 30 minuti (0.5 ore)
     if (Math.abs(taskDurationHours - 0.5) < 0.05) { // Range più stretto per 30 minuti
-      const correctionMinutes = -12.5; // Sposta in su
+      const correctionMinutes = 1; // Sposta in giù di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
