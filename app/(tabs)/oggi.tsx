@@ -257,7 +257,7 @@ export default function OggiScreen() {
     
     // Correzione specifica SOLO per 20 minuti (0.333 ore)
     if (Math.abs(taskDurationHours - 0.333) < 0.05) { // Range più stretto per 20 minuti
-      const correctionMinutes = -17.75; // Sposta in su
+      const correctionMinutes = 2; // Sposta in giù di 2 minuti
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
