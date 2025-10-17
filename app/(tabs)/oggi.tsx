@@ -313,12 +313,12 @@ export default function OggiScreen() {
         top += correctionPx;
       }
       
-      // Correzione specifica per 20 minuti quando visibleHours === 5
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionMinutes = -18.5; // Sposta in su di 18.5 minuti
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-      }
+       // Correzione specifica per 20 minuti quando visibleHours === 5
+       if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
+         const correctionMinutes = -18.625; // Sposta in su di 18.625 minuti
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
       
       // Correzione specifica per 25 minuti quando visibleHours === 5
       if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
@@ -340,7 +340,35 @@ export default function OggiScreen() {
          const correctionPx = correctionMinutes * (firstHourGap / 60);
          top += correctionPx;
        }
-    }
+       
+       // Correzione specifica per 40 minuti quando visibleHours === 5
+       if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
+         const correctionMinutes = -8.85; // Sposta in su di 8.85 minuti
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       // Correzione specifica per 45 minuti quando visibleHours === 5
+       if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
+         const correctionMinutes = -6.75; // Sposta in su di 6.75 minuti
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       // Correzione specifica per 50 minuti quando visibleHours === 5
+       if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
+         const correctionMinutes = -4.75; // Sposta in su di 4.75 minuti
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       // Correzione specifica per 55 minuti quando visibleHours === 5
+       if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
+         const correctionMinutes = -2.75; // Sposta in su di 2.75 minuti
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+     }
     
     // Correzione per ore visibili 6-23 - interpola tra 5 ore e 24 ore
     if (visibleHours >= 6 && visibleHours <= 23) {
