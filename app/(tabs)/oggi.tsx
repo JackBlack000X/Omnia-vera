@@ -372,8 +372,12 @@ export default function OggiScreen() {
     
     // Correzione specifica per 6 ore visibili
     if (visibleHours === 6) {
+      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
+        const correctionPx = -0.5; // Sposta in su di 0.5 pixel
+        top += correctionPx;
+      }
       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1.5; // Sposta in su di 1.5 pixel (era 2, ora -0.5)
+        const correctionPx = -2; // Sposta in su di 2 pixel (era 1.5, ora +0.5)
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
@@ -388,12 +392,104 @@ export default function OggiScreen() {
         const correctionPx = -1; // Sposta in su di 1 pixel
         top += correctionPx;
       }
+      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
+        const correctionPx = -1; // Sposta in su di 1 pixel (era 0.5, ora +0.5)
+        top += correctionPx;
+      }
       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
         const correctionPx = -0.5; // Sposta in su di 0.5 pixel
         top += correctionPx;
       }
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
+      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
         const correctionPx = -0.5; // Sposta in su di 0.5 pixel
+        top += correctionPx;
+      }
+    }
+    
+    // Correzione specifica per 7 ore visibili
+    if (visibleHours === 7) {
+      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
+        const correctionPx = -1.5; // Sposta in su di 1.5 pixel (era 1, ora +0.5)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
+        const correctionPx = -2.25; // Sposta in su di 2.25 pixel (era 2, ora +0.25)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
+        const correctionPx = -1.5; // Sposta in su di 1.5 pixel (era 2, ora -0.5)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
+        const correctionPx = -1.75; // Sposta in su di 1.75 pixel (era 1.5, ora +0.25)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
+        const correctionPx = -0.75; // Sposta in su di 0.75 pixel (era 0.5, ora +0.25)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
+        const correctionPx = -0.625; // Sposta in su di 0.625 pixel (era 0.5, ora +0.125)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
+        const correctionPx = -0.25; // Sposta in su di 0.25 pixel (era 0.125, ora +0.125)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
+        const correctionPx = -0.125; // Sposta in su di 0.125 pixel
+        top += correctionPx;
+      }
+    }
+    
+    // Correzione specifica per 8 ore visibili
+    if (visibleHours === 8) {
+      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
+        const correctionPx = -1.125; // Sposta in su di 1.125 pixel (era 1, ora +0.125)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
+        const correctionPx = -3; // Sposta in su di 3 pixel (era 2.5, ora +0.5)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
+        const correctionPx = -1.5; // Sposta in su di 1.5 pixel
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
+        const correctionPx = -2; // Sposta in su di 2 pixel
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
+        const correctionPx = -1.95; // Sposta in su di 1.95 pixel (era 1.85, ora +0.1)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
+        const correctionPx = -0.5; // Sposta in su di 0.5 pixel
+        top += correctionPx;
+      }
+    }
+    
+    // Correzione specifica per 9 ore visibili
+    if (visibleHours === 9) {
+      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
+        const correctionPx = -0.5; // Sposta in su di 0.5 pixel (era 0.25, ora +0.25)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
+        const correctionPx = -1.45; // Sposta in su di 1.45 pixel (era 1.325, ora +0.125)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
+        const correctionPx = -3.875; // Sposta in su di 3.875 pixel (era 3.75, ora +0.125)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
+        const correctionPx = -1.625; // Sposta in su di 1.625 pixel (era 1.5, ora +0.125)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
+        const correctionPx = -0.5; // Sposta in su di 0.5 pixel (era 0.25, ora +0.25)
         top += correctionPx;
       }
     }
