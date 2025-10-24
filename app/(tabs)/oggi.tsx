@@ -370,8 +370,36 @@ export default function OggiScreen() {
        }
      }
     
+    // Correzione specifica per 6 ore visibili
+    if (visibleHours === 6) {
+      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
+        const correctionPx = -1.5; // Sposta in su di 1.5 pixel (era 2, ora -0.5)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
+        const correctionPx = -1.5; // Sposta in su di 1.5 pixel (era 2, ora -0.5)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
+        const correctionPx = -1; // Sposta in su di 1 pixel
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
+        const correctionPx = -1; // Sposta in su di 1 pixel
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
+        const correctionPx = -0.5; // Sposta in su di 0.5 pixel
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
+        const correctionPx = -0.5; // Sposta in su di 0.5 pixel
+        top += correctionPx;
+      }
+    }
+    
     // Correzione per ore visibili 6-23 - interpola tra 5 ore e 24 ore
-    if (visibleHours >= 6 && visibleHours <= 23) {
+    if (visibleHours >= 6 && visibleHours < 24) {
       // Punti di riferimento:
       // 5 ore: -24.5 minuti per 5 minuti, -23.5 minuti per 10 minuti
       // 24 ore: +1 minuto per 5 minuti, +1 minuto per 10 minuti (offset attuali)
@@ -387,16 +415,115 @@ export default function OggiScreen() {
         top += correctionPx;
       }
       
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        // Interpolazione lineare tra 5 ore (-23.5) e 24 ore (+1)
-        const offset5h = -23.5;
-        const offset24h = 1;
-        const interpolationFactor = (visibleHours - 5) / (24 - 5); // 0 per 5h, 1 per 24h
-        const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-        
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-      }
+       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
+         // Interpolazione lineare tra 5 ore (-23.5) e 24 ore (+1)
+         const offset5h = -23.5;
+         const offset24h = 1;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5); // 0 per 5h, 1 per 24h
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
+         // Interpolazione lineare tra 5 ore (-21) e 24 ore (+1)
+         const offset5h = -21;
+         const offset24h = 1;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
+         // Interpolazione lineare tra 5 ore (-18.625) e 24 ore (+1)
+         const offset5h = -18.625;
+         const offset24h = 1;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
+         // Interpolazione lineare tra 5 ore (-16.25) e 24 ore (+1.25)
+         const offset5h = -16.25;
+         const offset24h = 1.25;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
+         // Interpolazione lineare tra 5 ore (-13.5) e 24 ore (+1)
+         const offset5h = -13.5;
+         const offset24h = 1;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
+         // Interpolazione lineare tra 5 ore (-11.25) e 24 ore (+1.25)
+         const offset5h = -11.25;
+         const offset24h = 1.25;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
+         // Interpolazione lineare tra 5 ore (-8.85) e 24 ore (+1.25)
+         const offset5h = -8.85;
+         const offset24h = 1.25;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
+         // Interpolazione lineare tra 5 ore (-6.75) e 24 ore (+1)
+         const offset5h = -6.75;
+         const offset24h = 1;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
+         // Interpolazione lineare tra 5 ore (-4.75) e 24 ore (+1)
+         const offset5h = -4.75;
+         const offset24h = 1;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
+       
+       if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
+         // Interpolazione lineare tra 5 ore (-2.75) e 24 ore (+1)
+         const offset5h = -2.75;
+         const offset24h = 1;
+         const interpolationFactor = (visibleHours - 5) / (24 - 5);
+         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
+         
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
     }
  
     // Current height with hourGap (baseline used so center stays fixed after resize)
