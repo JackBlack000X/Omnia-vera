@@ -492,6 +492,26 @@ export default function OggiScreen() {
         const correctionPx = -0.5; // Sposta in su di 0.5 pixel (era 0.25, ora +0.25)
         top += correctionPx;
       }
+      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
+        const correctionPx = -2.875; // Sposta in su di 2.875 pixel (era 2.75, ora +0.125)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
+        const correctionPx = -2.375; // Sposta in su di 2.375 pixel (era 2.5, ora -0.125)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
+        const correctionPx = -1; // Sposta in su di 1 pixel
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
+        const correctionPx = -0.25; // Sposta in su di 0.25 pixel
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
+        const correctionPx = -0.125; // Sposta in su di 0.125 pixel
+        top += correctionPx;
+      }
     }
     
     // Correzione per ore visibili 6-23 - interpola tra 5 ore e 24 ore
