@@ -413,7 +413,7 @@ export default function OggiScreen() {
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1.75; // Alza ulteriormente di 0.25px
+        const correctionPx = -2.0; // Alza di ulteriori 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
