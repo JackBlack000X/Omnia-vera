@@ -409,7 +409,7 @@ export default function OggiScreen() {
     // Correzione specifica per 7 ore visibili
     if (visibleHours === 7) {
       if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.25; // Alza di 0.25 pixel
+        const correctionPx = -0.5; // Alza di ulteriori 0.25 pixel (totale -0.5)
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
