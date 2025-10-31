@@ -214,78 +214,78 @@ export default function OggiScreen() {
     }
     
     // Correzione specifica SOLO per 10 minuti (0.1667 ore)
-    if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // Range più stretto per 10 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // Range pi? stretto per 10 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 5 minuti (0.0833 ore)
-    if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // Range più stretto per 5 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // Range pi? stretto per 5 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 15 minuti (0.25 ore)
-    if (Math.abs(taskDurationHours - 0.25) < 0.05) { // Range più stretto per 15 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.25) < 0.05) { // Range pi? stretto per 15 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 30 minuti (0.5 ore)
-    if (Math.abs(taskDurationHours - 0.5) < 0.05) { // Range più stretto per 30 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.5) < 0.05) { // Range pi? stretto per 30 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 45 minuti (0.75 ore)
-    if (Math.abs(taskDurationHours - 0.75) < 0.05) { // Range più stretto per 45 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.75) < 0.05) { // Range pi? stretto per 45 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 40 minuti (0.667 ore)
-    if (Math.abs(taskDurationHours - 0.667) < 0.05) { // Range più stretto per 40 minuti
-      const correctionMinutes = 1.25; // Sposta in giù di 1.25 minuti
+    if (Math.abs(taskDurationHours - 0.667) < 0.05) { // Range pi? stretto per 40 minuti
+      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 20 minuti (0.333 ore)
-    if (Math.abs(taskDurationHours - 0.333) < 0.05) { // Range più stretto per 20 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.333) < 0.05) { // Range pi? stretto per 20 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 25 minuti (0.417 ore)
-    if (Math.abs(taskDurationHours - 0.417) < 0.05) { // Range più stretto per 25 minuti
-      const correctionMinutes = 1.25; // Sposta in giù di 1.25 minuti
+    if (Math.abs(taskDurationHours - 0.417) < 0.05) { // Range pi? stretto per 25 minuti
+      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 35 minuti (0.583 ore)
-    if (Math.abs(taskDurationHours - 0.583) < 0.05) { // Range più stretto per 35 minuti
-      const correctionMinutes = 1.25; // Sposta in giù di 1.25 minuti
+    if (Math.abs(taskDurationHours - 0.583) < 0.05) { // Range pi? stretto per 35 minuti
+      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 50 minuti (0.833 ore)
-    if (Math.abs(taskDurationHours - 0.833) < 0.05) { // Range più stretto per 50 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.833) < 0.05) { // Range pi? stretto per 50 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 55 minuti (0.917 ore)
-    if (Math.abs(taskDurationHours - 0.917) < 0.05) { // Range più stretto per 55 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.917) < 0.05) { // Range pi? stretto per 55 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
@@ -466,6 +466,10 @@ export default function OggiScreen() {
       }
       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
         const correctionPx = -0.5; // Sposta in su di 0.5 pixel
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
+        const correctionPx = 10; // Sposta in gi? di 10 pixel
         top += correctionPx;
       }
     }
