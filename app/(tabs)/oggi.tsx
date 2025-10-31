@@ -50,6 +50,7 @@ export default function OggiScreen() {
   const [windowStart, setWindowStart] = useState<string>('06:00');
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
   const [visibleHours, setVisibleHours] = useState<number>(24);
+  const [forcedTaskColor, setForcedTaskColor] = useState<null | 'black' | 'white'>(null);
   
   const today = getDay(currentDate);
 
@@ -93,6 +94,8 @@ export default function OggiScreen() {
         if (end) setWindowEnd(end);
         const v = vis ? parseInt(vis, 10) : NaN;
         if (!isNaN(v)) setVisibleHours(Math.min(24, Math.max(5, v)));
+        const forced = await AsyncStorage.getItem('oggi_forced_task_color_v1');
+        if (forced === 'black' || forced === 'white') setForcedTaskColor(forced);
       } catch {}
     })();
   }, []);
@@ -106,6 +109,11 @@ export default function OggiScreen() {
   useEffect(() => {
     AsyncStorage.setItem('oggi_visible_hours_v1', String(visibleHours)).catch(() => {});
   }, [visibleHours]);
+
+  useEffect(() => {
+    const v = forcedTaskColor ?? 'auto';
+    AsyncStorage.setItem('oggi_forced_task_color_v1', v).catch(() => {});
+  }, [forcedTaskColor]);
 
 
   const toMinutes = (hhmm: string) => {
@@ -214,78 +222,78 @@ export default function OggiScreen() {
     }
     
     // Correzione specifica SOLO per 10 minuti (0.1667 ore)
-    if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // Range più stretto per 10 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // Range pi? stretto per 10 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 5 minuti (0.0833 ore)
-    if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // Range più stretto per 5 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // Range pi? stretto per 5 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 15 minuti (0.25 ore)
-    if (Math.abs(taskDurationHours - 0.25) < 0.05) { // Range più stretto per 15 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.25) < 0.05) { // Range pi? stretto per 15 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 30 minuti (0.5 ore)
-    if (Math.abs(taskDurationHours - 0.5) < 0.05) { // Range più stretto per 30 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.5) < 0.05) { // Range pi? stretto per 30 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 45 minuti (0.75 ore)
-    if (Math.abs(taskDurationHours - 0.75) < 0.05) { // Range più stretto per 45 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.75) < 0.05) { // Range pi? stretto per 45 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 40 minuti (0.667 ore)
-    if (Math.abs(taskDurationHours - 0.667) < 0.05) { // Range più stretto per 40 minuti
-      const correctionMinutes = 1.25; // Sposta in giù di 1.25 minuti
+    if (Math.abs(taskDurationHours - 0.667) < 0.05) { // Range pi? stretto per 40 minuti
+      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 20 minuti (0.333 ore)
-    if (Math.abs(taskDurationHours - 0.333) < 0.05) { // Range più stretto per 20 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.333) < 0.05) { // Range pi? stretto per 20 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 25 minuti (0.417 ore)
-    if (Math.abs(taskDurationHours - 0.417) < 0.05) { // Range più stretto per 25 minuti
-      const correctionMinutes = 1.25; // Sposta in giù di 1.25 minuti
+    if (Math.abs(taskDurationHours - 0.417) < 0.05) { // Range pi? stretto per 25 minuti
+      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 35 minuti (0.583 ore)
-    if (Math.abs(taskDurationHours - 0.583) < 0.05) { // Range più stretto per 35 minuti
-      const correctionMinutes = 1.25; // Sposta in giù di 1.25 minuti
+    if (Math.abs(taskDurationHours - 0.583) < 0.05) { // Range pi? stretto per 35 minuti
+      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 50 minuti (0.833 ore)
-    if (Math.abs(taskDurationHours - 0.833) < 0.05) { // Range più stretto per 50 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.833) < 0.05) { // Range pi? stretto per 50 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
     
     // Correzione specifica SOLO per 55 minuti (0.917 ore)
-    if (Math.abs(taskDurationHours - 0.917) < 0.05) { // Range più stretto per 55 minuti
-      const correctionMinutes = 1; // Sposta in giù di 1 minuto
+    if (Math.abs(taskDurationHours - 0.917) < 0.05) { // Range pi? stretto per 55 minuti
+      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
       const correctionPx = correctionMinutes * (firstHourGap / 60);
       top += correctionPx;
     }
@@ -332,8 +340,6 @@ export default function OggiScreen() {
         const correctionMinutes = -13.5; // Sposta in su di 13.5 minuti
         const correctionPx = correctionMinutes * (firstHourGap / 60);
         top += correctionPx;
-        // Correzione aggiuntiva: sali di 0.25 pixel
-        top -= 0.25;
       }
       
        // Correzione specifica per 35 minuti quando visibleHours === 5
@@ -357,23 +363,19 @@ export default function OggiScreen() {
          top += correctionPx;
        }
        
-      // Correzione specifica per 50 minuti quando visibleHours === 5
-      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-        const correctionMinutes = -4.75; // Sposta in su di 4.75 minuti
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-        // Correzione aggiuntiva: scendi di 0.25 pixel
-        top += 0.25;
-      }
+       // Correzione specifica per 50 minuti quando visibleHours === 5
+       if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
+         const correctionMinutes = -4.75; // Sposta in su di 4.75 minuti
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
        
-      // Correzione specifica per 55 minuti quando visibleHours === 5
-      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-        const correctionMinutes = -2.75; // Sposta in su di 2.75 minuti
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-        // Correzione aggiuntiva: abbassa di 0.125 pixel
-        top += 0.125;
-      }
+       // Correzione specifica per 55 minuti quando visibleHours === 5
+       if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
+         const correctionMinutes = -2.75; // Sposta in su di 2.75 minuti
+         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         top += correctionPx;
+       }
      }
     
     // Correzione specifica per 6 ore visibili
@@ -399,7 +401,7 @@ export default function OggiScreen() {
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -0.75; // Sposta in su di 0.75 pixel (era 1, ora -0.25)
+        const correctionPx = -1; // Sposta in su di 1 pixel (era 0.5, ora +0.5)
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
@@ -414,12 +416,16 @@ export default function OggiScreen() {
     
     // Correzione specifica per 7 ore visibili
     if (visibleHours === 7) {
+      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
+        const correctionPx = -0.5; // Scende di 0.25 pixel rispetto a prima
+        top += correctionPx;
+      }
       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1.5; // Sposta in su di 1.5 pixel (era 1, ora +0.5)
+        const correctionPx = -2.25; // Alza di ulteriori 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -2.25; // Sposta in su di 2.25 pixel (era 2, ora +0.25)
+        const correctionPx = -2.5; // Alza ulteriormente di 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
@@ -431,7 +437,7 @@ export default function OggiScreen() {
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -0.75; // Sposta in su di 0.75 pixel (era 0.5, ora +0.25)
+        const correctionPx = -1.25; // Alza di ulteriori 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
@@ -446,16 +452,24 @@ export default function OggiScreen() {
         const correctionPx = -0.125; // Sposta in su di 0.125 pixel
         top += correctionPx;
       }
+      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
+        const correctionPx = -0.25; // Alza di 0.25 pixel
+        top += correctionPx;
+      }
     }
     
     // Correzione specifica per 8 ore visibili
     if (visibleHours === 8) {
+      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
+        const correctionPx = -0.25; // Alza di 0.25px
+        top += correctionPx;
+      }
       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1.125; // Sposta in su di 1.125 pixel (era 1, ora +0.125)
+        const correctionPx = -1.375; // Alza di ulteriori 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -3; // Sposta in su di 3 pixel (era 2.5, ora +0.5)
+        const correctionPx = -3.25; // Alza di ulteriori 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
@@ -467,11 +481,27 @@ export default function OggiScreen() {
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -1.95; // Sposta in su di 1.95 pixel (era 1.85, ora +0.1)
+        const correctionPx = -2.2; // Alza di ulteriori 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -0.5; // Sposta in su di 0.5 pixel
+        const correctionPx = -1; // Alza di ulteriori 0.25px
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
+        const correctionPx = -0.25; // Sposta in giu di 1px rispetto a prima
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
+        const correctionPx = -0.5; // Sposta in su di 0.5 pixel (altri 0.25)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
+        const correctionPx = 0.25; // Abbassa di 0.25px
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
+        const correctionPx = -0.25; // Alza di 0.25px
         top += correctionPx;
       }
     }
@@ -503,11 +533,15 @@ export default function OggiScreen() {
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -2.375; // Sposta in su di 2.375 pixel (era 2.5, ora -0.125)
+        const correctionPx = -2.625; // Alza di ulteriori 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -1; // Sposta in su di 1 pixel
+        const correctionPx = -1.25; // Alza di ulteriori 0.25px
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
+        const correctionPx = -0.25; // Alza di 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
@@ -523,19 +557,43 @@ export default function OggiScreen() {
     // Correzione specifica per 10 ore visibili
     if (visibleHours === 10) {
       if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.125; // Sposta in su di 0.125 pixel
+        const correctionPx = -0.25; // Alza di 0.25px
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -0.925; // Sposta in su di 0.925 pixel (era 0.875, ora +0.05)
+        const correctionPx = -1; // Alza di ulteriori 0.25px (totale 1px)
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -3.175; // Sposta in su di 3.175 pixel (era 3.125, ora +0.05)
+        const correctionPx = -3.5; // Abbassa di 0.25px (totale 3.5px)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
+        const correctionPx = -2.5; // Alza di ulteriori 0.25px (totale 2.5px)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
+        const correctionPx = -3.25; // Alza di ulteriori 0.25px (totale 3.25px)
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -1.25; // Sposta in su di 1.25 pixel (era 1, ora +0.25)
+        const correctionPx = -1.75; // Abbassa di 0.25px (totale 1.75px)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
+        const correctionPx = -0.75; // Alza di ulteriori 0.25px (totale 0.75px)
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
+        const correctionPx = -0.25; // Alza di 0.25px
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
+        const correctionPx = -0.25; // Alza di 0.25px
+        top += correctionPx;
+      }
+      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
+        const correctionPx = -0.25; // Alza di 0.25px
         top += correctionPx;
       }
     }
@@ -854,11 +912,13 @@ export default function OggiScreen() {
 
   const renderEvent = (event: OggiEvent) => {
     if (event.isAllDay) {
+      const bg = forcedTaskColor === 'black' ? '#000000' : forcedTaskColor === 'white' ? '#ffffff' : event.color;
+      const lightAllDay = isLightColor(bg);
       return (
         <View key={event.id} style={styles.allDayEvent}>
           <View style={styles.allDayDot} />
-          <View style={[styles.eventBlock, { backgroundColor: event.color }]}>
-            <Text style={styles.eventTitle}>{event.title}</Text>
+          <View style={[styles.eventBlock, { backgroundColor: bg }]}>
+            <Text style={[styles.eventTitle, lightAllDay ? { color: '#111111' } : { color: THEME.text }]}>{event.title}</Text>
           </View>
         </View>
       );
@@ -875,7 +935,8 @@ export default function OggiScreen() {
     const leftPx = baseLeft + layout.col * colWidth + (layout.col * spacing);
     const widthPx = Math.max(0, colWidth - spacing);
 
-    const light = isLightColor(event.color);
+    const bg = forcedTaskColor === 'black' ? '#000000' : forcedTaskColor === 'white' ? '#ffffff' : event.color;
+    const light = isLightColor(bg);
     return (
       <View
         key={event.id}
@@ -884,7 +945,7 @@ export default function OggiScreen() {
           {
             top: top,
             height: Math.max(height, 20),
-            backgroundColor: event.color,
+            backgroundColor: bg,
             left: leftPx,
             width: widthPx,
           }
@@ -1013,6 +1074,28 @@ export default function OggiScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Finestra visibile</Text>
+
+            {/* Task color override */}
+            <View style={styles.counterGroup}>
+              <Text style={styles.pickerLabel}>Colore task</Text>
+              <View style={styles.counterRow}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  style={styles.stepBtn}
+                  onPress={() => {
+                    setForcedTaskColor(prev => {
+                      if (prev === null) return 'black';
+                      if (prev === 'black') return 'white';
+                      return null;
+                    });
+                  }}
+                >
+                  <Text style={styles.stepBtnText}>
+                    {forcedTaskColor === null ? 'Auto' : forcedTaskColor === 'black' ? 'Nero' : 'Bianco'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
             <View style={styles.counterGroup}>
               <Text style={styles.pickerLabel}>Inizio</Text>
