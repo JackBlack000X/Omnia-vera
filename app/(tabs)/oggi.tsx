@@ -1348,7 +1348,7 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   hourText: {
-    color: '#FFD700',
+    color: '#ec4899',
     fontSize: 16,
     width: 50,
     textAlign: 'right',
