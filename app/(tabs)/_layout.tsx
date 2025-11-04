@@ -107,6 +107,7 @@ export default function TabLayout() {
         name="oggi"
         options={{
           title: 'Oggi',
+          tabBarActiveTintColor: '#10b981',
           tabBarIcon: ({ color, size, focused }) => (
             <View style={{ alignItems: 'center', justifyContent: 'center', position: 'relative', width: 68, height: 50 }}>
               {focused && (
@@ -118,7 +119,7 @@ export default function TabLayout() {
                     left: -5,
                     right: -5,
                     borderRadius: 35,
-                    backgroundColor: 'rgba(255,255,255,0.18)',
+                    backgroundColor: 'rgba(16,185,129,0.18)',
                     borderWidth: 0,
                   }}
                 />
