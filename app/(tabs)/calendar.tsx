@@ -1,8 +1,7 @@
-import { THEME } from '@/constants/theme';
-import { addMonths, getCalendarDays, getMonthName, getMonthYear, isToday } from '@/lib/date';
+import { getCalendarDays, getMonthName, getMonthYear, isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
-import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -18,20 +17,71 @@ function getCompletionLevel(completed: number, total: number): CompletionLevel {
   return 'low';
 }
 
-function getCompletionColor(level: CompletionLevel): string {
+function getCompletionStyle(level: CompletionLevel, isPast: boolean): { backgroundColor?: string; borderColor?: string; borderWidth?: number } {
   switch (level) {
-    case 'perfect': return '#1e293b'; // dark blue-grey (perfect)
-    case 'good': return '#334155'; // medium dark grey
-    case 'medium': return '#475569'; // lighter dark grey
-    case 'low': return '#0a0a0a'; // almost black
+    case 'perfect': return { backgroundColor: '#00FF00' }; // bright green
+    case 'good': return { backgroundColor: '#FF8C00' }; // orange
+    case 'medium': return { backgroundColor: '#FFD700' }; // yellow
+    case 'low': return isPast ? { backgroundColor: '#FF0000' } : {}; // red only for past days
+  }
+}
+
+// Test state - temporary completion override for testing
+type TestCompletion = {
+  completed: number;
+  total: number;
+};
+
+function calculateCompletedForLevel(level: CompletionLevel, total: number): number {
+  switch (level) {
+    case 'perfect': return total; // 100%
+    case 'good': return Math.ceil(total * 0.75); // 75%+
+    case 'medium': return Math.ceil(total * 0.5); // 50%+
+    case 'low': return Math.floor(total * 0.25); // < 50%
   }
 }
 
 export default function CalendarScreen() {
   const { habits, history } = useHabits();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const { year, month } = getMonthYear(currentDate);
-  const days = getCalendarDays(year, month);
+  const today = new Date();
+  const { year: currentYear, month: currentMonth } = getMonthYear(today);
+  
+  // Test state - temporary override for testing colors
+  const [testCompletions, setTestCompletions] = useState<Record<string, TestCompletion>>({});
+  const [showLegend, setShowLegend] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const screenHeight = 400; // Altezza di un mese
+  
+  // Genera tutti i mesi da oggi (nov 2025) fino a 10 anni dopo (nov 2035)
+  const allMonths = useMemo(() => {
+    const months: Array<{ year: number; month: number; date: Date }> = [];
+    const startDate = new Date(currentYear, currentMonth - 1, 1);
+    const endDate = new Date(currentYear + 10, currentMonth - 1, 1);
+    
+    for (let d = new Date(startDate); d <= endDate; d.setMonth(d.getMonth() + 1)) {
+      const { year, month } = getMonthYear(d);
+      months.push({ year, month, date: new Date(d) });
+    }
+    
+    return months;
+  }, [currentYear, currentMonth]);
+  
+  // Trova l'indice del mese corrente
+  const currentMonthIndex = useMemo(() => {
+    return allMonths.findIndex(m => m.year === currentYear && m.month === currentMonth);
+  }, [allMonths, currentYear, currentMonth]);
+  
+  // Scrolla al mese corrente all'avvio
+  React.useEffect(() => {
+    if (currentMonthIndex >= 0 && scrollViewRef.current) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ 
+          y: currentMonthIndex * screenHeight, 
+          animated: false 
+        });
+      }, 100);
+    }
+  }, [currentMonthIndex, screenHeight]);
 
   // Keep only last 90 days of history
   const recentHistory = useMemo(() => {
@@ -48,221 +98,334 @@ export default function CalendarScreen() {
     return filtered;
   }, [history]);
 
-  const dayStats = useMemo(() => {
+  function getDayStatsForMonth(monthYear: number, monthNum: number) {
+    const days = getCalendarDays(monthYear, monthNum);
     const stats: Record<string, { completed: number; total: number; level: CompletionLevel }> = {};
     
     for (const day of days) {
-      const completion = recentHistory[day.ymd];
-      const completed = completion ? Object.values(completion.completedByHabitId).filter(Boolean).length : 0;
+      // Use test completion if available, otherwise use real history
+      const testCompletion = testCompletions[day.ymd];
+      let completed = 0;
+      
+      if (testCompletion) {
+        completed = testCompletion.completed;
+      } else {
+        const completion = recentHistory[day.ymd];
+        completed = completion ? Object.values(completion.completedByHabitId).filter(Boolean).length : 0;
+      }
+      
       const total = habits.length;
       const level = getCompletionLevel(completed, total);
       stats[day.ymd] = { completed, total, level };
     }
     
-    return stats;
-  }, [days, recentHistory, habits.length]);
-
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
-
-  function navigateMonth(direction: 'prev' | 'next') {
-    setCurrentDate(prev => addMonths(prev, direction === 'next' ? 1 : -1));
+    return { days, stats };
   }
 
-  function selectDay(ymd: string) {
-    setSelectedDay(ymd === selectedDay ? null : ymd);
-  }
+  function handleDayPress(day: { date: Date; isCurrentMonth: boolean; ymd: string }) {
+    const total = habits.length;
+    if (total === 0) {
+      Alert.alert('Test', 'Nessuna abitudine disponibile');
+      return;
+    }
 
-  const selectedStats = selectedDay ? dayStats[selectedDay] : null;
-  const selectedCompletion = selectedDay ? recentHistory[selectedDay] : null;
+    Alert.alert(
+      'Test - Imposta Completamento',
+      'Scegli il livello di completamento:',
+      [
+        {
+          text: '100% - Giorno perfetto',
+          onPress: () => {
+            setTestCompletions(prev => ({
+              ...prev,
+              [day.ymd]: { completed: total, total }
+            }));
+          }
+        },
+        {
+          text: '75%+ - Buon progresso',
+          onPress: () => {
+            setTestCompletions(prev => ({
+              ...prev,
+              [day.ymd]: { completed: calculateCompletedForLevel('good', total), total }
+            }));
+          }
+        },
+        {
+          text: '50%+ - Progresso medio',
+          onPress: () => {
+            setTestCompletions(prev => ({
+              ...prev,
+              [day.ymd]: { completed: calculateCompletedForLevel('medium', total), total }
+            }));
+          }
+        },
+        {
+          text: 'Sotto il 50%',
+          onPress: () => {
+            setTestCompletions(prev => ({
+              ...prev,
+              [day.ymd]: { completed: calculateCompletedForLevel('low', total), total }
+            }));
+          }
+        },
+        {
+          text: 'Rimuovi (usa dati reali)',
+          onPress: () => {
+            setTestCompletions(prev => {
+              const next = { ...prev };
+              delete next[day.ymd];
+              return next;
+            });
+          },
+          style: 'destructive'
+        },
+        {
+          text: 'Annulla',
+          style: 'cancel'
+        }
+      ]
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.title}>Calendario Abitudini</Text>
-        <Text style={styles.subtitle}>Traccia i tuoi progressi nel tempo</Text>
-      </View>
-
-      <View style={styles.monthNav}>
-        <TouchableOpacity onPress={() => navigateMonth('prev')} style={styles.navBtn}>
-          <Text style={styles.navText}>◀︎</Text>
-        </TouchableOpacity>
-        <Text style={styles.monthYear}>{getMonthName(month)} {year}</Text>
-        <TouchableOpacity onPress={() => navigateMonth('next')} style={styles.navBtn}>
-          <Text style={styles.navText}>▶︎</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.calendar}>
-        <View style={styles.weekHeader}>
-          {DAYS.map(day => (
-            <Text key={day} style={styles.dayHeader}>{day}</Text>
-          ))}
-        </View>
-        
-        <View style={styles.daysGrid}>
-          {days.map((day, index) => {
-            const stats = dayStats[day.ymd];
-            const isCurrentMonth = day.isCurrentMonth;
-            const isTodayDate = isToday(day.date);
-            const isSelected = selectedDay === day.ymd;
-            
-            return (
-              <TouchableOpacity
-                key={index}
-                onPress={() => selectDay(day.ymd)}
-                style={[
-                  styles.dayCell,
-                  !isCurrentMonth && styles.dayOtherMonth,
-                  isTodayDate && styles.dayToday,
-                  isSelected && styles.daySelected,
-                  stats && { backgroundColor: getCompletionColor(stats.level) }
-                ]}
-              >
-                <Text style={[
-                  styles.dayNumber,
-                  !isCurrentMonth && styles.dayNumberOtherMonth,
-                  isTodayDate && styles.dayNumberToday
-                ]}>
-                  {day.date.getDate()}
-                </Text>
-                {stats && stats.total > 0 && (
-                  <View style={styles.dots}>
-                    {Array.from({ length: Math.min(4, stats.completed) }).map((_, i) => (
-                      <View key={i} style={styles.dot} />
-                    ))}
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.headerTop}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Calendario Abitudini</Text>
+          </View>
+          <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
+            <View style={styles.infoCircle}>
+              <Text style={styles.infoText}>i</Text>
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.legend}>
-        <Text style={styles.legendTitle}>Legenda</Text>
-        <View style={styles.legendItems}>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#1e293b' }]} />
-            <Text style={styles.legendText}>100% - Perfetto</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#334155' }]} />
-            <Text style={styles.legendText}>75%+ - Buono</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#475569' }]} />
-            <Text style={styles.legendText}>50%+ - Medio</Text>
-          </View>
-          <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#0a0a0a' }]} />
-            <Text style={styles.legendText}>Basso</Text>
-          </View>
-        </View>
-      </View>
-
-      {selectedDay && selectedStats && (
-        <View style={styles.dayDetails}>
-          <Text style={styles.dayDetailsTitle}>
-            {new Date(selectedDay).toLocaleDateString('it-IT', { 
-              weekday: 'long', 
-              day: 'numeric', 
-              month: 'long', 
-              year: 'numeric' 
-            })}
-          </Text>
-          <Text style={styles.dayDetailsStats}>
-            {selectedStats.completed} / {selectedStats.total} abitudini completate ({Math.round((selectedStats.completed / selectedStats.total) * 100)}%)
-          </Text>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        snapToInterval={screenHeight}
+        decelerationRate="fast"
+      >
+        {allMonths.map((monthData, monthIndex) => {
+          const { year, month } = monthData;
+          const isCurrentMonthActive = year === currentYear && month === currentMonth;
+          const { days, stats: dayStats } = getDayStatsForMonth(year, month);
           
-          <ScrollView style={styles.habitsList}>
-            {habits.map(habit => {
-              const isCompleted = selectedCompletion?.completedByHabitId?.[habit.id] ?? false;
-              return (
-                <View key={habit.id} style={styles.habitItem}>
-                  <View style={[styles.habitCheck, isCompleted && styles.habitCheckCompleted]}>
-                    {isCompleted && <Text style={styles.habitCheckText}>✓</Text>}
-                  </View>
-                  <Text style={[styles.habitText, isCompleted && styles.habitTextCompleted]}>
-                    {habit.text}
-                  </Text>
+          return (
+            <View key={`${year}-${month}`} style={styles.calendarMonth}>
+              <View style={styles.monthNav}>
+                <Text style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}>
+                  {getMonthName(month)} {year}
+                </Text>
+              </View>
+              <View style={styles.calendar}>
+                <View style={styles.weekHeader}>
+                  {DAYS.map((day) => (
+                    <View key={day} style={styles.dayHeaderContainer}>
+                      <Text style={styles.dayHeader}>{day}</Text>
+                    </View>
+                  ))}
                 </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+                <View style={styles.daysGrid}>
+                  {days.map((day, index) => {
+                    const stats = dayStats[day.ymd];
+                    const isCurrentMonth = day.isCurrentMonth;
+                    const isTodayDate = isToday(day.date);
+                    const todayDate = new Date();
+                    todayDate.setHours(0, 0, 0, 0);
+                    const dayDate = new Date(day.date);
+                    dayDate.setHours(0, 0, 0, 0);
+                    const isPast = dayDate < todayDate;
+                    const completionStyle = stats ? getCompletionStyle(stats.level, isPast) : {};
+                    const hasBackground = completionStyle.backgroundColor !== undefined;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        onPress={() => handleDayPress(day)}
+                        style={[
+                          styles.dayCell,
+                          !isCurrentMonth && styles.dayOtherMonth,
+                          isTodayDate && styles.dayToday,
+                          completionStyle
+                        ]}
+                      >
+                        <Text style={[
+                          styles.dayNumber,
+                          !isCurrentMonth && styles.dayNumberOtherMonth,
+                          hasBackground && styles.dayNumberHighlighted
+                        ]}>
+                          {day.date.getDate()}
+                        </Text>
+                        {stats && stats.total > 0 && (
+                          <View style={styles.dots}>
+                            {Array.from({ length: Math.min(5, stats.completed) }).map((_, i) => (
+                              <View key={i} style={[styles.dot, hasBackground && styles.dotHighlighted]} />
+                            ))}
+                            {stats.completed > 5 && (
+                              <Text style={[styles.dotPlus, hasBackground && styles.dotPlusHighlighted]}>+</Text>
+                            )}
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      <Modal
+        visible={showLegend}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowLegend(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowLegend(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.legendModal}>
+              <View style={styles.legendHeader}>
+                <Text style={styles.legendTitle}>Legenda</Text>
+                <TouchableOpacity onPress={() => setShowLegend(false)} style={styles.closeButton}>
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.legendItems}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendCircle, { backgroundColor: '#00FF00' }]} />
+                  <Text style={styles.legendText}>100% - Giorno perfetto</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendCircle, { backgroundColor: '#FF8C00' }]} />
+                  <Text style={styles.legendText}>75%+ - Buon progresso</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendCircle, { backgroundColor: '#FFD700' }]} />
+                  <Text style={styles.legendText}>50%+ - Progresso medio</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendCircle, { backgroundColor: '#FF0000' }]} />
+                  <Text style={styles.legendText}>Sotto il 50%</Text>
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: THEME.background, paddingHorizontal: 16 },
+  screen: { flex: 1, backgroundColor: '#000000', paddingHorizontal: 16 },
   header: { marginTop: 16, marginBottom: 24 },
-  title: { color: '#e2e8f0', fontSize: 22, fontWeight: '500', marginBottom: 4, letterSpacing: 0.3 },
-  subtitle: { color: '#64748b', fontSize: 14 },
+  headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerText: { flex: 1 },
+  title: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold' },
+  infoButton: { marginLeft: 12, marginTop: 4 },
+  infoCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#9CA3AF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  infoText: {
+    color: '#9CA3AF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
 
-  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, paddingHorizontal: 4 },
-  navBtn: { padding: 10, backgroundColor: '#0a0a0a', borderRadius: 6, borderWidth: 1, borderColor: '#1a1a1a', minWidth: 40, alignItems: 'center' },
-  navText: { color: '#94a3b8', fontSize: 18, fontWeight: '400' },
-  monthYear: { color: '#e2e8f0', fontSize: 17, fontWeight: '500', letterSpacing: 0.5 },
+  monthNav: { alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  monthYear: { color: '#9CA3AF', fontSize: 20, fontWeight: '600' },
+  monthYearActive: { color: '#FF0000' },
+  scrollView: { flex: 1 },
+  scrollContent: { 
+    paddingBottom: 100,
+    paddingTop: 100,
+  },
+  calendarMonth: { minHeight: 400, marginBottom: 5 },
 
-  calendar: { marginBottom: 20 },
-  weekHeader: { flexDirection: 'row', marginBottom: 12, paddingHorizontal: 4 },
-  dayHeader: { flex: 1, color: '#64748b', textAlign: 'center', fontSize: 12, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
+  calendar: { marginBottom: 5 },
+  weekHeader: { flexDirection: 'row', marginBottom: 12 },
+  dayHeaderContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  dayHeader: { color: '#9CA3AF', textAlign: 'center', fontSize: 12, fontWeight: '500' },
   
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: { 
-    width: `${(100/7) - 0.8}%`, 
+    width: '14.28%', // 100 / 7
     aspectRatio: 1, 
     alignItems: 'center', 
     justifyContent: 'center',
     borderRadius: 4,
     position: 'relative',
-    borderWidth: 1,
-    borderColor: '#1a1a1a'
+    marginBottom: 4,
   },
   dayOtherMonth: { opacity: 0.25 },
-  dayToday: { borderWidth: 1.5, borderColor: '#ffffff' },
-  daySelected: { borderWidth: 1.5, borderColor: '#64748b' },
+  dayToday: { borderWidth: 2, borderColor: '#FFFFFF' },
   
-  dayNumber: { color: '#e2e8f0', fontSize: 15, fontWeight: '500' },
-  dayNumberOtherMonth: { color: '#475569' },
-  dayNumberToday: { color: '#ffffff', fontWeight: '600' },
+  dayNumber: { color: '#FFFFFF', fontSize: 15, fontWeight: '500' },
+  dayNumberOtherMonth: { color: '#9CA3AF' },
+  dayNumberHighlighted: { color: '#FFFFFF' },
   
-  dots: { position: 'absolute', bottom: 3, flexDirection: 'row', gap: 2 },
-  dot: { width: 2, height: 2, borderRadius: 1, backgroundColor: '#94a3b8', opacity: 0.6 },
+  dots: { position: 'absolute', bottom: 3, flexDirection: 'row', gap: 2, alignItems: 'center' },
+  dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#9CA3AF' },
+  dotHighlighted: { backgroundColor: '#FFFFFF' },
+  dotPlus: { color: '#9CA3AF', fontSize: 8, marginLeft: 1 },
+  dotPlusHighlighted: { color: '#FFFFFF' },
 
-  legend: { marginBottom: 20, backgroundColor: '#0a0a0a', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#1a1a1a' },
-  legendTitle: { color: '#94a3b8', fontSize: 12, fontWeight: '500', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
-  legendItems: { gap: 10 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  legendDot: { width: 20, height: 20, borderRadius: 4, borderWidth: 1, borderColor: '#1a1a1a' },
-  legendText: { color: '#64748b', fontSize: 13 },
-
-  dayDetails: { 
-    position: 'absolute', 
-    bottom: 0, 
-    left: 0, 
-    right: 0, 
-    backgroundColor: '#0a0a0a', 
-    borderTopLeftRadius: 16, 
-    borderTopRightRadius: 16,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: '#1a1a1a',
-    padding: 20,
-    maxHeight: '50%'
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  dayDetailsTitle: { color: '#e2e8f0', fontSize: 16, fontWeight: '500', marginBottom: 8, letterSpacing: 0.3 },
-  dayDetailsStats: { color: '#64748b', fontSize: 13, marginBottom: 16 },
-  habitsList: { maxHeight: 200 },
-  habitItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 12 },
-  habitCheck: { width: 18, height: 18, borderRadius: 3, borderWidth: 1.5, borderColor: '#334155', alignItems: 'center', justifyContent: 'center' },
-  habitCheckCompleted: { backgroundColor: '#1e293b', borderColor: '#475569' },
-  habitCheckText: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
-  habitText: { color: '#cbd5e1', fontSize: 14, flex: 1 },
-  habitTextCompleted: { color: '#475569', textDecorationLine: 'line-through' },
+  legendModal: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 16,
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  legendHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  legendTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
+  closeButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    color: '#9CA3AF',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  legendItems: { gap: 16 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  legendCircle: { width: 20, height: 20, borderRadius: 10 },
+  legendText: { color: '#E5E7EB', fontSize: 15 },
 });
 
 
