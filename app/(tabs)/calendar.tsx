@@ -20,10 +20,10 @@ function getCompletionLevel(completed: number, total: number): CompletionLevel {
 
 function getCompletionColor(level: CompletionLevel): string {
   switch (level) {
-    case 'perfect': return '#10b981'; // green
-    case 'good': return '#f59e0b'; // orange
-    case 'medium': return '#ef4444'; // red
-    case 'low': return '#6b7280'; // grey
+    case 'perfect': return '#1e293b'; // dark blue-grey (perfect)
+    case 'good': return '#334155'; // medium dark grey
+    case 'medium': return '#475569'; // lighter dark grey
+    case 'low': return '#0a0a0a'; // almost black
   }
 }
 
@@ -142,20 +142,20 @@ export default function CalendarScreen() {
         <Text style={styles.legendTitle}>Legenda</Text>
         <View style={styles.legendItems}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#10b981' }]} />
-            <Text style={styles.legendText}>100% - Giorno perfetto</Text>
+            <View style={[styles.legendDot, { backgroundColor: '#1e293b' }]} />
+            <Text style={styles.legendText}>100% - Perfetto</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#f59e0b' }]} />
-            <Text style={styles.legendText}>75%+ - Buon progresso</Text>
+            <View style={[styles.legendDot, { backgroundColor: '#334155' }]} />
+            <Text style={styles.legendText}>75%+ - Buono</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
-            <Text style={styles.legendText}>50%+ - Progresso medio</Text>
+            <View style={[styles.legendDot, { backgroundColor: '#475569' }]} />
+            <Text style={styles.legendText}>50%+ - Medio</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#6b7280' }]} />
-            <Text style={styles.legendText}>Sotto il 50%</Text>
+            <View style={[styles.legendDot, { backgroundColor: '#0a0a0a' }]} />
+            <Text style={styles.legendText}>Basso</Text>
           </View>
         </View>
       </View>
@@ -196,68 +196,73 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: THEME.background, paddingHorizontal: 14 },
-  header: { marginTop: 16, marginBottom: 20 },
-  title: { color: THEME.text, fontSize: 24, fontWeight: '700', marginBottom: 4 },
-  subtitle: { color: THEME.textMuted, fontSize: 16 },
+  screen: { flex: 1, backgroundColor: THEME.background, paddingHorizontal: 16 },
+  header: { marginTop: 16, marginBottom: 24 },
+  title: { color: '#e2e8f0', fontSize: 22, fontWeight: '500', marginBottom: 4, letterSpacing: 0.3 },
+  subtitle: { color: '#64748b', fontSize: 14 },
 
-  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-  navBtn: { padding: 8 },
-  navText: { color: THEME.accent, fontSize: 20, fontWeight: '600' },
-  monthYear: { color: THEME.text, fontSize: 18, fontWeight: '700' },
+  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, paddingHorizontal: 4 },
+  navBtn: { padding: 10, backgroundColor: '#0a0a0a', borderRadius: 6, borderWidth: 1, borderColor: '#1a1a1a', minWidth: 40, alignItems: 'center' },
+  navText: { color: '#94a3b8', fontSize: 18, fontWeight: '400' },
+  monthYear: { color: '#e2e8f0', fontSize: 17, fontWeight: '500', letterSpacing: 0.5 },
 
   calendar: { marginBottom: 20 },
-  weekHeader: { flexDirection: 'row', marginBottom: 8 },
-  dayHeader: { flex: 1, color: '#64748b', textAlign: 'center', fontSize: 14, fontWeight: '600' },
+  weekHeader: { flexDirection: 'row', marginBottom: 12, paddingHorizontal: 4 },
+  dayHeader: { flex: 1, color: '#64748b', textAlign: 'center', fontSize: 12, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
   
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   dayCell: { 
-    width: `${100/7}%`, 
+    width: `${(100/7) - 0.8}%`, 
     aspectRatio: 1, 
     alignItems: 'center', 
-    justifyContent: 'center', 
-    marginBottom: 4,
-    borderRadius: 8,
-    position: 'relative'
+    justifyContent: 'center',
+    borderRadius: 4,
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: '#1a1a1a'
   },
-  dayOtherMonth: { opacity: 0.3 },
-  dayToday: { borderWidth: 2, borderColor: THEME.accent },
-  daySelected: { borderWidth: 2, borderColor: '#3b82f6' },
+  dayOtherMonth: { opacity: 0.25 },
+  dayToday: { borderWidth: 1.5, borderColor: '#ffffff' },
+  daySelected: { borderWidth: 1.5, borderColor: '#64748b' },
   
-  dayNumber: { color: THEME.text, fontSize: 16, fontWeight: '600' },
-  dayNumberOtherMonth: { color: '#64748b' },
-  dayNumberToday: { color: THEME.accent },
+  dayNumber: { color: '#e2e8f0', fontSize: 15, fontWeight: '500' },
+  dayNumberOtherMonth: { color: '#475569' },
+  dayNumberToday: { color: '#ffffff', fontWeight: '600' },
   
-  dots: { position: 'absolute', bottom: 2, flexDirection: 'row', gap: 2 },
-  dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: THEME.text },
+  dots: { position: 'absolute', bottom: 3, flexDirection: 'row', gap: 2 },
+  dot: { width: 2, height: 2, borderRadius: 1, backgroundColor: '#94a3b8', opacity: 0.6 },
 
-  legend: { marginBottom: 20 },
-  legendTitle: { color: THEME.text, fontSize: 16, fontWeight: '600', marginBottom: 12 },
-  legendItems: { gap: 8 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  legendDot: { width: 12, height: 12, borderRadius: 6 },
-  legendText: { color: THEME.textSecondary, fontSize: 14 },
+  legend: { marginBottom: 20, backgroundColor: '#0a0a0a', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#1a1a1a' },
+  legendTitle: { color: '#94a3b8', fontSize: 12, fontWeight: '500', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  legendItems: { gap: 10 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  legendDot: { width: 20, height: 20, borderRadius: 4, borderWidth: 1, borderColor: '#1a1a1a' },
+  legendText: { color: '#64748b', fontSize: 13 },
 
   dayDetails: { 
     position: 'absolute', 
     bottom: 0, 
     left: 0, 
     right: 0, 
-    backgroundColor: '#000', 
-    borderTopLeftRadius: 20, 
-    borderTopRightRadius: 20, 
+    backgroundColor: '#0a0a0a', 
+    borderTopLeftRadius: 16, 
+    borderTopRightRadius: 16,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: '#1a1a1a',
     padding: 20,
     maxHeight: '50%'
   },
-  dayDetailsTitle: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 8 },
-  dayDetailsStats: { color: THEME.textSecondary, fontSize: 14, marginBottom: 16 },
+  dayDetailsTitle: { color: '#e2e8f0', fontSize: 16, fontWeight: '500', marginBottom: 8, letterSpacing: 0.3 },
+  dayDetailsStats: { color: '#64748b', fontSize: 13, marginBottom: 16 },
   habitsList: { maxHeight: 200 },
-  habitItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
-  habitCheck: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#334155', alignItems: 'center', justifyContent: 'center' },
-  habitCheckCompleted: { backgroundColor: '#10b981', borderColor: '#10b981' },
-  habitCheckText: { color: THEME.text, fontSize: 12, fontWeight: '600' },
-  habitText: { color: THEME.text, fontSize: 14, flex: 1 },
-  habitTextCompleted: { color: '#64748b', textDecorationLine: 'line-through' },
+  habitItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 12 },
+  habitCheck: { width: 18, height: 18, borderRadius: 3, borderWidth: 1.5, borderColor: '#334155', alignItems: 'center', justifyContent: 'center' },
+  habitCheckCompleted: { backgroundColor: '#1e293b', borderColor: '#475569' },
+  habitCheckText: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
+  habitText: { color: '#cbd5e1', fontSize: 14, flex: 1 },
+  habitTextCompleted: { color: '#475569', textDecorationLine: 'line-through' },
 });
 
 
