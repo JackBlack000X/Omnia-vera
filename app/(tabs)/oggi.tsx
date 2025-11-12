@@ -49,7 +49,7 @@ export default function OggiScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [windowStart, setWindowStart] = useState<string>('06:00');
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
-  const [visibleHours, setVisibleHours] = useState<number>(11);
+  const [visibleHours, setVisibleHours] = useState<number>(24);
   const [forcedTaskColor, setForcedTaskColor] = useState<null | 'black' | 'white'>(null);
   
   const today = getDay(currentDate);
@@ -508,20 +508,12 @@ export default function OggiScreen() {
     
     // Correzione specifica per 11 ore visibili
     if (visibleHours === 11) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.5; // Alza di 0.5 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1.25; // Alza di 1.25 pixel (era 0.5, ora +0.75)
-        top += correctionPx;
-      }
       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -3.25; // Alza di 3.25 pixel (era 3.5, ora -0.25)
+        const correctionPx = -3; // Alza di 3 pixel (era 5, ora -2)
         top += correctionPx;
       }
       if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -4.5; // Alza di 4.5 pixel (era 4, ora +0.5)
+        const correctionPx = -3; // Alza di 3 pixel
         top += correctionPx;
       }
     }

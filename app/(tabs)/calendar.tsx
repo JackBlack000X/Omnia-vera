@@ -98,6 +98,87 @@ export default function CalendarScreen() {
     return filtered;
   }, [history]);
 
+  // Calcola le streak di almeno 7 giorni con 100% completamento
+  const streakInfo = useMemo(() => {
+    const streakMap = new Map<string, 'start' | 'middle' | 'end'>();
+    if (habits.length === 0) return streakMap;
+
+    // Combina history e test completions
+    const allDates = new Set<string>();
+    Object.keys(recentHistory).forEach(d => allDates.add(d));
+    Object.keys(testCompletions).forEach(d => allDates.add(d));
+    
+    // Ordina le date
+    const sortedDates = Array.from(allDates).sort();
+    if (sortedDates.length === 0) return streakMap;
+
+    let currentStreak: string[] = [];
+    
+    for (let i = 0; i < sortedDates.length; i++) {
+      const date = sortedDates[i];
+      
+      // Controlla prima test completion, poi history
+      let completed = 0;
+      const testCompletion = testCompletions[date];
+      if (testCompletion) {
+        completed = testCompletion.completed;
+      } else {
+        const completion = recentHistory[date];
+        completed = completion ? Object.values(completion.completedByHabitId).filter(Boolean).length : 0;
+      }
+      
+      const total = habits.length;
+      const percentage = total > 0 ? (completed / total) * 100 : 0;
+
+      if (percentage === 100) {
+        // Controlla se è consecutivo al giorno precedente
+        if (currentStreak.length === 0) {
+          currentStreak.push(date);
+        } else {
+          const lastDate = new Date(currentStreak[currentStreak.length - 1]);
+          const currentDate = new Date(date);
+          const daysDiff = Math.floor((currentDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysDiff === 1) {
+            // Giorno consecutivo
+            currentStreak.push(date);
+          } else {
+            // Streak interrotta, salva se è >= 7 giorni
+            if (currentStreak.length >= 7) {
+              currentStreak.forEach((d, idx) => {
+                if (idx === 0) streakMap.set(d, 'start');
+                else if (idx === currentStreak.length - 1) streakMap.set(d, 'end');
+                else streakMap.set(d, 'middle');
+              });
+            }
+            currentStreak = [date];
+          }
+        }
+      } else {
+        // Streak interrotta, salva se è >= 7 giorni
+        if (currentStreak.length >= 7) {
+          currentStreak.forEach((d, idx) => {
+            if (idx === 0) streakMap.set(d, 'start');
+            else if (idx === currentStreak.length - 1) streakMap.set(d, 'end');
+            else streakMap.set(d, 'middle');
+          });
+        }
+        currentStreak = [];
+      }
+    }
+
+    // Controlla l'ultima streak
+    if (currentStreak.length >= 7) {
+      currentStreak.forEach((d, idx) => {
+        if (idx === 0) streakMap.set(d, 'start');
+        else if (idx === currentStreak.length - 1) streakMap.set(d, 'end');
+        else streakMap.set(d, 'middle');
+      });
+    }
+
+    return streakMap;
+  }, [recentHistory, testCompletions, habits.length]);
+
   function getDayStatsForMonth(monthYear: number, monthNum: number) {
     const days = getCalendarDays(monthYear, monthNum);
     const stats: Record<string, { completed: number; total: number; level: CompletionLevel }> = {};
@@ -218,7 +299,7 @@ export default function CalendarScreen() {
           const { days, stats: dayStats } = getDayStatsForMonth(year, month);
           
           return (
-            <View key={`${year}-${month}`} style={styles.calendarMonth}>
+            <View key={`${year}-${month}`} style={[styles.calendarMonth, monthIndex === 0 && { marginTop: -80 }]}>
               <View style={styles.monthNav}>
                 <Text style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}>
                   {getMonthName(month)} {year}
@@ -244,36 +325,62 @@ export default function CalendarScreen() {
                     const isPast = dayDate < todayDate;
                     const completionStyle = stats ? getCompletionStyle(stats.level, isPast) : {};
                     const hasBackground = completionStyle.backgroundColor !== undefined;
+                    const streakPosition = streakInfo.get(day.ymd);
+                    const isSunday = day.date.getDay() === 0;
                     
                     return (
-                      <TouchableOpacity
-                        key={index}
-                        onPress={() => handleDayPress(day)}
-                        style={[
-                          styles.dayCell,
-                          !isCurrentMonth && styles.dayOtherMonth,
-                          isTodayDate && styles.dayToday,
-                          completionStyle
-                        ]}
-                      >
-                        <Text style={[
-                          styles.dayNumber,
-                          !isCurrentMonth && styles.dayNumberOtherMonth,
-                          hasBackground && styles.dayNumberHighlighted
-                        ]}>
-                          {day.date.getDate()}
-                        </Text>
-                        {stats && stats.total > 0 && (
-                          <View style={styles.dots}>
-                            {Array.from({ length: Math.min(5, stats.completed) }).map((_, i) => (
-                              <View key={i} style={[styles.dot, hasBackground && styles.dotHighlighted]} />
-                            ))}
-                            {stats.completed > 5 && (
-                              <Text style={[styles.dotPlus, hasBackground && styles.dotPlusHighlighted]}>+</Text>
-                            )}
-                          </View>
+                      <View key={index} style={styles.dayCellWrapper}>
+                        {streakPosition && (
+                          <>
+                            <View style={[
+                              streakPosition === 'start' ? (isSunday ? styles.streakHorizontalTopStartSunday : styles.streakHorizontalTopStart) :
+                              streakPosition === 'end' ? (isSunday ? styles.streakHorizontalTopEndSunday : styles.streakHorizontalTopEnd) :
+                              styles.streakHorizontalTop
+                            ]} />
+                            <View style={[
+                              streakPosition === 'start' ? (isSunday ? styles.streakHorizontalBottomStartSunday : styles.streakHorizontalBottomStart) :
+                              streakPosition === 'end' ? (isSunday ? styles.streakHorizontalBottomEndSunday : styles.streakHorizontalBottomEnd) :
+                              styles.streakHorizontalBottom
+                            ]} />
+                          </>
                         )}
-                      </TouchableOpacity>
+                        {streakPosition === 'start' && (
+                          <View style={styles.streakBlackLineLeft} />
+                        )}
+                        {streakPosition === 'end' && (
+                          <View style={styles.streakBlackLineRight} />
+                        )}
+                        <TouchableOpacity
+                          onPress={() => handleDayPress(day)}
+                          style={[
+                            styles.dayCell,
+                            !isCurrentMonth && styles.dayOtherMonth,
+                            isTodayDate && !streakPosition && styles.dayToday,
+                            streakPosition === 'start' && styles.streakStart,
+                            streakPosition === 'middle' && styles.streakMiddle,
+                            streakPosition === 'end' && styles.streakEnd,
+                            completionStyle
+                          ]}
+                        >
+                          <Text style={[
+                            styles.dayNumber,
+                            !isCurrentMonth && styles.dayNumberOtherMonth,
+                            hasBackground && styles.dayNumberHighlighted
+                          ]}>
+                            {day.date.getDate()}
+                          </Text>
+                          {stats && stats.total > 0 && (
+                            <View style={styles.dots}>
+                              {Array.from({ length: Math.min(5, stats.completed) }).map((_, i) => (
+                                <View key={i} style={[styles.dot, hasBackground && styles.dotHighlighted]} />
+                              ))}
+                              {stats.completed > 5 && (
+                                <Text style={[styles.dotPlus, hasBackground && styles.dotPlusHighlighted]}>+</Text>
+                              )}
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     );
                   })}
                 </View>
@@ -351,7 +458,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  monthNav: { alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  monthNav: { alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   monthYear: { color: '#9CA3AF', fontSize: 20, fontWeight: '600' },
   monthYearActive: { color: '#FF0000' },
   scrollView: { flex: 1 },
@@ -359,25 +466,164 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
     paddingTop: 100,
   },
-  calendarMonth: { minHeight: 400, marginBottom: 5 },
+  calendarMonth: { minHeight: 400, marginBottom: -85 },
 
   calendar: { marginBottom: 5 },
   weekHeader: { flexDirection: 'row', marginBottom: 12 },
   dayHeaderContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   dayHeader: { color: '#9CA3AF', textAlign: 'center', fontSize: 12, fontWeight: '500' },
   
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { 
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 0 },
+  dayCellWrapper: {
     width: '14.28%', // 100 / 7
-    aspectRatio: 1, 
+    position: 'relative',
+    transform: [{ scale: 0.93 }],
+  },
+  dayCell: { 
+    width: '100%',
+    aspectRatio: 1.3, 
     alignItems: 'center', 
     justifyContent: 'center',
-    borderRadius: 4,
+    borderRadius: 8,
     position: 'relative',
-    marginBottom: 4,
   },
   dayOtherMonth: { opacity: 0.25 },
   dayToday: { borderWidth: 2, borderColor: '#FFFFFF' },
+  streakStart: {
+    borderLeftWidth: 3,
+    borderColor: '#FFD700',
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 4,
+  },
+  streakMiddle: {
+    // No borders, using absolute positioned lines instead
+  },
+  streakEnd: {
+    borderRightWidth: 3,
+    borderColor: '#FFD700',
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 4,
+  },
+  streakHorizontalTop: {
+    position: 'absolute',
+    top: 0,
+    left: -3,
+    right: -3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalTopStart: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: -3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderTopLeftRadius: 4,
+  },
+  streakHorizontalTopStartSunday: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: -3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderTopLeftRadius: 4,
+  },
+  streakHorizontalTopEnd: {
+    position: 'absolute',
+    top: 0,
+    left: -3,
+    right: 0,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderTopRightRadius: 4,
+  },
+  streakHorizontalTopEndSunday: {
+    position: 'absolute',
+    top: 0,
+    left: -3,
+    right: 0,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderTopRightRadius: 4,
+  },
+  streakHorizontalBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: -3,
+    right: -3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalBottomStart: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: -3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderBottomLeftRadius: 4,
+  },
+  streakHorizontalBottomStartSunday: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: -3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderBottomLeftRadius: 4,
+  },
+  streakHorizontalBottomEnd: {
+    position: 'absolute',
+    bottom: 0,
+    left: -3,
+    right: 0,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderBottomRightRadius: 4,
+  },
+  streakHorizontalBottomEndSunday: {
+    position: 'absolute',
+    bottom: 0,
+    left: -3,
+    right: 0,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderBottomRightRadius: 4,
+  },
+  streakBlackLineLeft: {
+    position: 'absolute',
+    top: 6,
+    bottom: 6,
+    left: 3,
+    width: 1,
+    backgroundColor: '#000000',
+    zIndex: 9,
+    borderTopLeftRadius: 1,
+    borderBottomLeftRadius: 1,
+  },
+  streakBlackLineRight: {
+    position: 'absolute',
+    top: 6,
+    bottom: 6,
+    right: 3,
+    width: 1,
+    backgroundColor: '#000000',
+    zIndex: 9,
+    borderTopRightRadius: 1,
+    borderBottomRightRadius: 1,
+  },
   
   dayNumber: { color: '#FFFFFF', fontSize: 15, fontWeight: '500' },
   dayNumberOtherMonth: { color: '#9CA3AF' },
