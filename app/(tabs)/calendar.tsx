@@ -335,18 +335,16 @@ export default function CalendarScreen() {
                             <View style={[
                               streakPosition === 'start' ? (isSunday ? styles.streakHorizontalTopStartSunday : styles.streakHorizontalTopStart) :
                               streakPosition === 'end' ? (isSunday ? styles.streakHorizontalTopEndSunday : styles.streakHorizontalTopEnd) :
-                              styles.streakHorizontalTop
+                              (isSunday ? styles.streakHorizontalTopSunday : styles.streakHorizontalTop)
                             ]} />
                             <View style={[
                               streakPosition === 'start' ? (isSunday ? styles.streakHorizontalBottomStartSunday : styles.streakHorizontalBottomStart) :
                               streakPosition === 'end' ? (isSunday ? styles.streakHorizontalBottomEndSunday : styles.streakHorizontalBottomEnd) :
-                              styles.streakHorizontalBottom
+                              (isSunday ? styles.streakHorizontalBottomSunday : styles.streakHorizontalBottom)
                             ]} />
                           </>
                         )}
-                        {streakPosition === 'start' && (
-                          <View style={styles.streakBlackLineLeft} />
-                        )}
+                        {/* Removed black line for start to fill with green */}
                         {streakPosition === 'end' && (
                           <View style={styles.streakBlackLineRight} />
                         )}
@@ -492,8 +490,8 @@ const styles = StyleSheet.create({
   streakStart: {
     borderLeftWidth: 3,
     borderColor: '#FFD700',
-    borderTopLeftRadius: 4,
-    borderBottomLeftRadius: 4,
+    borderTopLeftRadius: 8,
+    borderBottomLeftRadius: 8,
   },
   streakMiddle: {
     // No borders, using absolute positioned lines instead
@@ -501,8 +499,8 @@ const styles = StyleSheet.create({
   streakEnd: {
     borderRightWidth: 3,
     borderColor: '#FFD700',
-    borderTopRightRadius: 4,
-    borderBottomRightRadius: 4,
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
   },
   streakHorizontalTop: {
     position: 'absolute',
@@ -516,34 +514,53 @@ const styles = StyleSheet.create({
   streakHorizontalTopStart: {
     position: 'absolute',
     top: 0,
-    left: 0,
+    left: 3,
     right: -3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
-    borderTopLeftRadius: 4,
+    borderTopRightRadius: 8,
   },
   streakHorizontalTopStartSunday: {
     position: 'absolute',
     top: 0,
-    left: 0,
+    left: 3,
     right: -3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
-    borderTopLeftRadius: 4,
+    borderTopRightRadius: 8,
   },
   streakHorizontalTopEnd: {
     position: 'absolute',
     top: 0,
     left: -3,
-    right: 0,
+    right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
-    borderTopRightRadius: 4,
+    borderTopLeftRadius: 8,
   },
   streakHorizontalTopEndSunday: {
+    position: 'absolute',
+    top: 0,
+    left: -3,
+    right: 3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderTopLeftRadius: 8,
+  },
+  streakHorizontalBottom: {
+    position: 'absolute',
+    bottom: -1,
+    left: -3,
+    right: -3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalTopSunday: {
     position: 'absolute',
     top: 0,
     left: -3,
@@ -551,56 +568,77 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
-    borderTopRightRadius: 4,
   },
-  streakHorizontalBottom: {
+  streakHorizontalBottomSunday: {
     position: 'absolute',
-    bottom: 0,
+    bottom: -1,
     left: -3,
-    right: -3,
+    right: 0,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
   },
   streakHorizontalBottomStart: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
+    bottom: -1,
+    left: 3,
     right: -3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
-    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 8,
   },
   streakHorizontalBottomStartSunday: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
+    bottom: -1,
+    left: 3,
     right: -3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
-    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 8,
   },
   streakHorizontalBottomEnd: {
     position: 'absolute',
-    bottom: 0,
+    bottom: -1,
     left: -3,
-    right: 0,
+    right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
-    borderBottomRightRadius: 4,
+    borderBottomLeftRadius: 8,
   },
   streakHorizontalBottomEndSunday: {
     position: 'absolute',
-    bottom: 0,
+    bottom: -1,
     left: -3,
-    right: 0,
+    right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
-    borderBottomRightRadius: 4,
+    borderBottomLeftRadius: 8,
+  },
+  streakVerticalLeft: {
+    position: 'absolute',
+    top: 0,
+    bottom: -1,
+    left: 0,
+    width: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderTopLeftRadius: 8,
+    borderBottomLeftRadius: 8,
+  },
+  streakVerticalRight: {
+    position: 'absolute',
+    top: 0,
+    bottom: -1,
+    right: 0,
+    width: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
   },
   streakBlackLineLeft: {
     position: 'absolute',
