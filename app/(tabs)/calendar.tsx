@@ -357,38 +357,57 @@ export default function CalendarScreen() {
                     const isSunday = dayOfWeek === 0;
                     const isMonday = dayOfWeek === 1;
                     
+                    const topLineStyle = streakPosition
+                      ? (
+                        streakPosition === 'start'
+                          ? (isSunday ? styles.streakHorizontalTopStartSunday : styles.streakHorizontalTopStart)
+                          : streakPosition === 'end'
+                            ? (isMonday
+                                ? styles.streakHorizontalTopEndMonday
+                                : isSunday
+                                  ? styles.streakHorizontalTopEndSunday
+                                  : styles.streakHorizontalTopEnd)
+                            : streakPosition === 'middle'
+                              ? (isSunday ? styles.streakHorizontalTopMiddleSunday : styles.streakHorizontalTopMiddle)
+                              : (isSunday ? styles.streakHorizontalTopSingleSunday : styles.streakHorizontalTopSingle)
+                      )
+                      : null;
+
+                    const bottomLineStyle = streakPosition
+                      ? (
+                        streakPosition === 'start'
+                          ? (isSunday ? styles.streakHorizontalBottomStartSunday : styles.streakHorizontalBottomStart)
+                          : streakPosition === 'end'
+                            ? (isMonday
+                                ? styles.streakHorizontalBottomEndMonday
+                                : isSunday
+                                  ? styles.streakHorizontalBottomEndSunday
+                                  : styles.streakHorizontalBottomEnd)
+                            : streakPosition === 'middle'
+                              ? (isSunday ? styles.streakHorizontalBottomMiddleSunday : styles.streakHorizontalBottomMiddle)
+                              : (isSunday ? styles.streakHorizontalBottomSingleSunday : styles.streakHorizontalBottomSingle)
+                      )
+                      : null;
+
                     return (
                       <View key={index} style={styles.dayCellWrapper}>
-                        {streakPosition && streakPosition !== 'single' && (
+                        {streakPosition && (
                           <>
-                            <View
-                              pointerEvents="none"
-                              style={
-                                streakPosition === 'start'
-                                  ? (isSunday ? styles.streakHorizontalTopStartSunday : styles.streakHorizontalTopStart)
-                                  : streakPosition === 'end'
-                                  ? (isMonday
-                                      ? styles.streakHorizontalTopEndMonday
-                                      : isSunday
-                                        ? styles.streakHorizontalTopEndSunday
-                                        : styles.streakHorizontalTopEnd)
-                                  : (isSunday ? styles.streakHorizontalTopMiddleSunday : styles.streakHorizontalTopMiddle)
-                              }
-                            />
-                            <View
-                              pointerEvents="none"
-                              style={
-                                streakPosition === 'start'
-                                  ? (isSunday ? styles.streakHorizontalBottomStartSunday : styles.streakHorizontalBottomStart)
-                                  : streakPosition === 'end'
-                                  ? (isMonday
-                                      ? styles.streakHorizontalBottomEndMonday
-                                      : isSunday
-                                        ? styles.streakHorizontalBottomEndSunday
-                                        : styles.streakHorizontalBottomEnd)
-                                  : (isSunday ? styles.streakHorizontalBottomMiddleSunday : styles.streakHorizontalBottomMiddle)
-                              }
-                            />
+                            {topLineStyle && (
+                              <View pointerEvents="none" style={topLineStyle} />
+                            )}
+                            {bottomLineStyle && (
+                              <View pointerEvents="none" style={bottomLineStyle} />
+                            )}
+                            {(streakPosition === 'start' || streakPosition === 'single') && (
+                              <View pointerEvents="none" style={styles.streakVerticalLeft} />
+                            )}
+                            {(streakPosition === 'end' || streakPosition === 'single') && (
+                              <View
+                                pointerEvents="none"
+                                style={isSunday ? styles.streakVerticalRightSunday : styles.streakVerticalRight}
+                              />
+                            )}
                           </>
                         )}
                         <TouchableOpacity
@@ -397,11 +416,6 @@ export default function CalendarScreen() {
                             styles.dayCell,
                             !isCurrentMonth && styles.dayOtherMonth,
                             isTodayDate && !streakPosition && styles.dayToday,
-                            streakPosition && styles.dayCellStreakBase,
-                            streakPosition === 'start' && styles.dayCellStreakStart,
-                            streakPosition === 'middle' && styles.dayCellStreakMiddle,
-                            streakPosition === 'end' && styles.dayCellStreakEnd,
-                            streakPosition === 'single' && styles.dayCellStreakSingle,
                             completionStyle
                           ]}
                         >
@@ -533,40 +547,6 @@ const styles = StyleSheet.create({
   },
   dayOtherMonth: { opacity: 0.25 },
   dayToday: { borderWidth: 2, borderColor: '#FFFFFF' },
-  dayCellStreakBase: {
-    borderRadius: 8,
-    borderColor: '#FFD700',
-    borderTopWidth: 3,
-    borderBottomWidth: 3,
-  },
-  dayCellStreakStart: {
-    borderLeftWidth: 3,
-    borderTopLeftRadius: 8,
-    borderBottomLeftRadius: 8,
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
-    marginRight: -2,
-    paddingRight: 2,
-  },
-  dayCellStreakMiddle: {
-    borderRadius: 0,
-    marginHorizontal: -2,
-    paddingHorizontal: 2,
-  },
-  dayCellStreakEnd: {
-    borderRightWidth: 3,
-    borderTopRightRadius: 8,
-    borderBottomRightRadius: 8,
-    borderTopLeftRadius: 0,
-    borderBottomLeftRadius: 0,
-    marginLeft: -2,
-    paddingLeft: 2,
-  },
-  dayCellStreakSingle: {
-    borderLeftWidth: 3,
-    borderRightWidth: 3,
-    borderRadius: 8,
-  },
   streakHorizontalTopStart: {
     position: 'absolute',
     top: 0,
@@ -626,6 +606,24 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalTopSingle: {
+    position: 'absolute',
+    top: 0,
+    left: 3,
+    right: 3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalTopSingleSunday: {
+    position: 'absolute',
+    top: 0,
+    left: 3,
+    right: 0,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
@@ -690,6 +688,51 @@ const styles = StyleSheet.create({
     left: 0,
     right: 3,
     height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalBottomSingle: {
+    position: 'absolute',
+    bottom: -0.25,
+    left: 3,
+    right: 3,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalBottomSingleSunday: {
+    position: 'absolute',
+    bottom: -0.25,
+    left: 3,
+    right: 0,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakVerticalLeft: {
+    position: 'absolute',
+    top: 0,
+    bottom: -0.25,
+    left: 3,
+    width: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakVerticalRight: {
+    position: 'absolute',
+    top: 0,
+    bottom: -0.25,
+    right: 3,
+    width: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakVerticalRightSunday: {
+    position: 'absolute',
+    top: 0,
+    bottom: -0.25,
+    right: 0,
+    width: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
   },
