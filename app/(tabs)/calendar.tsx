@@ -696,6 +696,7 @@ const styles = StyleSheet.create({
   },
   streakHorizontalBottomMiddleAfterStart: {
     left: -12,
+    bottom: -0.25,
   },
   streakHorizontalBottomMiddleBeforeEnd: {
     right: -4,
