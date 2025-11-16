@@ -358,11 +358,28 @@ export default function CalendarScreen() {
                     const isMonday = dayOfWeek === 1;
                     const prevDay = days[index - 1];
                     const nextDay = days[index + 1];
+                    const nextNextDay = days[index + 2];
+                    const nextNextNextDay = days[index + 3];
+                    const nextNextNextNextDay = days[index + 4];
+                    const nextNextNextNextNextDay = days[index + 5];
+                    const nextNextNextNextNextNextDay = days[index + 6];
                     const prevStreakPosition = prevDay ? streakInfo.get(prevDay.ymd) : undefined;
                     const nextStreakPosition = nextDay ? streakInfo.get(nextDay.ymd) : undefined;
+                    const nextNextStreakPosition = nextNextDay ? streakInfo.get(nextNextDay.ymd) : undefined;
+                    const nextNextNextStreakPosition = nextNextNextDay ? streakInfo.get(nextNextNextDay.ymd) : undefined;
+                    const nextNextNextNextStreakPosition = nextNextNextNextDay ? streakInfo.get(nextNextNextNextDay.ymd) : undefined;
+                    const nextNextNextNextNextStreakPosition = nextNextNextNextNextDay ? streakInfo.get(nextNextNextNextNextDay.ymd) : undefined;
+                    const nextNextNextNextNextNextStreakPosition = nextNextNextNextNextNextDay ? streakInfo.get(nextNextNextNextNextNextDay.ymd) : undefined;
                     const nextDaySunday = nextDay ? nextDay.date.getDay() === 0 : false;
                     const nextDayMonday = nextDay ? nextDay.date.getDay() === 1 : false;
                     const prevDaySunday = prevDay ? prevDay.date.getDay() === 0 : false;
+                    const isBeyondFirstWeek = day.date.getDate() > 7;
+                    const isAfterStart = prevStreakPosition === 'start';
+                    const isThirdFromEnd = nextStreakPosition === 'middle' && nextNextStreakPosition === 'end';
+                    const isFourthFromEnd = nextStreakPosition === 'middle' && nextNextStreakPosition === 'middle' && nextNextNextStreakPosition === 'end';
+                    const isFifthFromEnd = nextStreakPosition === 'middle' && nextNextStreakPosition === 'middle' && nextNextNextStreakPosition === 'middle' && nextNextNextNextStreakPosition === 'end';
+                    const isSixthFromEnd = nextStreakPosition === 'middle' && nextNextStreakPosition === 'middle' && nextNextNextStreakPosition === 'middle' && nextNextNextNextStreakPosition === 'middle' && nextNextNextNextNextStreakPosition === 'end';
+                    const isSeventhFromEnd = nextStreakPosition === 'middle' && nextNextStreakPosition === 'middle' && nextNextNextStreakPosition === 'middle' && nextNextNextNextStreakPosition === 'middle' && nextNextNextNextNextStreakPosition === 'middle' && nextNextNextNextNextNextStreakPosition === 'end';
                     
                     const topLineStyle =
                       streakPosition === 'middle'
@@ -382,13 +399,22 @@ export default function CalendarScreen() {
                       streakPosition === 'middle'
                         ? [
                             isSunday ? styles.streakHorizontalBottomMiddleSunday : isMonday ? styles.streakHorizontalBottomMiddleMonday : styles.streakHorizontalBottomMiddle,
-                            prevStreakPosition === 'start' && !isMonday && !prevDaySunday && styles.streakHorizontalBottomMiddleAfterStart,
+                            isAfterStart && !isMonday && !prevDaySunday && styles.streakHorizontalBottomMiddleAfterStart,
+                            isAfterStart && isMonday && styles.streakHorizontalBottomMiddleAfterStartMonday,
+                            isAfterStart && styles.streakHorizontalBottomMiddleAfterStartLift,
+                            isThirdFromEnd && !isMonday && styles.streakHorizontalBottomMiddleThirdFromEnd,
+                            isThirdFromEnd && isMonday && styles.streakHorizontalBottomMiddleThirdFromEndMonday,
+                            isFourthFromEnd && !isMonday && styles.streakHorizontalBottomMiddleFourthFromEnd,
+                            isFifthFromEnd && !isMonday && styles.streakHorizontalBottomMiddleFifthFromEnd,
+                            isSixthFromEnd && !isMonday && styles.streakHorizontalBottomMiddleSixthFromEnd,
+                            isSeventhFromEnd && !isMonday && styles.streakHorizontalBottomMiddleSeventhFromEnd,
+                            isMonday && (isFourthFromEnd || isFifthFromEnd || isSixthFromEnd || isSeventhFromEnd) && styles.streakHorizontalBottomMiddleMondayNearEnd,
                             nextStreakPosition === 'end' &&
                               (nextDaySunday
                                 ? styles.streakHorizontalBottomMiddleBeforeEndSunday
                                 : nextDayMonday
-                                  ? styles.streakHorizontalBottomMiddleBeforeEndMonday
-                                  : styles.streakHorizontalBottomMiddleBeforeEnd),
+                                  ? isMonday ? styles.streakHorizontalBottomMiddleBeforeEndMonday : styles.streakHorizontalBottomMiddleBeforeEndMonday
+                                  : isMonday ? styles.streakHorizontalBottomMiddleBeforeEndMonday : styles.streakHorizontalBottomMiddleBeforeEnd),
                           ]
                         : null;
 
@@ -403,6 +429,7 @@ export default function CalendarScreen() {
                                   styles.streakCornerOverlay,
                                   streakPosition === 'start' && styles.streakCornerOverlayStart,
                                   streakPosition === 'end' && styles.streakCornerOverlayEnd,
+                                  streakPosition === 'end' && isMonday && styles.streakCornerOverlayEndMonday,
                                   streakPosition === 'single' && styles.streakCornerOverlaySingle,
                                 ]}
                               />
@@ -698,14 +725,54 @@ const styles = StyleSheet.create({
     left: -12,
     bottom: -0.25,
   },
+  streakHorizontalBottomMiddleAfterStartMonday: {
+    left: 0,
+    bottom: -0.25,
+  },
+  streakHorizontalBottomMiddleAfterStartLift: {
+    bottom: -0.25,
+  },
+  streakHorizontalBottomMiddleSeventhFromEnd: {
+    bottom: -0.25,
+    height: 2.75,
+  },
+  streakHorizontalBottomMiddleSixthFromEnd: {
+    bottom: -0.25,
+    height: 2.75,
+  },
+  streakHorizontalBottomMiddleFifthFromEnd: {
+    bottom: -0.25,
+    height: 2.75,
+  },
+  streakHorizontalBottomMiddleFourthFromEnd: {
+    bottom: -0.25,
+    height: 2.75,
+  },
+  streakHorizontalBottomMiddleThirdFromEnd: {
+    bottom: -0.25,
+    height: 2.75,
+  },
+  streakHorizontalBottomMiddleThirdFromEndMonday: {
+    bottom: -0.25,
+    height: 2.75,
+  },
+  streakHorizontalBottomMiddleMondayNearEnd: {
+    bottom: -0.25,
+    height: 2.75,
+  },
   streakHorizontalBottomMiddleBeforeEnd: {
     right: -4,
+    bottom: -0.25,
+    height: 2.75,
   },
   streakHorizontalBottomMiddleBeforeEndSunday: {
     right: 0,
+    bottom: -0.5,
   },
   streakHorizontalBottomMiddleBeforeEndMonday: {
     right: 0,
+    bottom: -0.25,
+    height: 2.75,
   },
   streakHorizontalBottomMiddleSunday: {
     position: 'absolute',
@@ -725,9 +792,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFD700',
     zIndex: 10,
   },
+  streakHorizontalBottomMiddleMondayLift: {
+    bottom: -0.25,
+  },
   streakHorizontalBottomEnd: {
     position: 'absolute',
-    bottom: -0.5,
+    bottom: -0.25,
     left: -3,
     right: 3,
     height: 3,
@@ -737,7 +807,7 @@ const styles = StyleSheet.create({
   },
   streakHorizontalBottomEndSunday: {
     position: 'absolute',
-    bottom: -0.5,
+    bottom: -0.25,
     left: -3,
     right: 3,
     height: 3,
@@ -747,7 +817,7 @@ const styles = StyleSheet.create({
   },
   streakHorizontalBottomEndMonday: {
     position: 'absolute',
-    bottom: -0.5,
+    bottom: -0.25,
     left: 0,
     right: 3,
     height: 3,
@@ -798,6 +868,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 0,
     borderBottomLeftRadius: 0,
     left: -10,
+  },
+  streakCornerOverlayEndMonday: {
+    left: 0,
   },
   streakCornerOverlaySingle: {
     // full border retained
