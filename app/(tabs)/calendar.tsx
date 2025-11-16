@@ -356,57 +356,62 @@ export default function CalendarScreen() {
                     const dayOfWeek = day.date.getDay();
                     const isSunday = dayOfWeek === 0;
                     const isMonday = dayOfWeek === 1;
+                    const prevDay = days[index - 1];
+                    const nextDay = days[index + 1];
+                    const prevStreakPosition = prevDay ? streakInfo.get(prevDay.ymd) : undefined;
+                    const nextStreakPosition = nextDay ? streakInfo.get(nextDay.ymd) : undefined;
+                    const nextDaySunday = nextDay ? nextDay.date.getDay() === 0 : false;
+                    const nextDayMonday = nextDay ? nextDay.date.getDay() === 1 : false;
+                    const prevDaySunday = prevDay ? prevDay.date.getDay() === 0 : false;
                     
-                    const topLineStyle = streakPosition
-                      ? (
-                        streakPosition === 'start'
-                          ? (isSunday ? styles.streakHorizontalTopStartSunday : styles.streakHorizontalTopStart)
-                          : streakPosition === 'end'
-                            ? (isMonday
-                                ? styles.streakHorizontalTopEndMonday
-                                : isSunday
-                                  ? styles.streakHorizontalTopEndSunday
-                                  : styles.streakHorizontalTopEnd)
-                            : streakPosition === 'middle'
-                              ? (isSunday ? styles.streakHorizontalTopMiddleSunday : styles.streakHorizontalTopMiddle)
-                              : (isSunday ? styles.streakHorizontalTopSingleSunday : styles.streakHorizontalTopSingle)
-                      )
-                      : null;
+                    const topLineStyle =
+                      streakPosition === 'middle'
+                        ? [
+                            isSunday ? styles.streakHorizontalTopMiddleSunday : isMonday ? styles.streakHorizontalTopMiddleMonday : styles.streakHorizontalTopMiddle,
+                            prevStreakPosition === 'start' && !isMonday && !prevDaySunday && styles.streakHorizontalTopMiddleAfterStart,
+                            nextStreakPosition === 'end' &&
+                              (nextDaySunday
+                                ? styles.streakHorizontalTopMiddleBeforeEndSunday
+                                : nextDayMonday
+                                  ? styles.streakHorizontalTopMiddleBeforeEndMonday
+                                  : styles.streakHorizontalTopMiddleBeforeEnd),
+                          ]
+                        : null;
 
-                    const bottomLineStyle = streakPosition
-                      ? (
-                        streakPosition === 'start'
-                          ? (isSunday ? styles.streakHorizontalBottomStartSunday : styles.streakHorizontalBottomStart)
-                          : streakPosition === 'end'
-                            ? (isMonday
-                                ? styles.streakHorizontalBottomEndMonday
-                                : isSunday
-                                  ? styles.streakHorizontalBottomEndSunday
-                                  : styles.streakHorizontalBottomEnd)
-                            : streakPosition === 'middle'
-                              ? (isSunday ? styles.streakHorizontalBottomMiddleSunday : styles.streakHorizontalBottomMiddle)
-                              : (isSunday ? styles.streakHorizontalBottomSingleSunday : styles.streakHorizontalBottomSingle)
-                      )
-                      : null;
+                    const bottomLineStyle =
+                      streakPosition === 'middle'
+                        ? [
+                            isSunday ? styles.streakHorizontalBottomMiddleSunday : isMonday ? styles.streakHorizontalBottomMiddleMonday : styles.streakHorizontalBottomMiddle,
+                            prevStreakPosition === 'start' && !isMonday && !prevDaySunday && styles.streakHorizontalBottomMiddleAfterStart,
+                            nextStreakPosition === 'end' &&
+                              (nextDaySunday
+                                ? styles.streakHorizontalBottomMiddleBeforeEndSunday
+                                : nextDayMonday
+                                  ? styles.streakHorizontalBottomMiddleBeforeEndMonday
+                                  : styles.streakHorizontalBottomMiddleBeforeEnd),
+                          ]
+                        : null;
 
                     return (
                       <View key={index} style={styles.dayCellWrapper}>
                         {streakPosition && (
                           <>
+                            {(streakPosition === 'start' || streakPosition === 'end' || streakPosition === 'single') && (
+                              <View
+                                pointerEvents="none"
+                                style={[
+                                  styles.streakCornerOverlay,
+                                  streakPosition === 'start' && styles.streakCornerOverlayStart,
+                                  streakPosition === 'end' && styles.streakCornerOverlayEnd,
+                                  streakPosition === 'single' && styles.streakCornerOverlaySingle,
+                                ]}
+                              />
+                            )}
                             {topLineStyle && (
                               <View pointerEvents="none" style={topLineStyle} />
                             )}
                             {bottomLineStyle && (
                               <View pointerEvents="none" style={bottomLineStyle} />
-                            )}
-                            {(streakPosition === 'start' || streakPosition === 'single') && (
-                              <View pointerEvents="none" style={styles.streakVerticalLeft} />
-                            )}
-                            {(streakPosition === 'end' || streakPosition === 'single') && (
-                              <View
-                                pointerEvents="none"
-                                style={isSunday ? styles.streakVerticalRightSunday : styles.streakVerticalRight}
-                              />
                             )}
                           </>
                         )}
@@ -555,6 +560,7 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderTopLeftRadius: 8,
   },
   streakHorizontalTopStartSunday: {
     position: 'absolute',
@@ -564,6 +570,7 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderTopLeftRadius: 8,
   },
   streakHorizontalTopMiddle: {
     position: 'absolute',
@@ -573,12 +580,35 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+  },
+  streakHorizontalTopMiddleAfterStart: {
+    left: -12,
+  },
+  streakHorizontalTopMiddleBeforeEnd: {
+    right: -4,
+  },
+  streakHorizontalTopMiddleBeforeEndSunday: {
+    right: 0,
+  },
+  streakHorizontalTopMiddleBeforeEndMonday: {
+    right: 0,
   },
   streakHorizontalTopMiddleSunday: {
     position: 'absolute',
     top: 0,
     left: -3,
     right: 0,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalTopMiddleMonday: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: -3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
@@ -591,15 +621,17 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderTopRightRadius: 8,
   },
   streakHorizontalTopEndSunday: {
     position: 'absolute',
     top: 0,
     left: -3,
-    right: 0,
+    right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderTopRightRadius: 8,
   },
   streakHorizontalTopEndMonday: {
     position: 'absolute',
@@ -609,6 +641,7 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderTopRightRadius: 8,
   },
   streakHorizontalTopSingle: {
     position: 'absolute',
@@ -618,123 +651,155 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
   },
   streakHorizontalTopSingleSunday: {
     position: 'absolute',
     top: 0,
     left: 3,
-    right: 0,
+    right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
   },
   streakHorizontalBottomStart: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: 3,
     right: -3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderBottomLeftRadius: 8,
   },
   streakHorizontalBottomStartSunday: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: 3,
     right: 0,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderBottomLeftRadius: 8,
   },
   streakHorizontalBottomMiddle: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: -3,
     right: -3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
   },
+  streakHorizontalBottomMiddleAfterStart: {
+    left: -12,
+  },
+  streakHorizontalBottomMiddleBeforeEnd: {
+    right: -4,
+  },
+  streakHorizontalBottomMiddleBeforeEndSunday: {
+    right: 0,
+  },
+  streakHorizontalBottomMiddleBeforeEndMonday: {
+    right: 0,
+  },
   streakHorizontalBottomMiddleSunday: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: -3,
     right: 0,
+    height: 3,
+    backgroundColor: '#FFD700',
+    zIndex: 10,
+  },
+  streakHorizontalBottomMiddleMonday: {
+    position: 'absolute',
+    bottom: -0.5,
+    left: 0,
+    right: -3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
   },
   streakHorizontalBottomEnd: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: -3,
     right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderBottomRightRadius: 8,
   },
   streakHorizontalBottomEndSunday: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: -3,
-    right: 0,
+    right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderBottomRightRadius: 8,
   },
   streakHorizontalBottomEndMonday: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: 0,
     right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderBottomRightRadius: 8,
   },
   streakHorizontalBottomSingle: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: 3,
     right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
   },
   streakHorizontalBottomSingleSunday: {
     position: 'absolute',
-    bottom: -0.25,
+    bottom: -0.5,
     left: 3,
-    right: 0,
+    right: 3,
     height: 3,
     backgroundColor: '#FFD700',
     zIndex: 10,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
   },
-  streakVerticalLeft: {
+  streakCornerOverlay: {
     position: 'absolute',
     top: 0,
-    bottom: -0.25,
-    left: 3,
-    width: 3,
-    backgroundColor: '#FFD700',
-    zIndex: 10,
-  },
-  streakVerticalRight: {
-    position: 'absolute',
-    top: 0,
-    bottom: -0.25,
-    right: 3,
-    width: 3,
-    backgroundColor: '#FFD700',
-    zIndex: 10,
-  },
-  streakVerticalRightSunday: {
-    position: 'absolute',
-    top: 0,
-    bottom: -0.25,
+    left: 0,
     right: 0,
-    width: 3,
-    backgroundColor: '#FFD700',
-    zIndex: 10,
+    bottom: -0.25,
+    borderColor: '#FFD700',
+    borderRadius: 8,
+    borderWidth: 3,
+    zIndex: 9,
+  },
+  streakCornerOverlayStart: {
+    borderRightWidth: 0,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  streakCornerOverlayEnd: {
+    borderLeftWidth: 0,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+    left: -10,
+  },
+  streakCornerOverlaySingle: {
+    // full border retained
   },
   
   dayNumber: { color: '#FFFFFF', fontSize: 15, fontWeight: '500' },
