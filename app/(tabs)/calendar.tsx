@@ -767,7 +767,8 @@ const styles = StyleSheet.create({
   },
   streakHorizontalBottomMiddleBeforeEndSunday: {
     right: 0,
-    bottom: -0.5,
+    bottom: -0.25,
+    height: 2.75,
   },
   streakHorizontalBottomMiddleBeforeEndMonday: {
     right: 0,
