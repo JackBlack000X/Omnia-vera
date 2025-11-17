@@ -59,10 +59,10 @@ function getCompletionLevel(completed: number, total: number): CompletionLevel {
 
 function getCompletionStyle(level: CompletionLevel, isPast: boolean): { backgroundColor?: string; borderColor?: string; borderWidth?: number } {
   switch (level) {
-    case 'perfect': return { backgroundColor: '#00FF00' }; // bright green
-    case 'good': return { backgroundColor: '#FF8C00' }; // orange
-    case 'medium': return { backgroundColor: '#FFD700' }; // yellow
-    case 'low': return isPast ? { backgroundColor: '#FF0000' } : {}; // red only for past days
+    case 'perfect': return { backgroundColor: 'rgba(0, 255, 0, 0.5)' }; // bright green 50% transparent
+    case 'good': return { backgroundColor: 'rgba(255, 140, 0, 0.5)' }; // orange 50% transparent
+    case 'medium': return { backgroundColor: 'rgba(255, 215, 0, 0.5)' }; // yellow 50% transparent
+    case 'low': return isPast ? { backgroundColor: 'rgba(255, 0, 0, 0.5)' } : {}; // red 50% transparent only for past days
   }
 }
 
@@ -536,19 +536,19 @@ export default function CalendarScreen() {
               </View>
               <View style={styles.legendItems}>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendCircle, { backgroundColor: '#00FF00' }]} />
+                  <View style={[styles.legendCircle, { backgroundColor: 'rgba(0, 255, 0, 0.5)' }]} />
                   <Text style={styles.legendText}>100% - Giorno perfetto</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendCircle, { backgroundColor: '#FF8C00' }]} />
+                  <View style={[styles.legendCircle, { backgroundColor: 'rgba(255, 140, 0, 0.5)' }]} />
                   <Text style={styles.legendText}>75%+ - Buon progresso</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendCircle, { backgroundColor: '#FFD700' }]} />
+                  <View style={[styles.legendCircle, { backgroundColor: 'rgba(255, 215, 0, 0.5)' }]} />
                   <Text style={styles.legendText}>50%+ - Progresso medio</Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendCircle, { backgroundColor: '#FF0000' }]} />
+                  <View style={[styles.legendCircle, { backgroundColor: 'rgba(255, 0, 0, 0.5)' }]} />
                   <Text style={styles.legendText}>Sotto il 50%</Text>
                 </View>
               </View>
