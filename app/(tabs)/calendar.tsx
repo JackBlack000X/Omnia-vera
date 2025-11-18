@@ -341,9 +341,11 @@ export default function CalendarScreen() {
           return (
             <View key={`${year}-${month}`} style={[styles.calendarMonth, monthIndex === 0 && { marginTop: -80 }]}>
               <View style={styles.monthNav}>
-                <Text style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}>
-                  {getMonthName(month)} {year}
-                </Text>
+                <View style={[styles.monthLabel, isCurrentMonthActive && styles.monthLabelActive]}>
+                  <Text style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}>
+                    {getMonthName(month)} {year}
+                  </Text>
+                </View>
               </View>
               <View style={styles.calendar}>
                 <View style={styles.weekHeader}>
@@ -565,7 +567,7 @@ const styles = StyleSheet.create({
   header: { marginTop: 16, marginBottom: 24 },
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1 },
-  title: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold' },
+  title: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold', fontStyle: 'italic', letterSpacing: -1 },
   infoButton: { marginLeft: 12, marginTop: 4 },
   infoCircle: {
     width: 28,
@@ -583,9 +585,38 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  monthNav: { alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  monthYear: { color: '#9CA3AF', fontSize: 20, fontWeight: '600' },
-  monthYearActive: { color: '#FF0000' },
+  monthNav: { alignItems: 'flex-start', justifyContent: 'center', marginBottom: 14, width: '100%' },
+  monthLabel: {
+    backgroundColor: '#FFFFFF',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 22,
+    paddingVertical: 6,
+    borderRadius: 2,
+    borderWidth: 3,
+    borderColor: '#000000',
+    transform: [{ skewX: '-16deg' }],
+  },
+  monthLabelActive: {
+    borderWidth: 4,
+    paddingHorizontal: 26,
+    paddingVertical: 7,
+  },
+  monthYear: { 
+    color: '#FF1400', 
+    fontSize: 22, 
+    fontWeight: '900',
+    fontStyle: 'italic',
+    textTransform: 'uppercase',
+    textAlign: 'left',
+    letterSpacing: -1,
+    transform: [{ skewX: '12deg' }, { scaleX: 0.8 }, { scaleY: 1.08 }],
+    textShadowColor: '#000000',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
+  },
+  monthYearActive: { 
+    letterSpacing: -1.2,
+  },
   scrollView: { flex: 1 },
   scrollContent: { 
     paddingBottom: 100,
