@@ -330,8 +330,6 @@ export default function CalendarScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        snapToInterval={screenHeight}
-        decelerationRate="fast"
       >
         {allMonths.map((monthData, monthIndex) => {
           const { year, month } = monthData;
@@ -563,8 +561,8 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#000000', paddingHorizontal: 16 },
-  header: { marginTop: 16, marginBottom: 24 },
+  screen: { flex: 1, backgroundColor: '#000000', paddingHorizontal: 0 },
+  header: { marginTop: 16, marginBottom: 24, paddingHorizontal: 16 },
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1 },
   title: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold', fontStyle: 'italic', letterSpacing: -1 },
@@ -587,19 +585,12 @@ const styles = StyleSheet.create({
 
   monthNav: { alignItems: 'flex-start', justifyContent: 'center', marginBottom: 14, width: '100%' },
   monthLabel: {
-    backgroundColor: '#FFFFFF',
     alignSelf: 'flex-start',
-    paddingHorizontal: 22,
-    paddingVertical: 6,
-    borderRadius: 2,
-    borderWidth: 3,
-    borderColor: '#000000',
-    transform: [{ skewX: '-16deg' }],
+    marginLeft: 5,
+    paddingHorizontal: 0,
+    width: '100%', // Allow full width
   },
   monthLabelActive: {
-    borderWidth: 4,
-    paddingHorizontal: 26,
-    paddingVertical: 7,
   },
   monthYear: { 
     color: '#FF1400', 
@@ -609,10 +600,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'left',
     letterSpacing: -1,
-    transform: [{ skewX: '12deg' }, { scaleX: 0.8 }, { scaleY: 1.08 }],
-    textShadowColor: '#000000',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 6,
+    transform: [{ skewX: '-24deg' }, { scaleX: 0.7 }, { scaleY: 1.2 }],
+    textShadowColor: '#FFFFFF',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 0,
   },
   monthYearActive: { 
     letterSpacing: -1.2,
@@ -622,7 +613,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
     paddingTop: 100,
   },
-  calendarMonth: { minHeight: 400, marginBottom: -85 },
+  calendarMonth: { minHeight: 400, marginBottom: -75 },
 
   calendar: { marginBottom: 5 },
   weekHeader: { flexDirection: 'row', marginBottom: 12 },

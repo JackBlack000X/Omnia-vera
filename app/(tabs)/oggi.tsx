@@ -93,7 +93,13 @@ export default function OggiScreen() {
         if (start) setWindowStart(start);
         if (end) setWindowEnd(end);
         const v = vis ? parseInt(vis, 10) : NaN;
-        if (!isNaN(v)) setVisibleHours(Math.min(24, Math.max(5, v)));
+        if (!isNaN(v)) {
+          // Calcola il massimo consentito basato sulla finestra
+          const startH = start && start !== '24:00' ? parseInt(start.slice(0, 2), 10) : (start === '24:00' ? 24 : 0);
+          const endH = end && end !== '24:00' ? parseInt(end.slice(0, 2), 10) : (end === '24:00' ? 24 : 24);
+          const maxVisibleHours = endH - startH;
+          setVisibleHours(Math.min(maxVisibleHours || 24, Math.max(5, v)));
+        }
         const forced = await AsyncStorage.getItem('oggi_forced_task_color_v1');
         if (forced === 'black' || forced === 'white') setForcedTaskColor(forced);
       } catch {}
@@ -114,6 +120,21 @@ export default function OggiScreen() {
     const v = forcedTaskColor ?? 'auto';
     AsyncStorage.setItem('oggi_forced_task_color_v1', v).catch(() => {});
   }, [forcedTaskColor]);
+
+  // Limita automaticamente visibleHours alla differenza tra windowEnd e windowStart
+  useEffect(() => {
+    const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
+    const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
+    const maxVisibleHours = endH - startH;
+    
+    // Aggiorna visibleHours solo se supera il massimo consentito
+    setVisibleHours(prev => {
+      if (prev > maxVisibleHours) {
+        return Math.max(5, Math.min(24, maxVisibleHours));
+      }
+      return prev;
+    });
+  }, [windowStart, windowEnd]);
 
 
   const toMinutes = (hhmm: string) => {
@@ -1318,21 +1339,30 @@ export default function OggiScreen() {
             <View style={styles.counterGroup}>
               <Text style={styles.pickerLabel}>Ore visibili nella finestra attuale</Text>
               <View style={styles.counterRow}>
-                <Pressable
-                  accessibilityRole="button"
-                  style={[styles.stepBtn, visibleHours <= 5 ? styles.stepBtnDisabled : {}]}
-                  onPress={() => setVisibleHours(h => Math.max(5, h - 1))}
-                >
-                  <Text style={[styles.stepBtnText, visibleHours <= 5 ? styles.stepBtnTextDisabled : {}]}>-</Text>
-                </Pressable>
-                <Text style={styles.timeText}>{visibleHours}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  style={[styles.stepBtn, visibleHours >= 24 ? styles.stepBtnDisabled : {}]}
-                  onPress={() => setVisibleHours(h => Math.min(24, h + 1))}
-                >
-                  <Text style={[styles.stepBtnText, visibleHours >= 24 ? styles.stepBtnTextDisabled : {}]}>+</Text>
-                </Pressable>
+                {(() => {
+                  const startH = windowStart === '24:00' ? 24 : parseInt(windowStart.slice(0, 2), 10);
+                  const endH = windowEnd === '24:00' ? 24 : parseInt(windowEnd.slice(0, 2), 10);
+                  const maxVisibleHours = endH - startH;
+                  return (
+                    <>
+                      <Pressable
+                        accessibilityRole="button"
+                        style={[styles.stepBtn, visibleHours <= 5 ? styles.stepBtnDisabled : {}]}
+                        onPress={() => setVisibleHours(h => Math.max(5, h - 1))}
+                      >
+                        <Text style={[styles.stepBtnText, visibleHours <= 5 ? styles.stepBtnTextDisabled : {}]}>-</Text>
+                      </Pressable>
+                      <Text style={styles.timeText}>{visibleHours}</Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        style={[styles.stepBtn, visibleHours >= maxVisibleHours ? styles.stepBtnDisabled : {}]}
+                        onPress={() => setVisibleHours(h => Math.min(maxVisibleHours, h + 1))}
+                      >
+                        <Text style={[styles.stepBtnText, visibleHours >= maxVisibleHours ? styles.stepBtnTextDisabled : {}]}>+</Text>
+                      </Pressable>
+                    </>
+                  );
+                })()}
               </View>
             </View>
 
