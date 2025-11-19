@@ -52,7 +52,10 @@ export default function OggiScreen() {
   const [visibleHours, setVisibleHours] = useState<number>(24);
   const [forcedTaskColor, setForcedTaskColor] = useState<null | 'black' | 'white'>(null);
   const [manualCorrections, setManualCorrections] = useState<Record<number, Record<string, number>>>({});
+  const [globalCorrections, setGlobalCorrections] = useState<Record<number, number>>({});
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<OggiEvent | null>(null);
+  const [isGlobalEdit, setIsGlobalEdit] = useState(false);
   const [lastTap, setLastTap] = useState<{ id: string | null; time: number }>({ id: null, time: 0 });
   
   const today = getDay(currentDate);
@@ -88,11 +91,12 @@ export default function OggiScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [start, end, vis, manualCorr] = await Promise.all([
+        const [start, end, vis, manualCorr, globalCorr] = await Promise.all([
           AsyncStorage.getItem('oggi_window_start_v1'),
           AsyncStorage.getItem('oggi_window_end_v1'),
           AsyncStorage.getItem('oggi_visible_hours_v1'),
           AsyncStorage.getItem('oggi_manual_corrections_v1'),
+          AsyncStorage.getItem('oggi_global_corrections_v1'),
         ]);
         if (start) setWindowStart(start);
         if (end) setWindowEnd(end);
@@ -107,6 +111,11 @@ export default function OggiScreen() {
         if (manualCorr) {
           try {
             setManualCorrections(JSON.parse(manualCorr));
+          } catch {}
+        }
+        if (globalCorr) {
+          try {
+            setGlobalCorrections(JSON.parse(globalCorr));
           } catch {}
         }
         const forced = await AsyncStorage.getItem('oggi_forced_task_color_v1');
@@ -128,6 +137,10 @@ export default function OggiScreen() {
   useEffect(() => {
     AsyncStorage.setItem('oggi_manual_corrections_v1', JSON.stringify(manualCorrections)).catch(() => {});
   }, [manualCorrections]);
+
+  useEffect(() => {
+    AsyncStorage.setItem('oggi_global_corrections_v1', JSON.stringify(globalCorrections)).catch(() => {});
+  }, [globalCorrections]);
 
   useEffect(() => {
     const v = forcedTaskColor ?? 'auto';
@@ -237,10 +250,6 @@ export default function OggiScreen() {
     // Ancoriamo alla stessa logica delle righe: prima ora a 0, poi blocchi da firstHourGap
     const topBlocks = fullHoursAfterStart === 0 ? 0 : (firstHourGap + (fullHoursAfterStart - 1) * firstHourGap);
     let top = topBlocks + minutesIntoCurrentHour * (firstHourGap / 60);
-    // Offset visivo: sposta SOLO il blocco evento di 30 minuti verso il basso
-    const visualOffsetMinutes = 30;
-    const visualOffsetPx = visualOffsetMinutes * (firstHourGap / 60);
-    top += visualOffsetPx;
     
     // Correzione per task di diverse lunghezze basata su formula generica
     const taskDurationHours = (visibleEnd - visibleStart) / 60;
@@ -332,542 +341,90 @@ export default function OggiScreen() {
       top += correctionPx;
     }
     
+    // Correzione globale per tutti gli orari: sposta tutto giù di 5.5 minuti
+    const globalOffset = 5.5 * (firstHourGap / 60);
+    top += globalOffset;
+
     // Correzione per 5 ore visibili - NON toccare 24 ore
     if (visibleHours === 5) {
       // Correzione specifica per 5 minuti quando visibleHours === 5
       if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionMinutes = -24.5; // Sposta in su di 24.5 minuti
+        const correctionMinutes = 0; 
         const correctionPx = correctionMinutes * (firstHourGap / 60);
         top += correctionPx;
       }
       
       // Correzione specifica per 10 minuti quando visibleHours === 5
       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionMinutes = -23.5; // Sposta in su di 23.5 minuti
+        const correctionMinutes = 0; 
         const correctionPx = correctionMinutes * (firstHourGap / 60);
         top += correctionPx;
       }
       
       // Correzione specifica per 15 minuti quando visibleHours === 5
       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionMinutes = -21; // Sposta in su di 21 minuti
+        const correctionMinutes = 0; 
         const correctionPx = correctionMinutes * (firstHourGap / 60);
         top += correctionPx;
       }
       
        // Correzione specifica per 20 minuti quando visibleHours === 5
        if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-         const correctionMinutes = -18.625; // Sposta in su di 18.625 minuti
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         const correctionMinutes = 0; 
+         const correctionPx = correctionMinutes * (firstHourGap / 60) - 0.25; // 0.25px in su
          top += correctionPx;
        }
       
       // Correzione specifica per 25 minuti quando visibleHours === 5
       if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionMinutes = -16.25; // Sposta in su di 16.25 minuti
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
+        const correctionMinutes = 0; 
+        const correctionPx = correctionMinutes * (firstHourGap / 60) - 0.25; // 0.25px in su
         top += correctionPx;
       }
       
       // Correzione specifica per 30 minuti quando visibleHours === 5
       if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionMinutes = -13.5; // Sposta in su di 13.5 minuti
+        const correctionMinutes = 0; 
         const correctionPx = correctionMinutes * (firstHourGap / 60);
         top += correctionPx;
       }
       
        // Correzione specifica per 35 minuti quando visibleHours === 5
        if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-         const correctionMinutes = -11.25; // Sposta in su di 11.25 minuti
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         const correctionMinutes = 0; 
+         const correctionPx = correctionMinutes * (firstHourGap / 60) - 0.25; // 0.25px in su
          top += correctionPx;
        }
        
        // Correzione specifica per 40 minuti quando visibleHours === 5
        if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-         const correctionMinutes = -8.85; // Sposta in su di 8.85 minuti
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
+         const correctionMinutes = 0; 
+         const correctionPx = correctionMinutes * (firstHourGap / 60) - 0.5; // Altri 0.25px in su (totale 0.5)
          top += correctionPx;
        }
        
        // Correzione specifica per 45 minuti quando visibleHours === 5
        if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
-         const correctionMinutes = -6.75; // Sposta in su di 6.75 minuti
+         const correctionMinutes = 0; 
          const correctionPx = correctionMinutes * (firstHourGap / 60);
          top += correctionPx;
        }
        
        // Correzione specifica per 50 minuti quando visibleHours === 5
        if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-         const correctionMinutes = -4.75; // Sposta in su di 4.75 minuti
+         const correctionMinutes = 0; 
          const correctionPx = correctionMinutes * (firstHourGap / 60);
          top += correctionPx;
        }
        
        // Correzione specifica per 55 minuti quando visibleHours === 5
        if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-         const correctionMinutes = -2.75; // Sposta in su di 2.75 minuti
+         const correctionMinutes = 0; 
          const correctionPx = correctionMinutes * (firstHourGap / 60);
          top += correctionPx;
        }
      }
     
-    // Correzione specifica per 6 ore visibili
-    if (visibleHours === 6) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.5; // Sposta in su di 0.5 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -2; // Sposta in su di 2 pixel (era 1.5, ora +0.5)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -1.5; // Sposta in su di 1.5 pixel (era 2, ora -0.5)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -1; // Sposta in su di 1 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -1; // Sposta in su di 1 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -1; // Sposta in su di 1 pixel (era 0.5, ora +0.5)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -0.5; // Sposta in su di 0.5 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-        const correctionPx = -0.5; // Sposta in su di 0.5 pixel
-        top += correctionPx;
-      }
-    }
-    
-    // Correzione specifica per 7 ore visibili
-    if (visibleHours === 7) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.5; // Scende di 0.25 pixel rispetto a prima
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -2.25; // Alza di ulteriori 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -2.5; // Alza ulteriormente di 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -1.5; // Sposta in su di 1.5 pixel (era 2, ora -0.5)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -1.75; // Sposta in su di 1.75 pixel (era 1.5, ora +0.25)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -1.25; // Alza di ulteriori 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -0.625; // Sposta in su di 0.625 pixel (era 0.5, ora +0.125)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-        const correctionPx = -0.25; // Sposta in su di 0.25 pixel (era 0.125, ora +0.125)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-        const correctionPx = -0.125; // Sposta in su di 0.125 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-        const correctionPx = -0.25; // Alza di 0.25 pixel
-        top += correctionPx;
-      }
-    }
-    
-    // Correzione specifica per 8 ore visibili
-    if (visibleHours === 8) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.25; // Alza di 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1.375; // Alza di ulteriori 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -3.25; // Alza di ulteriori 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -1.5; // Sposta in su di 1.5 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -2; // Sposta in su di 2 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -2.2; // Alza di ulteriori 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -1; // Alza di ulteriori 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-        const correctionPx = -0.25; // Sposta in giu di 1px rispetto a prima
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-        const correctionPx = -0.5; // Sposta in su di 0.5 pixel (altri 0.25)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
-        const correctionPx = 0.25; // Abbassa di 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-        const correctionPx = -0.25; // Alza di 0.25px
-        top += correctionPx;
-      }
-    }
-    
-    // Correzione specifica per 11 ore visibili
-    if (visibleHours === 11) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.125; // Alza di 0.125 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1.125; // Alza di 1.125 pixel (era 1.25, ora -0.125)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -3; // Alza di 3 pixel (era 5, ora -2)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -4; // Alza di 4 pixel (era 3, ora +1)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -5.5; // Alza di 5.5 pixel (era 2.5, ora +3)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -2; // Alza di 2 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -1; // Alza di 1 pixel
-        top += correctionPx;
-      }
-    }
-    
-    // Correzione specifica per 12 ore visibili
-    if (visibleHours === 12) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.5; // Alza di 0.5 pixel (era 0.75, ora -0.25)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1; // Alza di 1 pixel (era 0.5, ora +0.5)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -2.75; // Alza di 2.75 pixel (era 2.5, ora +0.25)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -4; // Alza di 4 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -3.25; // Alza di 3.25 pixel (era 3.75, ora -0.5)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -2; // Alza di 2 pixel (era 3, ora -1)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -1.25; // Alza di 1.25 pixel (era 0.75, ora +0.5)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-        const correctionPx = -0.25; // Alza di 0.25 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
-        const correctionPx = -0.25; // Alza di 0.25 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-        const correctionPx = -0.25; // Alza di 0.25 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-        const correctionPx = -0.25; // Alza di 0.25 pixel
-        top += correctionPx;
-      }
-    }
-    
-    // Correzione specifica per 13 ore visibili
-    if (visibleHours === 13) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.25; // Alza di 0.25 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -0.75; // Alza di 0.75 pixel (era 0.5, ora +0.25)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -2.25; // Alza di 2.25 pixel (era 2, ora +0.25)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -3.5; // Alza di 3.5 pixel (era 3, ora +0.5)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -3; // Alza di 3 pixel
-        top += correctionPx;
-      }
-    }
-    
-    // Correzione specifica per 9 ore visibili
-    if (visibleHours === 9) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.5; // Sposta in su di 0.5 pixel (era 0.25, ora +0.25)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1.45; // Sposta in su di 1.45 pixel (era 1.325, ora +0.125)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -3.875; // Sposta in su di 3.875 pixel (era 3.75, ora +0.125)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -1.625; // Sposta in su di 1.625 pixel (era 1.5, ora +0.125)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-        const correctionPx = -0.5; // Sposta in su di 0.5 pixel (era 0.25, ora +0.25)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -2.875; // Sposta in su di 2.875 pixel (era 2.75, ora +0.125)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -2.625; // Alza di ulteriori 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -1.25; // Alza di ulteriori 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-        const correctionPx = -0.25; // Alza di 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-        const correctionPx = -0.25; // Sposta in su di 0.25 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
-        const correctionPx = -0.125; // Sposta in su di 0.125 pixel
-        top += correctionPx;
-      }
-    }
-    
-    // Correzione specifica per 10 ore visibili
-    if (visibleHours === 10) {
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionPx = -0.25; // Alza di 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionPx = -1; // Alza di ulteriori 0.25px (totale 1px)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionPx = -3.5; // Abbassa di 0.25px (totale 3.5px)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionPx = -2.5; // Alza di ulteriori 0.25px (totale 2.5px)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-        const correctionPx = -3.25; // Alza di ulteriori 0.25px (totale 3.25px)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionPx = -1.75; // Abbassa di 0.25px (totale 1.75px)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-        const correctionPx = -0.75; // Alza di ulteriori 0.25px (totale 0.75px)
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-        const correctionPx = -0.25; // Alza di 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
-        const correctionPx = -0.25; // Alza di 0.25px
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-        const correctionPx = -0.25; // Alza di 0.25 pixel
-        top += correctionPx;
-      }
-      if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-        const correctionPx = -0.25; // Alza di 0.25px
-        top += correctionPx;
-      }
-    }
-    
-    // Correzione per ore visibili 6-23 - interpola tra 5 ore e 24 ore
-    if (visibleHours >= 6 && visibleHours < 24) {
-      // Punti di riferimento:
-      // 5 ore: -24.5 minuti per 5 minuti, -23.5 minuti per 10 minuti
-      // 24 ore: +1 minuto per 5 minuti, +1 minuto per 10 minuti (offset attuali)
-      
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        // Interpolazione lineare tra 5 ore (-24.5) e 24 ore (+1)
-        const offset5h = -24.5;
-        const offset24h = 1;
-        const interpolationFactor = (visibleHours - 5) / (24 - 5); // 0 per 5h, 1 per 24h
-        const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-        
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-      }
-      
-       if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-         // Interpolazione lineare tra 5 ore (-23.5) e 24 ore (+1)
-         const offset5h = -23.5;
-         const offset24h = 1;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5); // 0 per 5h, 1 per 24h
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-         // Interpolazione lineare tra 5 ore (-21) e 24 ore (+1)
-         const offset5h = -21;
-         const offset24h = 1;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-         // Interpolazione lineare tra 5 ore (-18.625) e 24 ore (+1)
-         const offset5h = -18.625;
-         const offset24h = 1;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-         // Interpolazione lineare tra 5 ore (-16.25) e 24 ore (+1.25)
-         const offset5h = -16.25;
-         const offset24h = 1.25;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-         // Interpolazione lineare tra 5 ore (-13.5) e 24 ore (+1)
-         const offset5h = -13.5;
-         const offset24h = 1;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-         // Interpolazione lineare tra 5 ore (-11.25) e 24 ore (+1.25)
-         const offset5h = -11.25;
-         const offset24h = 1.25;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-         // Interpolazione lineare tra 5 ore (-8.85) e 24 ore (+1.25)
-         const offset5h = -8.85;
-         const offset24h = 1.25;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
-         // Interpolazione lineare tra 5 ore (-6.75) e 24 ore (+1)
-         const offset5h = -6.75;
-         const offset24h = 1;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-         // Interpolazione lineare tra 5 ore (-4.75) e 24 ore (+1)
-         const offset5h = -4.75;
-         const offset24h = 1;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-         // Interpolazione lineare tra 5 ore (-2.75) e 24 ore (+1)
-         const offset5h = -2.75;
-         const offset24h = 1;
-         const interpolationFactor = (visibleHours - 5) / (24 - 5);
-         const correctionMinutes = offset5h + (offset24h - offset5h) * interpolationFactor;
-         
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-    }
- 
     // Applica eventuali correzioni manuali salvate per durata/orario visibile
     const fullDurationHours = (endMinutes - startMinutes) / 60;
     const manualKey = fullDurationHours.toFixed(4);
@@ -876,6 +433,12 @@ export default function OggiScreen() {
       top += manualCorrection;
     }
 
+    // Applica correzione globale salvata (sovrascrive/aggiunge a quella hardcoded)
+    const savedGlobal = globalCorrections[visibleHours];
+    if (savedGlobal !== undefined) {
+      top += savedGlobal;
+    }
+ 
     // Current height with hourGap (baseline used so center stays fixed after resize)
     let prevHeight = (visibleEnd - visibleStart) * (hourGap / 60);
     // Target height so that 60min == firstHourGap per current scale
@@ -886,16 +449,17 @@ export default function OggiScreen() {
     const bottomGapPx = 2; // adjusted gap at the bottom
     const applyTrim = (h: number) => {
       if (endsOnHour) {
-        return Math.max(20, h - bottomGapPx);
+        // Nessun limite minimo rigido (es. 20px) per permettere la vera proporzione
+        // Usiamo Math.max(1, ...) solo per evitare height 0 o negativi
+        return Math.max(1, h - bottomGapPx);
       }
-      return Math.max(20, h);
+      return Math.max(1, h);
     };
     prevHeight = applyTrim(prevHeight);
     height = applyTrim(height);
 
-    // Keep the visual center unchanged: adjust top by half the delta
-    const delta = height - prevHeight;
-    top -= delta / 2;
+    // Abbiamo rimosso la compensazione del centro (top -= delta / 2) 
+    // per mantenere il punto di partenza (top) fisso e modificare solo la fine (height).
 
     return { top, height };
   };
@@ -921,15 +485,14 @@ export default function OggiScreen() {
     const minutesIntoCurrentHour = minutesFromWindowStart % 60;
     const topBlocks = fullHoursAfterStart === 0 ? 0 : (firstHourGap + (fullHoursAfterStart - 1) * firstHourGap);
     let top = topBlocks + minutesIntoCurrentHour * (firstHourGap / 60);
-    const visualOffsetMinutes = 30;
-    top += visualOffsetMinutes * (firstHourGap / 60);
+    
     // Replica la correzione del centro applicata alle task
     const applyTrim = (h: number, endsOnHour: boolean) => endsOnHour ? Math.max(20, h - 2) : Math.max(20, h);
     const endsOnHour = (visualEnd % 60) === 0;
     const prevHeight = applyTrim((visualEnd - visualStart) * (hourGap / 60), endsOnHour);
     const height = applyTrim((visualEnd - visualStart) * (firstHourGap / 60), endsOnHour);
     const delta = height - prevHeight;
-    top -= delta; // compensazione completa del delta
+    // top -= delta; // compensazione completa del delta
     return top;
   };
 
@@ -1062,9 +625,11 @@ export default function OggiScreen() {
 
   const handleTaskPress = (event: OggiEvent) => {
     const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-
-    if (lastTap.id === event.id && now - lastTap.time < DOUBLE_TAP_DELAY) {
+    const DOUBLE_TAP_DELAY = 300; // ms
+    
+    if (lastTap.id === event.id && (now - lastTap.time) < DOUBLE_TAP_DELAY) {
+      // Doppio tap rilevato
+      setEditingTaskId(event.id);
       setEditingTask(event);
       setLastTap({ id: null, time: 0 });
     } else {
@@ -1073,32 +638,42 @@ export default function OggiScreen() {
   };
 
   const adjustTaskPosition = (event: OggiEvent, direction: 'up' | 'down') => {
-    const [startHour, startMin] = event.startTime.split(':').map(Number);
-    const [endHour, endMin] = event.endTime.split(':').map(Number);
-    const startMinutes = startHour * 60 + startMin;
-    const endMinutes = endHour * 60 + endMin;
-    const taskDurationHours = (endMinutes - startMinutes) / 60;
-    const durationKey = taskDurationHours.toFixed(4);
+    const adjustment = direction === 'up' ? -0.25 : 0.25;
 
-    setManualCorrections(prev => {
-      const correctionsForHours = prev[visibleHours] ?? {};
+    if (isGlobalEdit) {
+      // Modifica globale per tutte le task di questo visibleHours
+      const currentGlobal = globalCorrections[visibleHours] ?? 0;
+      setGlobalCorrections(prev => ({
+        ...prev,
+        [visibleHours]: currentGlobal + adjustment
+      }));
+    } else {
+      // Modifica singola task (logica esistente)
+      const [startHour, startMin] = event.startTime.split(':').map(Number);
+      const [endHour, endMin] = event.endTime.split(':').map(Number);
+      const startMinutes = startHour * 60 + startMin;
+      const endMinutes = endHour * 60 + endMin;
+      const taskDurationHours = (endMinutes - startMinutes) / 60;
+      const durationKey = taskDurationHours.toFixed(4);
+      
+      const correctionsForHours = manualCorrections[visibleHours] || {};
       const currentCorrection = correctionsForHours[durationKey] ?? 0;
-      const adjustment = direction === 'up' ? -0.25 : 0.25;
       const newCorrection = currentCorrection + adjustment;
-
-      return {
+      
+      setManualCorrections(prev => ({
         ...prev,
         [visibleHours]: {
           ...correctionsForHours,
-          [durationKey]: newCorrection,
-        },
-      };
-    });
+          [durationKey]: newCorrection
+        }
+      }));
+    }
   };
 
   const fixTaskPosition = () => {
+    setEditingTaskId(null);
     setEditingTask(null);
-    setLastTap({ id: null, time: 0 });
+    setIsGlobalEdit(false); // Reset to single edit on close
   };
 
   const renderEvent = (event: OggiEvent) => {
@@ -1131,13 +706,13 @@ export default function OggiScreen() {
     return (
       <TouchableOpacity
         key={event.id}
-        activeOpacity={0.8}
+        activeOpacity={0.7}
         onPress={() => handleTaskPress(event)}
         style={[
           styles.timedEvent,
           {
             top: top,
-            height: Math.max(height, 20),
+            height: Math.max(height, 1),
             backgroundColor: bg,
             left: leftPx,
             width: widthPx,
@@ -1409,21 +984,21 @@ export default function OggiScreen() {
                   const maxVisibleHours = endH - startH;
                   return (
                     <>
-                      <Pressable
-                        accessibilityRole="button"
-                        style={[styles.stepBtn, visibleHours <= 5 ? styles.stepBtnDisabled : {}]}
-                        onPress={() => setVisibleHours(h => Math.max(5, h - 1))}
-                      >
-                        <Text style={[styles.stepBtnText, visibleHours <= 5 ? styles.stepBtnTextDisabled : {}]}>-</Text>
-                      </Pressable>
-                      <Text style={styles.timeText}>{visibleHours}</Text>
-                      <Pressable
-                        accessibilityRole="button"
+                <Pressable
+                  accessibilityRole="button"
+                  style={[styles.stepBtn, visibleHours <= 5 ? styles.stepBtnDisabled : {}]}
+                  onPress={() => setVisibleHours(h => Math.max(5, h - 1))}
+                >
+                  <Text style={[styles.stepBtnText, visibleHours <= 5 ? styles.stepBtnTextDisabled : {}]}>-</Text>
+                </Pressable>
+                <Text style={styles.timeText}>{visibleHours}</Text>
+                <Pressable
+                  accessibilityRole="button"
                         style={[styles.stepBtn, visibleHours >= maxVisibleHours ? styles.stepBtnDisabled : {}]}
                         onPress={() => setVisibleHours(h => Math.min(maxVisibleHours, h + 1))}
-                      >
+                >
                         <Text style={[styles.stepBtnText, visibleHours >= maxVisibleHours ? styles.stepBtnTextDisabled : {}]}>+</Text>
-                      </Pressable>
+                </Pressable>
                     </>
                   );
                 })()}
@@ -1458,10 +1033,22 @@ export default function OggiScreen() {
                   const durationKey = taskDurationHours.toFixed(4);
                   const correctionsForHours = manualCorrections[visibleHours] || {};
                   const currentCorrection = correctionsForHours[durationKey] ?? 0;
+                  const currentGlobal = globalCorrections[visibleHours] ?? 0;
                   const durationMinutes = Math.round(taskDurationHours * 60);
 
                   return (
                     <>
+                      <View style={styles.editorOverlayToggleContainer}>
+                        <TouchableOpacity 
+                          style={[styles.editorOverlayToggleButton, isGlobalEdit && styles.editorOverlayToggleActive]}
+                          onPress={() => setIsGlobalEdit(!isGlobalEdit)}
+                        >
+                          <Text style={[styles.editorOverlayToggleText, isGlobalEdit && styles.editorOverlayToggleTextActive]}>
+                            {isGlobalEdit ? "Modifica: TUTTI" : "Modifica: SINGOLO"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
                       <Text style={styles.editorOverlayTitle} numberOfLines={1}>
                         {editingTask.title}
                       </Text>
@@ -1469,7 +1056,10 @@ export default function OggiScreen() {
                         {editingTask.startTime} - {editingTask.endTime} · {durationMinutes} min
                       </Text>
                       <Text style={styles.editorOverlaySubtext}>
-                        Correzione: {currentCorrection.toFixed(2)}px · {visibleHours}h
+                        {isGlobalEdit 
+                          ? `Globale: ${(currentGlobal).toFixed(2)}px · ${visibleHours}h`
+                          : `Task: ${currentCorrection.toFixed(2)}px · ${visibleHours}h`
+                        }
                       </Text>
                       <View style={styles.editorOverlayButtons}>
                         <TouchableOpacity
@@ -1731,8 +1321,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
     alignItems: 'flex-end',
-    justifyContent: 'flex-start',
-    paddingTop: 60,
+    justifyContent: 'flex-end', // Spostato in basso
+    paddingBottom: 100, // Spazio dal fondo (sopra la tab bar)
     paddingRight: 16
   },
   editorOverlayCard: {
@@ -1746,6 +1336,31 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6
   },
+  editorOverlayToggleContainer: {
+    marginBottom: 12,
+    alignItems: 'center'
+  },
+  editorOverlayToggleButton: {
+    backgroundColor: '#374151',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#4B5563'
+  },
+  editorOverlayToggleText: {
+    color: '#E5E7EB',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  editorOverlayToggleActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#3B82F6'
+  },
+  editorOverlayToggleTextActive: {
+    color: '#FFFFFF'
+  },
+
   editorOverlayTitle: {
     color: THEME.text,
     fontSize: 14,
