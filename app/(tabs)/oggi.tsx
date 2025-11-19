@@ -1532,7 +1532,7 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize'
   },
   todayDateText: {
-    color: '#ff3b30'
+    color: '#FF0000'
   },
   otherDateText: {
     color: '#ffffff'
@@ -1606,7 +1606,7 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   hourText: {
-    color: '#FF0000',
+    color: '#FFFFFF',
     fontSize: 16,
     width: 50,
     textAlign: 'right',
@@ -1648,7 +1648,7 @@ const styles = StyleSheet.create({
   currentTimeLineRed: {
     flex: 1,
     height: 2,
-    backgroundColor: '#ff3b30'
+    backgroundColor: '#FF0000'
   },
 
   modalBackdrop: {
