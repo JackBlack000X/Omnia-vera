@@ -4,7 +4,7 @@ import { useHabits } from '@/lib/habits/Provider';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useState } from 'react';
-import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const TZ = 'Europe/Zurich';
@@ -51,6 +51,9 @@ export default function OggiScreen() {
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
   const [visibleHours, setVisibleHours] = useState<number>(24);
   const [forcedTaskColor, setForcedTaskColor] = useState<null | 'black' | 'white'>(null);
+  const [manualCorrections, setManualCorrections] = useState<Record<number, Record<string, number>>>({});
+  const [editingTask, setEditingTask] = useState<OggiEvent | null>(null);
+  const [lastTap, setLastTap] = useState<{ id: string | null; time: number }>({ id: null, time: 0 });
   
   const today = getDay(currentDate);
 
@@ -85,10 +88,11 @@ export default function OggiScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [start, end, vis] = await Promise.all([
+        const [start, end, vis, manualCorr] = await Promise.all([
           AsyncStorage.getItem('oggi_window_start_v1'),
           AsyncStorage.getItem('oggi_window_end_v1'),
           AsyncStorage.getItem('oggi_visible_hours_v1'),
+          AsyncStorage.getItem('oggi_manual_corrections_v1'),
         ]);
         if (start) setWindowStart(start);
         if (end) setWindowEnd(end);
@@ -99,6 +103,11 @@ export default function OggiScreen() {
           const endH = end && end !== '24:00' ? parseInt(end.slice(0, 2), 10) : (end === '24:00' ? 24 : 24);
           const maxVisibleHours = endH - startH;
           setVisibleHours(Math.min(maxVisibleHours || 24, Math.max(5, v)));
+        }
+        if (manualCorr) {
+          try {
+            setManualCorrections(JSON.parse(manualCorr));
+          } catch {}
         }
         const forced = await AsyncStorage.getItem('oggi_forced_task_color_v1');
         if (forced === 'black' || forced === 'white') setForcedTaskColor(forced);
@@ -115,6 +124,10 @@ export default function OggiScreen() {
   useEffect(() => {
     AsyncStorage.setItem('oggi_visible_hours_v1', String(visibleHours)).catch(() => {});
   }, [visibleHours]);
+
+  useEffect(() => {
+    AsyncStorage.setItem('oggi_manual_corrections_v1', JSON.stringify(manualCorrections)).catch(() => {});
+  }, [manualCorrections]);
 
   useEffect(() => {
     const v = forcedTaskColor ?? 'auto';
@@ -855,6 +868,14 @@ export default function OggiScreen() {
        }
     }
  
+    // Applica eventuali correzioni manuali salvate per durata/orario visibile
+    const fullDurationHours = (endMinutes - startMinutes) / 60;
+    const manualKey = fullDurationHours.toFixed(4);
+    const manualCorrection = manualCorrections[visibleHours]?.[manualKey];
+    if (manualCorrection !== undefined) {
+      top += manualCorrection;
+    }
+
     // Current height with hourGap (baseline used so center stays fixed after resize)
     let prevHeight = (visibleEnd - visibleStart) * (hourGap / 60);
     // Target height so that 60min == firstHourGap per current scale
@@ -1039,6 +1060,47 @@ export default function OggiScreen() {
     return out;
   }, [timedEvents]);
 
+  const handleTaskPress = (event: OggiEvent) => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+
+    if (lastTap.id === event.id && now - lastTap.time < DOUBLE_TAP_DELAY) {
+      setEditingTask(event);
+      setLastTap({ id: null, time: 0 });
+    } else {
+      setLastTap({ id: event.id, time: now });
+    }
+  };
+
+  const adjustTaskPosition = (event: OggiEvent, direction: 'up' | 'down') => {
+    const [startHour, startMin] = event.startTime.split(':').map(Number);
+    const [endHour, endMin] = event.endTime.split(':').map(Number);
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    const taskDurationHours = (endMinutes - startMinutes) / 60;
+    const durationKey = taskDurationHours.toFixed(4);
+
+    setManualCorrections(prev => {
+      const correctionsForHours = prev[visibleHours] ?? {};
+      const currentCorrection = correctionsForHours[durationKey] ?? 0;
+      const adjustment = direction === 'up' ? -0.25 : 0.25;
+      const newCorrection = currentCorrection + adjustment;
+
+      return {
+        ...prev,
+        [visibleHours]: {
+          ...correctionsForHours,
+          [durationKey]: newCorrection,
+        },
+      };
+    });
+  };
+
+  const fixTaskPosition = () => {
+    setEditingTask(null);
+    setLastTap({ id: null, time: 0 });
+  };
+
   const renderEvent = (event: OggiEvent) => {
     if (event.isAllDay) {
       const bg = forcedTaskColor === 'black' ? '#000000' : forcedTaskColor === 'white' ? '#ffffff' : event.color;
@@ -1067,8 +1129,10 @@ export default function OggiScreen() {
     const bg = forcedTaskColor === 'black' ? '#000000' : forcedTaskColor === 'white' ? '#ffffff' : event.color;
     const light = isLightColor(bg);
     return (
-      <View
+      <TouchableOpacity
         key={event.id}
+        activeOpacity={0.8}
+        onPress={() => handleTaskPress(event)}
         style={[
           styles.timedEvent,
           {
@@ -1084,7 +1148,7 @@ export default function OggiScreen() {
         {height >= 37 ? (
           <Text style={[styles.eventTime, light ? { color: '#111111' } : { color: THEME.text }]}>{event.startTime} - {event.endTime}</Text>
         ) : null}
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -1375,6 +1439,70 @@ export default function OggiScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={editingTask !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={fixTaskPosition}
+      >
+        <TouchableWithoutFeedback onPress={fixTaskPosition}>
+          <View style={styles.editorOverlayBackdrop}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.editorOverlayCard}>
+                {editingTask && (() => {
+                  const [startHour, startMin] = editingTask.startTime.split(':').map(Number);
+                  const [endHour, endMin] = editingTask.endTime.split(':').map(Number);
+                  const startMinutes = startHour * 60 + startMin;
+                  const endMinutes = endHour * 60 + endMin;
+                  const taskDurationHours = (endMinutes - startMinutes) / 60;
+                  const durationKey = taskDurationHours.toFixed(4);
+                  const correctionsForHours = manualCorrections[visibleHours] || {};
+                  const currentCorrection = correctionsForHours[durationKey] ?? 0;
+                  const durationMinutes = Math.round(taskDurationHours * 60);
+
+                  return (
+                    <>
+                      <Text style={styles.editorOverlayTitle} numberOfLines={1}>
+                        {editingTask.title}
+                      </Text>
+                      <Text style={styles.editorOverlaySubtext}>
+                        {editingTask.startTime} - {editingTask.endTime} · {durationMinutes} min
+                      </Text>
+                      <Text style={styles.editorOverlaySubtext}>
+                        Correzione: {currentCorrection.toFixed(2)}px · {visibleHours}h
+                      </Text>
+                      <View style={styles.editorOverlayButtons}>
+                        <TouchableOpacity
+                          style={[styles.editorOverlayButton, styles.editorOverlayButtonUp]}
+                          onPress={() => adjustTaskPosition(editingTask, 'up')}
+                        >
+                          <Ionicons name="arrow-up" size={16} color="#fff" />
+                          <Text style={styles.editorOverlayButtonText}>+0.25</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.editorOverlayButton, styles.editorOverlayButtonDown]}
+                          onPress={() => adjustTaskPosition(editingTask, 'down')}
+                        >
+                          <Ionicons name="arrow-down" size={16} color="#fff" />
+                          <Text style={styles.editorOverlayButtonText}>-0.25</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.editorOverlayButton, styles.editorOverlayButtonConfirm]}
+                          onPress={fixTaskPosition}
+                        >
+                          <Ionicons name="checkmark" size={16} color="#fff" />
+                          <Text style={styles.editorOverlayButtonText}>OK</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  );
+                })()}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1598,5 +1726,64 @@ const styles = StyleSheet.create({
     color: THEME.text,
     fontWeight: '700'
   },
+
+  editorOverlayBackdrop: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    paddingTop: 60,
+    paddingRight: 16
+  },
+  editorOverlayCard: {
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    padding: 10,
+    width: 220,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6
+  },
+  editorOverlayTitle: {
+    color: THEME.text,
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  editorOverlaySubtext: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    marginTop: 2
+  },
+  editorOverlayButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8
+  },
+  editorOverlayButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginHorizontal: 2,
+    borderRadius: 8,
+    gap: 4
+  },
+  editorOverlayButtonUp: {
+    backgroundColor: '#4CAF50'
+  },
+  editorOverlayButtonDown: {
+    backgroundColor: '#F87171'
+  },
+  editorOverlayButtonConfirm: {
+    backgroundColor: '#3B82F6'
+  },
+  editorOverlayButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600'
+  }
 
 });
