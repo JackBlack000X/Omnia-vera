@@ -979,7 +979,7 @@ export default function ModalScreen() {
               <View style={styles.colorSheet}>
                 <View style={styles.colorsRowWrap}>
                   {COLORS.map(c => (
-                    <TouchableOpacity key={c} onPress={() => setColor(c)} style={[styles.colorSwatch, { backgroundColor: c, borderColor: color === c ? '#ffffff' : 'transparent' }]} />
+                    <TouchableOpacity key={c} onPress={() => setColor(c)} style={[styles.colorSwatch, { backgroundColor: c, borderColor: color === c ? (c === '#ffffff' ? '#00ff00' : '#ffffff') : 'transparent' }]} />
                   ))}
                 </View>
               </View>
@@ -1249,7 +1249,7 @@ export default function ModalScreen() {
             <View style={[styles.colorSheet, { marginTop: 'auto' }]}>
               <View style={styles.colorsRowWrap}>
                 {COLORS.map(c => (
-                  <TouchableOpacity key={c} onPress={() => setColor(c)} style={[styles.colorSwatch, { backgroundColor: c, borderColor: color === c ? '#ffffff' : 'transparent' }]} />
+                  <TouchableOpacity key={c} onPress={() => setColor(c)} style={[styles.colorSwatch, { backgroundColor: c, borderColor: color === c ? (c === '#ffffff' ? '#00ff00' : '#ffffff') : 'transparent' }]} />
                 ))}
               </View>
             </View>

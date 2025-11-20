@@ -154,9 +154,19 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="stats"
+        name="shop"
         options={{
-          title: 'Statistiche',
+          title: 'Shop',
+          tabBarItemStyle: {
+            marginHorizontal: 10,
+            borderRadius: 24,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 0,
+            width: 68,
+            position: 'relative',
+            transform: [{ translateX: -4 }, { translateY: -4 }],
+          },
           tabBarIcon: ({ color, size, focused }) => (
             <View style={{ alignItems: 'center', justifyContent: 'center', position: 'relative', width: 68, height: 50 }}>
               {focused && (
@@ -173,7 +183,7 @@ export default function TabLayout() {
                   }}
                 />
               )}
-              <Ionicons name="stats-chart-outline" color={color} size={size ?? 24} />
+              <Ionicons name="cart-outline" color={color} size={size ?? 24} />
             </View>
           ),
         }}

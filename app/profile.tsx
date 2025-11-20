@@ -1,7 +1,9 @@
 import { THEME } from '@/constants/theme';
 import { buildCsv } from '@/lib/csv';
 import { useHabits } from '@/lib/habits/Provider';
+import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,8 +19,9 @@ function getLast7Days(): string[] {
   return arr.reverse();
 }
 
-export default function StatsScreen() {
+export default function ProfileScreen() {
   const { habits, history } = useHabits();
+  const router = useRouter();
 
   const todayKey = new Date().toISOString().split('T')[0];
   const todayCompleted = useMemo(() => Object.values(history[todayKey]?.completedByHabitId ?? {}).filter(Boolean).length, [history, todayKey]);
@@ -95,7 +98,10 @@ export default function StatsScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.title}>Statistiche</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={28} color={THEME.text} />
+        </TouchableOpacity>
+        <Text style={styles.title}>Profilo</Text>
         <TouchableOpacity onPress={exportCsv} style={styles.csvBtn}>
           <Text style={styles.csvText}>CSV</Text>
         </TouchableOpacity>
@@ -131,7 +137,8 @@ export default function StatsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: THEME.background, paddingHorizontal: 14 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 10 },
+  backBtn: { padding: 8, marginLeft: -8 },
   title: { color: THEME.text, fontSize: 24, fontWeight: '700' },
   csvBtn: { backgroundColor: '#1d4ed8', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   csvText: { color: THEME.text, fontWeight: '700' },
@@ -150,5 +157,4 @@ const styles = StyleSheet.create({
   weekBox: { backgroundColor: '#000', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 12, gap: 6 },
   weekText: { color: THEME.textSecondary },
 });
-
 
