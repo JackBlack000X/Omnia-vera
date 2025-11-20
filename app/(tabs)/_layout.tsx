@@ -13,8 +13,8 @@ export default function TabLayout() {
         tabBarInactiveTintColor: '#e5e7eb',
         tabBarStyle: {
           position: 'absolute',
-          left: 0,
-          right: 0,
+          left: 20,
+          right: 20,
           bottom: 16,
           borderRadius: 35,
           backgroundColor: 'transparent',
@@ -23,8 +23,8 @@ export default function TabLayout() {
           borderTopColor: 'transparent',
           paddingVertical: 8,
           height: 66,
-          justifyContent: 'center',
-          paddingLeft: 37,
+          justifyContent: 'space-between',
+          alignItems: 'center',
           overflow: 'visible',
         },
         tabBarBackground: () => (
@@ -33,8 +33,8 @@ export default function TabLayout() {
             tint="dark"
             style={{
               position: 'absolute',
-              left: 38,
-              right: 38,
+              left: 40,  // Aggiunge margine interno sinistro (riduce la barra)
+              right: 40, // Aggiunge margine interno destro (riduce la barra)
               top: 0,
               bottom: 0,
               borderRadius: 35,
