@@ -165,7 +165,7 @@ export default function TabLayout() {
             flex: 0,
             width: 68,
             position: 'relative',
-            transform: [{ translateX: -4 }, { translateY: -4 }],
+            transform: [{ translateX: -4 }, { translateY: 1 }],
           },
           tabBarIcon: ({ color, size, focused }) => (
             <View style={{ alignItems: 'center', justifyContent: 'center', position: 'relative', width: 68, height: 50 }}>
@@ -183,7 +183,7 @@ export default function TabLayout() {
                   }}
                 />
               )}
-              <Ionicons name="cart-outline" color={color} size={size ?? 24} />
+              <Ionicons name="bag-handle-outline" color={color} size={size ?? 24} />
             </View>
           ),
         }}

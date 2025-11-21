@@ -4,7 +4,7 @@ import { useHabits } from '@/lib/habits/Provider';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useState } from 'react';
-import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const TZ = 'Europe/Zurich';
@@ -42,6 +42,10 @@ function isLightColor(hex: string): boolean {
 
 // No mock events: we render real habits as events
 
+// Dati di correzione manuale consolidati (trasferibili su altri dispositivi)
+const INITIAL_MANUAL_CORRECTIONS: Record<number, Record<string, number>> = {"5":{"0.0833":-0.5,"0.1667":-0.5,"0.2500":-0.5,"0.3333":-0.25,"0.4167":-0.75,"0.5000":-0.5,"0.5833":-0.75,"0.6667":-0.5,"0.7500":-0.5,"0.8333":-0.5,"0.9167":-0.5,"1.0000":2},"6":{"0.2500":0,"0.3333":0,"0.4167":-0.5,"0.5833":-0.5,"0.6667":-0.5,"0.7500":0,"0.8333":0,"0.9167":0,"1.0000":2},"7":{"0.1667":-0.25,"0.3333":-0.25,"0.4167":-0.75,"0.5000":-0.25,"0.5833":-0.75,"0.6667":-0.75,"0.7500":-0.25,"1.0000":1.5,"0.2500":-0.25,"0.8333":-0.25,"0.9167":-0.25,"0.0833":-0.25},"8":{"0.0833":-0.75,"0.1667":-1,"0.2500":-1,"0.3333":-0.75,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75,"1.0000":0.75,"0.4167":-1.25,"0.5000":-0.75,"0.5833":-1.25,"0.6667":-1.25},"9":{"0.3333":-0.75,"0.4167":-1,"0.5000":-0.75,"0.5833":-1,"0.6667":-1,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75,"0.0833":-0.75,"0.1667":-0.75,"0.2500":-0.75,"1.0000":0.5},"10":{"0.4167":-1,"0.5000":-0.5,"0.5833":-1,"0.6667":-1,"1.0000":0.75,"0.0833":-0.5,"0.1667":-0.5,"0.2500":-0.5,"0.3333":-0.5,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75},"11":{"0.3333":-0.5,"0.4167":-1,"0.6667":-1,"0.5833":-1,"0.5000":-0.5,"0.7500":-0.5,"0.8333":-0.5,"0.9167":-0.5,"1.0000":0.5,"0.0833":-0.5,"0.1667":-0.5,"0.2500":-0.5},"12":{"0.6667":-0.75,"0.3333":-0.5,"0.5833":-0.75,"0.2500":-0.5,"0.1667":-0.5,"0.0833":-0.5,"0.4167":-0.75,"0.5000":-0.5,"0.9167":-0.5,"0.8333":-0.5,"0.7500":-0.5,"1.0000":0.5},"13":{"0.5000":-0.75,"0.4167":-1,"0.5833":-1,"0.6667":-1,"0.1667":-0.75,"0.0833":-0.75,"0.2500":-0.75,"0.3333":-0.75,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75,"1.0000":0.25},"14":{"0.0833":-3.5,"0.1667":-3.5,"0.2500":-3.5,"0.3333":-3.5,"0.4167":-3.75,"0.5000":-3.5,"0.5833":-3.75,"0.6667":-3.75,"0.7500":-3.5,"0.8333":-3.5,"0.9167":-3.5,"1.0000":-2.75},"15":{"0.0833":-3.25,"0.1667":-3.25,"0.2500":-3.25,"0.3333":-3.25,"0.4167":-3.25,"0.5000":-3.25,"0.5833":-3.25,"0.6667":-3.25,"0.7500":-3.25,"0.8333":-3.25,"0.9167":-3.25,"1.0000":-2.5},"16":{"0.0833":-2.75,"0.1667":-2.75,"0.2500":-2.75,"0.3333":-2.75,"0.4167":-3,"0.5000":-2.75,"0.5833":-3,"0.6667":-3,"0.7500":-2.75,"0.8333":-2.75,"0.9167":-2.75,"1.0000":-2},"17":{"0.0833":-2,"0.1667":-2,"0.2500":-2,"0.3333":-2,"0.4167":-2.25,"0.5000":-2,"0.5833":-2.25,"0.6667":-2.25,"0.7500":-2,"0.8333":-2,"0.9167":-2,"1.0000":-1.25},"18":{"0.9167":-2,"0.8333":-2,"0.7500":-2,"0.6667":-2.25,"0.5833":-2.25,"0.5000":-2,"0.0833":-2,"0.1667":-2,"0.2500":-2,"0.3333":-2,"0.4167":-2.25,"1.0000":-1.25},"19":{"0.0833":-1.75,"0.1667":-1.75,"0.2500":-1.75,"0.3333":-1.75,"0.4167":-2,"0.5000":-1.75,"0.5833":-2,"0.6667":-2,"0.7500":-1.75,"0.8333":-1.75,"0.9167":-1.75,"1.0000":-1.25},"20":{"0.0833":-1.5,"0.1667":-1.5,"0.2500":-1.5,"0.3333":-1.5,"0.4167":-1.75,"0.5000":-1.5,"0.5833":-1.75,"0.6667":-1.75,"0.7500":-1.5,"0.8333":-1.5,"0.9167":-1.5,"1.0000":-1},"21":{"0.0833":-1.5,"0.1667":-1.5,"0.2500":-1.5,"0.3333":-1.5,"0.4167":-1.5,"0.5000":-1.5,"0.5833":-1.5,"0.6667":-1.5,"0.7500":-1.5,"0.8333":-1.5,"0.9167":-1.5,"1.0000":-0.75},"22":{"0.0833":-1.75,"0.1667":-1.75,"0.2500":-1.75,"0.3333":-1.75,"0.4167":-1.75,"0.5000":-1.75,"0.5833":-1.75,"0.6667":-1.75,"0.7500":-1.75,"0.8333":-1.75,"0.9167":-1.75,"1.0000":-1.25},"23":{"0.0833":-1,"0.1667":-1,"0.2500":-1,"0.3333":-1,"0.4167":-1.25,"0.5000":-1.25,"0.5833":-1.25,"0.6667":-1.25,"0.7500":-1,"0.8333":-1,"0.9167":-1,"1.0000":-0.5},"24":{"0.0833":-0.75,"0.1667":-0.75,"0.2500":-0.75,"0.3333":-0.75,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75,"0.4167":-0.75,"0.5000":-0.75,"0.5833":-0.75,"0.6667":-0.75,"1.0000":-0.25}};
+const INITIAL_GLOBAL_CORRECTIONS: Record<number, number> = {"6":2.25,"7":4.5,"8":6.5,"9":7.5,"10":8.25,"11":9,"12":9.5,"13":10.25,"14":13.5,"15":13.5,"16":13.5,"17":13,"18":13.25,"19":13.25,"20":13.25,"21":13.25,"22":13.75,"23":13.25,"24":13};
+
 export default function OggiScreen() {
   const { habits, history, getDay } = useHabits();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -51,12 +55,8 @@ export default function OggiScreen() {
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
   const [visibleHours, setVisibleHours] = useState<number>(24);
   const [forcedTaskColor, setForcedTaskColor] = useState<null | 'black' | 'white'>(null);
-  const [manualCorrections, setManualCorrections] = useState<Record<number, Record<string, number>>>({});
-  const [globalCorrections, setGlobalCorrections] = useState<Record<number, number>>({});
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [editingTask, setEditingTask] = useState<OggiEvent | null>(null);
-  const [isGlobalEdit, setIsGlobalEdit] = useState(false);
-  const [lastTap, setLastTap] = useState<{ id: string | null; time: number }>({ id: null, time: 0 });
+  const [manualCorrections, setManualCorrections] = useState<Record<number, Record<string, number>>>(INITIAL_MANUAL_CORRECTIONS);
+  const [globalCorrections, setGlobalCorrections] = useState<Record<number, number>>(INITIAL_GLOBAL_CORRECTIONS);
   
   const today = getDay(currentDate);
 
@@ -624,56 +624,7 @@ export default function OggiScreen() {
   }, [timedEvents]);
 
   const handleTaskPress = (event: OggiEvent) => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300; // ms
-    
-    if (lastTap.id === event.id && (now - lastTap.time) < DOUBLE_TAP_DELAY) {
-      // Doppio tap rilevato
-      setEditingTaskId(event.id);
-      setEditingTask(event);
-      setLastTap({ id: null, time: 0 });
-    } else {
-      setLastTap({ id: event.id, time: now });
-    }
-  };
-
-  const adjustTaskPosition = (event: OggiEvent, direction: 'up' | 'down') => {
-    const adjustment = direction === 'up' ? -0.25 : 0.25;
-
-    if (isGlobalEdit) {
-      // Modifica globale per tutte le task di questo visibleHours
-      const currentGlobal = globalCorrections[visibleHours] ?? 0;
-      setGlobalCorrections(prev => ({
-        ...prev,
-        [visibleHours]: currentGlobal + adjustment
-      }));
-    } else {
-      // Modifica singola task (logica esistente)
-      const [startHour, startMin] = event.startTime.split(':').map(Number);
-      const [endHour, endMin] = event.endTime.split(':').map(Number);
-      const startMinutes = startHour * 60 + startMin;
-      const endMinutes = endHour * 60 + endMin;
-      const taskDurationHours = (endMinutes - startMinutes) / 60;
-      const durationKey = taskDurationHours.toFixed(4);
-      
-      const correctionsForHours = manualCorrections[visibleHours] || {};
-      const currentCorrection = correctionsForHours[durationKey] ?? 0;
-      const newCorrection = currentCorrection + adjustment;
-      
-      setManualCorrections(prev => ({
-        ...prev,
-        [visibleHours]: {
-          ...correctionsForHours,
-          [durationKey]: newCorrection
-        }
-      }));
-    }
-  };
-
-  const fixTaskPosition = () => {
-    setEditingTaskId(null);
-    setEditingTask(null);
-    setIsGlobalEdit(false); // Reset to single edit on close
+    // Future implementation: open task details
   };
 
   const renderEvent = (event: OggiEvent) => {
@@ -1014,85 +965,6 @@ export default function OggiScreen() {
         </View>
       </Modal>
 
-      <Modal
-        visible={editingTask !== null}
-        animationType="fade"
-        transparent
-        onRequestClose={fixTaskPosition}
-      >
-        <TouchableWithoutFeedback onPress={fixTaskPosition}>
-          <View style={styles.editorOverlayBackdrop}>
-            <TouchableWithoutFeedback onPress={() => {}}>
-              <View style={styles.editorOverlayCard}>
-                {editingTask && (() => {
-                  const [startHour, startMin] = editingTask.startTime.split(':').map(Number);
-                  const [endHour, endMin] = editingTask.endTime.split(':').map(Number);
-                  const startMinutes = startHour * 60 + startMin;
-                  const endMinutes = endHour * 60 + endMin;
-                  const taskDurationHours = (endMinutes - startMinutes) / 60;
-                  const durationKey = taskDurationHours.toFixed(4);
-                  const correctionsForHours = manualCorrections[visibleHours] || {};
-                  const currentCorrection = correctionsForHours[durationKey] ?? 0;
-                  const currentGlobal = globalCorrections[visibleHours] ?? 0;
-                  const durationMinutes = Math.round(taskDurationHours * 60);
-
-                  return (
-                    <>
-                      <View style={styles.editorOverlayToggleContainer}>
-                        <TouchableOpacity 
-                          style={[styles.editorOverlayToggleButton, isGlobalEdit && styles.editorOverlayToggleActive]}
-                          onPress={() => setIsGlobalEdit(!isGlobalEdit)}
-                        >
-                          <Text style={[styles.editorOverlayToggleText, isGlobalEdit && styles.editorOverlayToggleTextActive]}>
-                            {isGlobalEdit ? "Modifica: TUTTI" : "Modifica: SINGOLO"}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <Text style={styles.editorOverlayTitle} numberOfLines={1}>
-                        {editingTask.title}
-                      </Text>
-                      <Text style={styles.editorOverlaySubtext}>
-                        {editingTask.startTime} - {editingTask.endTime} · {durationMinutes} min
-                      </Text>
-                      <Text style={styles.editorOverlaySubtext}>
-                        {isGlobalEdit 
-                          ? `Globale: ${(currentGlobal).toFixed(2)}px · ${visibleHours}h`
-                          : `Task: ${currentCorrection.toFixed(2)}px · ${visibleHours}h`
-                        }
-                      </Text>
-                      <View style={styles.editorOverlayButtons}>
-                        <TouchableOpacity
-                          style={[styles.editorOverlayButton, styles.editorOverlayButtonUp]}
-                          onPress={() => adjustTaskPosition(editingTask, 'up')}
-                        >
-                          <Ionicons name="arrow-up" size={16} color="#fff" />
-                          <Text style={styles.editorOverlayButtonText}>+0.25</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.editorOverlayButton, styles.editorOverlayButtonDown]}
-                          onPress={() => adjustTaskPosition(editingTask, 'down')}
-                        >
-                          <Ionicons name="arrow-down" size={16} color="#fff" />
-                          <Text style={styles.editorOverlayButtonText}>-0.25</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.editorOverlayButton, styles.editorOverlayButtonConfirm]}
-                          onPress={fixTaskPosition}
-                        >
-                          <Ionicons name="checkmark" size={16} color="#fff" />
-                          <Text style={styles.editorOverlayButtonText}>OK</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  );
-                })()}
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
     </SafeAreaView>
   );
 }
@@ -1315,90 +1187,6 @@ const styles = StyleSheet.create({
   actionText: {
     color: THEME.text,
     fontWeight: '700'
-  },
-
-  editorOverlayBackdrop: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    alignItems: 'flex-end',
-    justifyContent: 'flex-end', // Spostato in basso
-    paddingBottom: 100, // Spazio dal fondo (sopra la tab bar)
-    paddingRight: 16
-  },
-  editorOverlayCard: {
-    backgroundColor: '#111827',
-    borderRadius: 12,
-    padding: 10,
-    width: 220,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6
-  },
-  editorOverlayToggleContainer: {
-    marginBottom: 12,
-    alignItems: 'center'
-  },
-  editorOverlayToggleButton: {
-    backgroundColor: '#374151',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#4B5563'
-  },
-  editorOverlayToggleText: {
-    color: '#E5E7EB',
-    fontSize: 12,
-    fontWeight: '600'
-  },
-  editorOverlayToggleActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#3B82F6'
-  },
-  editorOverlayToggleTextActive: {
-    color: '#FFFFFF'
-  },
-
-  editorOverlayTitle: {
-    color: THEME.text,
-    fontSize: 14,
-    fontWeight: '700'
-  },
-  editorOverlaySubtext: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    marginTop: 2
-  },
-  editorOverlayButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8
-  },
-  editorOverlayButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    marginHorizontal: 2,
-    borderRadius: 8,
-    gap: 4
-  },
-  editorOverlayButtonUp: {
-    backgroundColor: '#4CAF50'
-  },
-  editorOverlayButtonDown: {
-    backgroundColor: '#F87171'
-  },
-  editorOverlayButtonConfirm: {
-    backgroundColor: '#3B82F6'
-  },
-  editorOverlayButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600'
   }
 
 });
