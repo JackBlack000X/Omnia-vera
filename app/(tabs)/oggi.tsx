@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TZ = 'Europe/Zurich';
 
@@ -42,12 +42,9 @@ function isLightColor(hex: string): boolean {
 
 // No mock events: we render real habits as events
 
-// Dati di correzione manuale consolidati (trasferibili su altri dispositivi)
-const INITIAL_MANUAL_CORRECTIONS: Record<number, Record<string, number>> = {"5":{"0.0833":-0.5,"0.1667":-0.5,"0.2500":-0.5,"0.3333":-0.25,"0.4167":-0.75,"0.5000":-0.5,"0.5833":-0.75,"0.6667":-0.5,"0.7500":-0.5,"0.8333":-0.5,"0.9167":-0.5,"1.0000":2},"6":{"0.2500":0,"0.3333":0,"0.4167":-0.5,"0.5833":-0.5,"0.6667":-0.5,"0.7500":0,"0.8333":0,"0.9167":0,"1.0000":2},"7":{"0.1667":-0.25,"0.3333":-0.25,"0.4167":-0.75,"0.5000":-0.25,"0.5833":-0.75,"0.6667":-0.75,"0.7500":-0.25,"1.0000":1.5,"0.2500":-0.25,"0.8333":-0.25,"0.9167":-0.25,"0.0833":-0.25},"8":{"0.0833":-0.75,"0.1667":-1,"0.2500":-1,"0.3333":-0.75,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75,"1.0000":0.75,"0.4167":-1.25,"0.5000":-0.75,"0.5833":-1.25,"0.6667":-1.25},"9":{"0.3333":-0.75,"0.4167":-1,"0.5000":-0.75,"0.5833":-1,"0.6667":-1,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75,"0.0833":-0.75,"0.1667":-0.75,"0.2500":-0.75,"1.0000":0.5},"10":{"0.4167":-1,"0.5000":-0.5,"0.5833":-1,"0.6667":-1,"1.0000":0.75,"0.0833":-0.5,"0.1667":-0.5,"0.2500":-0.5,"0.3333":-0.5,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75},"11":{"0.3333":-0.5,"0.4167":-1,"0.6667":-1,"0.5833":-1,"0.5000":-0.5,"0.7500":-0.5,"0.8333":-0.5,"0.9167":-0.5,"1.0000":0.5,"0.0833":-0.5,"0.1667":-0.5,"0.2500":-0.5},"12":{"0.6667":-0.75,"0.3333":-0.5,"0.5833":-0.75,"0.2500":-0.5,"0.1667":-0.5,"0.0833":-0.5,"0.4167":-0.75,"0.5000":-0.5,"0.9167":-0.5,"0.8333":-0.5,"0.7500":-0.5,"1.0000":0.5},"13":{"0.5000":-0.75,"0.4167":-1,"0.5833":-1,"0.6667":-1,"0.1667":-0.75,"0.0833":-0.75,"0.2500":-0.75,"0.3333":-0.75,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75,"1.0000":0.25},"14":{"0.0833":-3.5,"0.1667":-3.5,"0.2500":-3.5,"0.3333":-3.5,"0.4167":-3.75,"0.5000":-3.5,"0.5833":-3.75,"0.6667":-3.75,"0.7500":-3.5,"0.8333":-3.5,"0.9167":-3.5,"1.0000":-2.75},"15":{"0.0833":-3.25,"0.1667":-3.25,"0.2500":-3.25,"0.3333":-3.25,"0.4167":-3.25,"0.5000":-3.25,"0.5833":-3.25,"0.6667":-3.25,"0.7500":-3.25,"0.8333":-3.25,"0.9167":-3.25,"1.0000":-2.5},"16":{"0.0833":-2.75,"0.1667":-2.75,"0.2500":-2.75,"0.3333":-2.75,"0.4167":-3,"0.5000":-2.75,"0.5833":-3,"0.6667":-3,"0.7500":-2.75,"0.8333":-2.75,"0.9167":-2.75,"1.0000":-2},"17":{"0.0833":-2,"0.1667":-2,"0.2500":-2,"0.3333":-2,"0.4167":-2.25,"0.5000":-2,"0.5833":-2.25,"0.6667":-2.25,"0.7500":-2,"0.8333":-2,"0.9167":-2,"1.0000":-1.25},"18":{"0.9167":-2,"0.8333":-2,"0.7500":-2,"0.6667":-2.25,"0.5833":-2.25,"0.5000":-2,"0.0833":-2,"0.1667":-2,"0.2500":-2,"0.3333":-2,"0.4167":-2.25,"1.0000":-1.25},"19":{"0.0833":-1.75,"0.1667":-1.75,"0.2500":-1.75,"0.3333":-1.75,"0.4167":-2,"0.5000":-1.75,"0.5833":-2,"0.6667":-2,"0.7500":-1.75,"0.8333":-1.75,"0.9167":-1.75,"1.0000":-1.25},"20":{"0.0833":-1.5,"0.1667":-1.5,"0.2500":-1.5,"0.3333":-1.5,"0.4167":-1.75,"0.5000":-1.5,"0.5833":-1.75,"0.6667":-1.75,"0.7500":-1.5,"0.8333":-1.5,"0.9167":-1.5,"1.0000":-1},"21":{"0.0833":-1.5,"0.1667":-1.5,"0.2500":-1.5,"0.3333":-1.5,"0.4167":-1.5,"0.5000":-1.5,"0.5833":-1.5,"0.6667":-1.5,"0.7500":-1.5,"0.8333":-1.5,"0.9167":-1.5,"1.0000":-0.75},"22":{"0.0833":-1.75,"0.1667":-1.75,"0.2500":-1.75,"0.3333":-1.75,"0.4167":-1.75,"0.5000":-1.75,"0.5833":-1.75,"0.6667":-1.75,"0.7500":-1.75,"0.8333":-1.75,"0.9167":-1.75,"1.0000":-1.25},"23":{"0.0833":-1,"0.1667":-1,"0.2500":-1,"0.3333":-1,"0.4167":-1.25,"0.5000":-1.25,"0.5833":-1.25,"0.6667":-1.25,"0.7500":-1,"0.8333":-1,"0.9167":-1,"1.0000":-0.5},"24":{"0.0833":-0.75,"0.1667":-0.75,"0.2500":-0.75,"0.3333":-0.75,"0.7500":-0.75,"0.8333":-0.75,"0.9167":-0.75,"0.4167":-0.75,"0.5000":-0.75,"0.5833":-0.75,"0.6667":-0.75,"1.0000":-0.25}};
-const INITIAL_GLOBAL_CORRECTIONS: Record<number, number> = {"6":2.25,"7":4.5,"8":6.5,"9":7.5,"10":8.25,"11":9,"12":9.5,"13":10.25,"14":13.5,"15":13.5,"16":13.5,"17":13,"18":13.25,"19":13.25,"20":13.25,"21":13.25,"22":13.75,"23":13.25,"24":13};
-
 export default function OggiScreen() {
   const { habits, history, getDay } = useHabits();
+  const insets = useSafeAreaInsets();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showSettings, setShowSettings] = useState(false);
@@ -55,8 +52,6 @@ export default function OggiScreen() {
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
   const [visibleHours, setVisibleHours] = useState<number>(24);
   const [forcedTaskColor, setForcedTaskColor] = useState<null | 'black' | 'white'>(null);
-  const [manualCorrections, setManualCorrections] = useState<Record<number, Record<string, number>>>(INITIAL_MANUAL_CORRECTIONS);
-  const [globalCorrections, setGlobalCorrections] = useState<Record<number, number>>(INITIAL_GLOBAL_CORRECTIONS);
   
   const today = getDay(currentDate);
 
@@ -91,12 +86,10 @@ export default function OggiScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [start, end, vis, manualCorr, globalCorr] = await Promise.all([
+        const [start, end, vis] = await Promise.all([
           AsyncStorage.getItem('oggi_window_start_v1'),
           AsyncStorage.getItem('oggi_window_end_v1'),
           AsyncStorage.getItem('oggi_visible_hours_v1'),
-          AsyncStorage.getItem('oggi_manual_corrections_v1'),
-          AsyncStorage.getItem('oggi_global_corrections_v1'),
         ]);
         if (start) setWindowStart(start);
         if (end) setWindowEnd(end);
@@ -107,16 +100,6 @@ export default function OggiScreen() {
           const endH = end && end !== '24:00' ? parseInt(end.slice(0, 2), 10) : (end === '24:00' ? 24 : 24);
           const maxVisibleHours = endH - startH;
           setVisibleHours(Math.min(maxVisibleHours || 24, Math.max(5, v)));
-        }
-        if (manualCorr) {
-          try {
-            setManualCorrections(JSON.parse(manualCorr));
-          } catch {}
-        }
-        if (globalCorr) {
-          try {
-            setGlobalCorrections(JSON.parse(globalCorr));
-          } catch {}
         }
         const forced = await AsyncStorage.getItem('oggi_forced_task_color_v1');
         if (forced === 'black' || forced === 'white') setForcedTaskColor(forced);
@@ -133,14 +116,6 @@ export default function OggiScreen() {
   useEffect(() => {
     AsyncStorage.setItem('oggi_visible_hours_v1', String(visibleHours)).catch(() => {});
   }, [visibleHours]);
-
-  useEffect(() => {
-    AsyncStorage.setItem('oggi_manual_corrections_v1', JSON.stringify(manualCorrections)).catch(() => {});
-  }, [manualCorrections]);
-
-  useEffect(() => {
-    AsyncStorage.setItem('oggi_global_corrections_v1', JSON.stringify(globalCorrections)).catch(() => {});
-  }, [globalCorrections]);
 
   useEffect(() => {
     const v = forcedTaskColor ?? 'auto';
@@ -171,45 +146,29 @@ export default function OggiScreen() {
   const windowStartMin = toMinutes(windowStart);
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   
-  // Calculate hourGap based on effective visible hours:
-  // if window spans less than selected visibleHours (e.g., 00:00-23:00 with 24 selected),
-  // behave as if visibleHours equals the window span in hours.
-  const clampedVisibleHours = Math.max(5, Math.min(24, visibleHours));
-  const windowSpanHours = Math.max(1, Math.floor((windowEndMin - windowStartMin) / 60));
-  const effectiveVisibleHours = Math.max(5, Math.min(24, Math.min(clampedVisibleHours, windowSpanHours)));
-  const baseHourGap = 31; // Base spacing between hours
-  const firstHourGap = effectiveVisibleHours === 23 ? 32.35 : 
-                      effectiveVisibleHours === 22 ? 33.82 : 
-                      effectiveVisibleHours === 21 ? 35.43 : 
-                      effectiveVisibleHours === 20 ? 37.2 : 
-                      effectiveVisibleHours === 19 ? 39.15 : 
-                      effectiveVisibleHours === 18 ? 41.34 : 
-                      effectiveVisibleHours === 17 ? 43.77 : 
-                      effectiveVisibleHours === 16 ? 46.5 : 
-                      effectiveVisibleHours === 15 ? 49.6 : 
-                      effectiveVisibleHours === 14 ? 53.15 : 
-                      effectiveVisibleHours === 13 ? 57.23 : 
-                      effectiveVisibleHours === 12 ? 62.0 : 
-                      effectiveVisibleHours === 11 ? 67.65 : 
-                      effectiveVisibleHours === 10 ? 74.4 : 
-                      effectiveVisibleHours === 9 ? 82.68 : 
-                      effectiveVisibleHours === 8 ? 93 : 
-                      effectiveVisibleHours === 7 ? 106.30 : 
-                      effectiveVisibleHours === 6 ? 124 : 
-                      effectiveVisibleHours === 5 ? 148.82 : baseHourGap; // Special spacing for first hour using effective visible hours
-  const hourGap = baseHourGap; // Regular spacing for all other hours
+  // Calculate screen dimensions for dynamic sizing
+  const screenHeight = Dimensions.get('window').height;
+  const headerHeight = 50; // Approssimativo
+  const tabBarHeight = 80; // Altezza tab bar + safe area bottom
+  const safeAreaTop = insets.top;
+  
+  // Spazio disponibile per la timeline (escludendo header, tab bar, ecc.)
+  // Aggiungiamo 17px extra di offset in basso come richiesto
+  const availableTimelineHeight = screenHeight - safeAreaTop - headerHeight - tabBarHeight - 17;
+  
+  // Calcolo dinamico dell'altezza di un'ora in base allo spazio disponibile e alle ore visibili richieste
+  const targetVisibleHours = Math.max(1, visibleHours); 
+  const hourGap = availableTimelineHeight / targetVisibleHours; 
   const scalePxPerMin = hourGap / 60; // Pixels per minute
 
-  // Scroll/timeline height should end at the last visible hour
+  // Scroll/timeline height
   const visibleHourCount = Math.max(1, Math.floor((windowEndMin - windowStartMin) / 60) + 1);
-  const timelineHeightPx = (visibleHourCount - 1) * firstHourGap + hourGap;
-  const isFullDayWindow = windowStartMin === 0 && windowEndMin === 1440;
-  // For full-day window, use 24 hours only if visibleHours is 24, otherwise use visibleHourCount
-  const scrollHeightPx = isFullDayWindow && visibleHours === 24 ? (24 * firstHourGap) : timelineHeightPx;
-  // Extra bottom space so the last hour is fully reachable past the selection bar
-  const selectionBarPx = 80;
-  // Reduce bottom space by 10px total as requested
-  const totalScrollHeightPx = scrollHeightPx + selectionBarPx - 10;
+  
+  // Total height: ore * pixel per ora (senza padding extra, lo aggiungiamo dopo)
+  const totalScrollHeightPx = visibleHourCount * hourGap;
+  
+  // Padding uniforme per tutte le ore visibili (uguale per qualsiasi numero di ore)
+  const uniformPaddingBottom = 30; // Padding fisso e uniforme
 
   // Generate hourly timeline based on viewing window (include end label)
   const hours = useMemo(() => {
@@ -244,222 +203,31 @@ export default function OggiScreen() {
     const visibleStart = Math.max(startMinutes, windowStartMin);
     const visibleEnd = Math.min(endMinutes, windowEndMin);
 
+    // Posizione lineare basata sui minuti dall'inizio finestra
     const minutesFromWindowStart = Math.max(0, visibleStart - windowStartMin);
-    const fullHoursAfterStart = Math.floor(minutesFromWindowStart / 60);
-    const minutesIntoCurrentHour = minutesFromWindowStart % 60;
-    // Ancoriamo alla stessa logica delle righe: prima ora a 0, poi blocchi da firstHourGap
-    const topBlocks = fullHoursAfterStart === 0 ? 0 : (firstHourGap + (fullHoursAfterStart - 1) * firstHourGap);
-    let top = topBlocks + minutesIntoCurrentHour * (firstHourGap / 60);
+    // Aggiungiamo 11.5px extra di offset per allinearci con lo spostamento della griglia
+    let top = minutesFromWindowStart * scalePxPerMin + 11.5;
     
-    // Correzione per task di diverse lunghezze basata su formula generica
-    const taskDurationHours = (visibleEnd - visibleStart) / 60;
+    // Altezza lineare
+    let height = (visibleEnd - visibleStart) * scalePxPerMin;
     
-    // Applica correzione solo per task di durata > 1 ora
-    if (taskDurationHours > 1.1) {
-      // Formula generica basata sul pattern identificato:
-      // correzione = -1.25 * (durata_ore - 1) * ore_visibili + 30 * (durata_ore - 1)
-      const durationFactor = taskDurationHours - 1;
-      const correctionMinutes = Math.max(0, -1.25 * durationFactor * visibleHours + 30 * durationFactor);
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 10 minuti (0.1667 ore)
-    if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // Range pi? stretto per 10 minuti
-      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 5 minuti (0.0833 ore)
-    if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // Range pi? stretto per 5 minuti
-      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 15 minuti (0.25 ore)
-    if (Math.abs(taskDurationHours - 0.25) < 0.05) { // Range pi? stretto per 15 minuti
-      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 30 minuti (0.5 ore)
-    if (Math.abs(taskDurationHours - 0.5) < 0.05) { // Range pi? stretto per 30 minuti
-      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 45 minuti (0.75 ore)
-    if (Math.abs(taskDurationHours - 0.75) < 0.05) { // Range pi? stretto per 45 minuti
-      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 40 minuti (0.667 ore)
-    if (Math.abs(taskDurationHours - 0.667) < 0.05) { // Range pi? stretto per 40 minuti
-      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 20 minuti (0.333 ore)
-    if (Math.abs(taskDurationHours - 0.333) < 0.05) { // Range pi? stretto per 20 minuti
-      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 25 minuti (0.417 ore)
-    if (Math.abs(taskDurationHours - 0.417) < 0.05) { // Range pi? stretto per 25 minuti
-      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 35 minuti (0.583 ore)
-    if (Math.abs(taskDurationHours - 0.583) < 0.05) { // Range pi? stretto per 35 minuti
-      const correctionMinutes = 1.25; // Sposta in gi? di 1.25 minuti
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 50 minuti (0.833 ore)
-    if (Math.abs(taskDurationHours - 0.833) < 0.05) { // Range pi? stretto per 50 minuti
-      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione specifica SOLO per 55 minuti (0.917 ore)
-    if (Math.abs(taskDurationHours - 0.917) < 0.05) { // Range pi? stretto per 55 minuti
-      const correctionMinutes = 1; // Sposta in gi? di 1 minuto
-      const correctionPx = correctionMinutes * (firstHourGap / 60);
-      top += correctionPx;
-    }
-    
-    // Correzione globale per tutti gli orari: sposta tutto giù di 5.5 minuti
-    const globalOffset = 5.5 * (firstHourGap / 60);
-    top += globalOffset;
-
-    // Correzione per 5 ore visibili - NON toccare 24 ore
-    if (visibleHours === 5) {
-      // Correzione specifica per 5 minuti quando visibleHours === 5
-      if (Math.abs(taskDurationHours - 0.0833) < 0.05) { // 5 minuti
-        const correctionMinutes = 0; 
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-      }
-      
-      // Correzione specifica per 10 minuti quando visibleHours === 5
-      if (Math.abs(taskDurationHours - 0.1667) < 0.05) { // 10 minuti
-        const correctionMinutes = 0; 
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-      }
-      
-      // Correzione specifica per 15 minuti quando visibleHours === 5
-      if (Math.abs(taskDurationHours - 0.25) < 0.05) { // 15 minuti
-        const correctionMinutes = 0; 
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-      }
-      
-       // Correzione specifica per 20 minuti quando visibleHours === 5
-       if (Math.abs(taskDurationHours - 0.333) < 0.05) { // 20 minuti
-         const correctionMinutes = 0; 
-         const correctionPx = correctionMinutes * (firstHourGap / 60) - 0.25; // 0.25px in su
-         top += correctionPx;
-       }
-      
-      // Correzione specifica per 25 minuti quando visibleHours === 5
-      if (Math.abs(taskDurationHours - 0.417) < 0.05) { // 25 minuti
-        const correctionMinutes = 0; 
-        const correctionPx = correctionMinutes * (firstHourGap / 60) - 0.25; // 0.25px in su
-        top += correctionPx;
-      }
-      
-      // Correzione specifica per 30 minuti quando visibleHours === 5
-      if (Math.abs(taskDurationHours - 0.5) < 0.05) { // 30 minuti
-        const correctionMinutes = 0; 
-        const correctionPx = correctionMinutes * (firstHourGap / 60);
-        top += correctionPx;
-      }
-      
-       // Correzione specifica per 35 minuti quando visibleHours === 5
-       if (Math.abs(taskDurationHours - 0.583) < 0.05) { // 35 minuti
-         const correctionMinutes = 0; 
-         const correctionPx = correctionMinutes * (firstHourGap / 60) - 0.25; // 0.25px in su
-         top += correctionPx;
-       }
-       
-       // Correzione specifica per 40 minuti quando visibleHours === 5
-       if (Math.abs(taskDurationHours - 0.667) < 0.05) { // 40 minuti
-         const correctionMinutes = 0; 
-         const correctionPx = correctionMinutes * (firstHourGap / 60) - 0.5; // Altri 0.25px in su (totale 0.5)
-         top += correctionPx;
-       }
-       
-       // Correzione specifica per 45 minuti quando visibleHours === 5
-       if (Math.abs(taskDurationHours - 0.75) < 0.05) { // 45 minuti
-         const correctionMinutes = 0; 
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       // Correzione specifica per 50 minuti quando visibleHours === 5
-       if (Math.abs(taskDurationHours - 0.833) < 0.05) { // 50 minuti
-         const correctionMinutes = 0; 
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-       
-       // Correzione specifica per 55 minuti quando visibleHours === 5
-       if (Math.abs(taskDurationHours - 0.917) < 0.05) { // 55 minuti
-         const correctionMinutes = 0; 
-         const correctionPx = correctionMinutes * (firstHourGap / 60);
-         top += correctionPx;
-       }
-     }
-    
-    // Applica eventuali correzioni manuali salvate per durata/orario visibile
-    const fullDurationHours = (endMinutes - startMinutes) / 60;
-    const manualKey = fullDurationHours.toFixed(4);
-    const manualCorrection = manualCorrections[visibleHours]?.[manualKey];
-    if (manualCorrection !== undefined) {
-      top += manualCorrection;
+    // Correzione specifica: accorcia tasks di ore intere (1h, 2h, 3h...) di 0.75px
+    const durationMinutes = visibleEnd - visibleStart;
+    // Controlla se la durata è un multiplo di 60 minuti (con tolleranza di 1 minuto)
+    if (Math.abs(durationMinutes % 60) < 1 || Math.abs(durationMinutes % 60 - 60) < 1) { 
+      height -= 0.75;
     }
 
-    // Applica correzione globale salvata (sovrascrive/aggiunge a quella hardcoded)
-    const savedGlobal = globalCorrections[visibleHours];
-    if (savedGlobal !== undefined) {
-      top += savedGlobal;
-    }
- 
-    // Current height with hourGap (baseline used so center stays fixed after resize)
-    let prevHeight = (visibleEnd - visibleStart) * (hourGap / 60);
-    // Target height so that 60min == firstHourGap per current scale
-    let height = (visibleEnd - visibleStart) * (firstHourGap / 60);
-    
     // Prevent bottom edge from crossing the hour line when ending exactly on an hour
     const endsOnHour = (endMinutes % 60) === 0;
     const bottomGapPx = 2; // adjusted gap at the bottom
     const applyTrim = (h: number) => {
       if (endsOnHour) {
-        // Nessun limite minimo rigido (es. 20px) per permettere la vera proporzione
-        // Usiamo Math.max(1, ...) solo per evitare height 0 o negativi
         return Math.max(1, h - bottomGapPx);
       }
       return Math.max(1, h);
     };
-    prevHeight = applyTrim(prevHeight);
     height = applyTrim(height);
-
-    // Abbiamo rimosso la compensazione del centro (top -= delta / 2) 
-    // per mantenere il punto di partenza (top) fisso e modificare solo la fine (height).
 
     return { top, height };
   };
@@ -477,23 +245,9 @@ export default function OggiScreen() {
     }
     
     // Position relative to windowStart
-    // Calcolo identico alle task, con un blocco virtuale di 30 minuti, per seguire lo stesso spostamento
-    const visualStart = Math.max(currentMinutes, windowStartMin);
-    const visualEnd = Math.min(visualStart + 30, windowEndMin);
-    const minutesFromWindowStart = Math.max(0, visualStart - windowStartMin);
-    const fullHoursAfterStart = Math.floor(minutesFromWindowStart / 60);
-    const minutesIntoCurrentHour = minutesFromWindowStart % 60;
-    const topBlocks = fullHoursAfterStart === 0 ? 0 : (firstHourGap + (fullHoursAfterStart - 1) * firstHourGap);
-    let top = topBlocks + minutesIntoCurrentHour * (firstHourGap / 60);
-    
-    // Replica la correzione del centro applicata alle task
-    const applyTrim = (h: number, endsOnHour: boolean) => endsOnHour ? Math.max(20, h - 2) : Math.max(20, h);
-    const endsOnHour = (visualEnd % 60) === 0;
-    const prevHeight = applyTrim((visualEnd - visualStart) * (hourGap / 60), endsOnHour);
-    const height = applyTrim((visualEnd - visualStart) * (firstHourGap / 60), endsOnHour);
-    const delta = height - prevHeight;
-    // top -= delta; // compensazione completa del delta
-    return top;
+    const minutesFromWindowStart = Math.max(0, currentMinutes - windowStartMin);
+    // Aggiungiamo lo stesso offset di 11.5px anche alla linea del tempo corrente
+    return minutesFromWindowStart * scalePxPerMin + 11.5;
   };
 
   // Build events from habits for the selected day
@@ -645,12 +399,18 @@ export default function OggiScreen() {
     if (top < 0 || height <= 0) return null;
     const screenWidth = Dimensions.get('window').width;
     const baseLeft = 65;
-    const availableWidth = Math.max(0, screenWidth - baseLeft);
+    const rightMargin = 2; // Margine destro di sicurezza ridotto
+    const availableWidth = Math.max(0, screenWidth - baseLeft - rightMargin);
+    
     const layout = layoutById[event.id] ?? { col: 0, columns: 1 };
-    const colWidth = availableWidth / layout.columns;
-    const spacing = layout.columns > 1 ? 2 : 0; // 2px spacing between overlapping events
-    const leftPx = baseLeft + layout.col * colWidth + (layout.col * spacing);
-    const widthPx = Math.max(0, colWidth - spacing);
+    const spacing = 2; // Spazio tra le colonne ridotto
+    
+    // Calcolo larghezza colonna sottraendo gli spazi totali
+    const totalSpacing = Math.max(0, (layout.columns - 1) * spacing);
+    const colWidth = (availableWidth - totalSpacing) / layout.columns;
+    
+    const leftPx = baseLeft + layout.col * (colWidth + spacing);
+    const widthPx = colWidth;
 
     const bg = forcedTaskColor === 'black' ? '#000000' : forcedTaskColor === 'white' ? '#ffffff' : event.color;
     const light = isLightColor(bg);
@@ -729,7 +489,7 @@ export default function OggiScreen() {
       <View style={styles.timelineContainer}>
         <ScrollView 
           style={styles.scrollView}
-          contentContainerStyle={{ height: totalScrollHeightPx }}
+          contentContainerStyle={{ height: totalScrollHeightPx, paddingBottom: uniformPaddingBottom }}
           showsVerticalScrollIndicator={false}
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
@@ -741,12 +501,7 @@ export default function OggiScreen() {
               const startHour = Math.floor(windowStartMin / 60);
               const relativeIndex = Math.max(0, hourIndex - startHour);
               // Position rows relative to windowStart: first visible hour at top 0
-              let top = 0;
-              if (relativeIndex === 0) {
-                top = 0;
-              } else {
-                top = firstHourGap + (relativeIndex - 1) * firstHourGap;
-              }
+              let top = relativeIndex * hourGap;
               
               return (
                 <View 
@@ -783,7 +538,7 @@ export default function OggiScreen() {
             {timedEvents.map(renderEvent)}
             
             
-            {/* Bottom space accounted in totalScrollHeightPx */}
+            {/* Bottom padding handled by ScrollView contentContainerStyle */}
           </View>
         </ScrollView>
       </View>
@@ -1058,14 +813,15 @@ const styles = StyleSheet.create({
     position: 'relative',
     paddingLeft: -23, // Spostato di 163px a destra (da 140 a -23)
     paddingRight: 0,
-    marginTop: -4 // Riduce lo spazio sopra 00:00 di 4px
+    marginTop: 0 // Era -10, spostiamo giù di 10px -> -10 + 10 = 0
   },
   hourRowAbsolute: {
     position: 'absolute',
     left: 0,
     right: 0,
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'flex-start', // Allinea in alto invece che al centro
+    paddingTop: 10, // Spazio fisso dall'inizio dell'ora alla linea/testo
   },
   hourText: {
     color: '#FFFFFF',
@@ -1073,15 +829,18 @@ const styles = StyleSheet.create({
     width: 50,
     textAlign: 'right',
     marginRight: 10,
-    marginLeft: 5, // Spostato di ulteriori +8px a destra rispetto a -3
-    fontWeight: '700'
+    marginLeft: 5,
+    fontWeight: '700',
+    lineHeight: 16, // Altezza linea fissa per il testo
+    transform: [{ translateY: -8 }] // Centra visivamente il testo rispetto alla linea
   },
   hourLine: {
     position: 'absolute',
     left: 65,
     right: 0,
     height: 2,
-    backgroundColor: '#374151'
+    backgroundColor: '#374151',
+    top: 10 // Corrisponde al paddingTop del container
   },
 
   timedEvent: {

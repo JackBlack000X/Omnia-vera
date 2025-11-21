@@ -165,7 +165,7 @@ export default function TabLayout() {
             flex: 0,
             width: 68,
             position: 'relative',
-            transform: [{ translateX: -4 }, { translateY: 1 }],
+            transform: [{ translateX: -4 }, { translateY: -1 }],
           },
           tabBarIcon: ({ color, size, focused }) => (
             <View style={{ alignItems: 'center', justifyContent: 'center', position: 'relative', width: 68, height: 50 }}>
