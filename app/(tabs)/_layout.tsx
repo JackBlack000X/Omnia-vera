@@ -57,8 +57,8 @@ export default function TabLayout() {
               tint="dark"
               style={{
                 position: 'absolute',
-                left: 45,
-                right: 45,
+                left: 47.5,
+                right: 47,
                 top: 0,
                 bottom: 0,
                 borderRadius: 35,
