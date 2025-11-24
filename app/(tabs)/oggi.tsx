@@ -116,11 +116,12 @@ export default function OggiScreen() {
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   
   // Dynamic HOUR_HEIGHT based on visibleHours
-  // We use a larger portion of screen height (78%) to ensure hours are well spaced
+  // We use a larger portion of screen height (78% default, 77.5% for classic) to ensure hours are well spaced
   // and fill the screen, especially when few hours are visible.
   const hourHeight = useMemo(() => {
-      return (Dimensions.get('window').height * 0.78) / visibleHours;
-  }, [visibleHours]);
+      const factor = activeTheme === 'futuristic' ? 0.78 : 0.775;
+      return (Dimensions.get('window').height * factor) / visibleHours;
+  }, [visibleHours, activeTheme]);
 
   // Calcoliamo l'altezza totale della scroll view basandoci sui minuti totali visibili
   // Usiamo una scala lineare: pixel = minuti * (hourHeight / 60)
@@ -380,7 +381,7 @@ export default function OggiScreen() {
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
       >
-         <View style={{ height: totalHeight + (visibleHours === 24 ? 0 : 43) }}> 
+         <View style={{ height: totalHeight + (visibleHours === 24 ? 0 : 43 + (activeTheme !== 'futuristic' ? 55 : 0)) }}> 
              {/* Grid Lines & Hours */}
              {hours.map(h => {
                 const minutesFromStart = (h * 60) - windowStartMin;
@@ -442,7 +443,6 @@ export default function OggiScreen() {
                const BASE_OFFSET = 10;
                return (
                  <View style={[styles.currentTimeIndicator, { top: top + BASE_OFFSET }]}>
-                    <View style={styles.currentTimeDot} />
                     <View style={styles.currentTimeLine} />
                  </View>
                );
@@ -665,18 +665,14 @@ const styles = StyleSheet.create({
   // Current Time
   currentTimeIndicator: {
     position: 'absolute',
-    left: 0,
+    left: LEFT_MARGIN,
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     zIndex: 99,
   },
   currentTimeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FF3B30',
-    marginLeft: LEFT_MARGIN - 4, // Center on the line start
+    display: 'none',
   },
   currentTimeLine: {
     flex: 1,

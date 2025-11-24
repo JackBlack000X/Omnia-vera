@@ -42,8 +42,9 @@ export default function TabLayout() {
           borderTopWidth: 0,
           borderTopColor: 'transparent',
           paddingVertical: 8,
+          paddingHorizontal: 45,
           height: 66,
-          justifyContent: 'space-between',
+          justifyContent: 'center',
           alignItems: 'center',
           overflow: 'visible',
         },
@@ -56,8 +57,8 @@ export default function TabLayout() {
               tint="dark"
               style={{
                 position: 'absolute',
-                left: 40,
-                right: 40,
+                left: 45,
+                right: 45,
                 top: 0,
                 bottom: 0,
                 borderRadius: 35,
@@ -84,12 +85,10 @@ export default function TabLayout() {
           justifyContent: 'center',
           paddingVertical: 0,
         } : {
-          marginHorizontal: 10,
           borderRadius: 24,
           alignItems: 'center',
           justifyContent: 'center',
-          flex: 0,
-          width: 68,
+          flex: 1,
           position: 'relative',
         },
         tabBarLabelStyle: isFuturistic ? {
@@ -102,7 +101,7 @@ export default function TabLayout() {
           marginTop: 2,
         },
         tabBarIconStyle: isFuturistic ? { display: 'none' } : {
-          marginTop: 29,
+          marginTop: 6.5,
         },
         tabBarLabelPosition: isFuturistic ? 'beside-icon' : 'below-icon',
       }}
@@ -110,7 +109,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'ABITUDINI',
+          title: 'TASKS',
           tabBarLabel: isFuturistic ? 'TASKS' : undefined,
           tabBarIcon: isFuturistic ? () => null : ({ color, size, focused }) => (
             <View style={{ alignItems: 'center', justifyContent: 'center', position: 'relative', width: 68, height: 50 }}>
@@ -118,10 +117,10 @@ export default function TabLayout() {
                 <View
                   style={{
                     position: 'absolute',
-                    top: 5,
-                    bottom: -14,
-                    left: -5,
-                    right: -5,
+                    top: 3,
+                    bottom: -12,
+                    left: -3,
+                    right: -3,
                     borderRadius: 35,
                     backgroundColor: 'rgba(255,255,255,0.18)',
                     borderWidth: 0,
@@ -144,10 +143,10 @@ export default function TabLayout() {
                 <View
                   style={{
                     position: 'absolute',
-                    top: 5,
-                    bottom: -14,
-                    left: -5,
-                    right: -5,
+                    top: 3,
+                    bottom: -12,
+                    left: -3,
+                    right: -3,
                     borderRadius: 35,
                     backgroundColor: 'rgba(255,255,255,0.18)',
                     borderWidth: 0,
@@ -164,16 +163,26 @@ export default function TabLayout() {
         options={{
           title: 'CALENDARIO',
           tabBarLabel: isFuturistic ? 'CAL' : undefined,
+          tabBarItemStyle: isFuturistic ? {
+            justifyContent: 'center',
+            paddingVertical: 0,
+          } : {
+            borderRadius: 24,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 1,
+            position: 'relative',
+          },
           tabBarIcon: isFuturistic ? () => null : ({ color, size, focused }) => (
             <View style={{ alignItems: 'center', justifyContent: 'center', position: 'relative', width: 68, height: 50 }}>
               {focused && (
                 <View
                   style={{
                     position: 'absolute',
-                    top: 5,
-                    bottom: -14,
-                    left: -5,
-                    right: -5,
+                    top: 3,
+                    bottom: -12,
+                    left: -3,
+                    right: -3,
                     borderRadius: 35,
                     backgroundColor: 'rgba(255,255,255,0.18)',
                     borderWidth: 0,
@@ -194,25 +203,23 @@ export default function TabLayout() {
              justifyContent: 'center',
              paddingVertical: 0,
           } : {
-            marginHorizontal: 10,
             borderRadius: 24,
             alignItems: 'center',
             justifyContent: 'center',
-            flex: 0,
-            width: 68,
+            flex: 1,
             position: 'relative',
-            transform: [{ translateX: -4 }, { translateY: 1 }],
+            marginLeft: -2,
           },
           tabBarIcon: isFuturistic ? () => null : ({ color, size, focused }) => (
-            <View style={{ alignItems: 'center', justifyContent: 'center', position: 'relative', width: 68, height: 50 }}>
+            <View style={{ alignItems: 'center', justifyContent: 'center', position: 'relative', width: 68, height: 50, top: -1 }}>
               {focused && (
                 <View
                   style={{
                     position: 'absolute',
-                    top: 5,
-                    bottom: -14,
-                    left: -5,
-                    right: -5,
+                    top: 4,
+                    bottom: -13,
+                    left: -3,
+                    right: -3,
                     borderRadius: 35,
                     backgroundColor: 'rgba(255,255,255,0.18)',
                     borderWidth: 0,
