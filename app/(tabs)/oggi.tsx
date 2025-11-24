@@ -50,8 +50,7 @@ function toMinutes(hhmm: string) {
 }
 
 // -- Constants for Layout --
-// Altezza fissa per ogni ora in pixel. Questo garantisce allineamento perfetto.
-const HOUR_HEIGHT = 80;
+// HOUR_HEIGHT moved to state to allow zooming
 // Margine sinistro per lasciare spazio all'etichetta dell'ora (es. "09:00")
 const LEFT_MARGIN = 65;
 // Altezza del separatore (linea grigia)
@@ -69,20 +68,23 @@ export default function OggiScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [windowStart, setWindowStart] = useState<string>('06:00');
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
-  const [forcedTaskColor, setForcedTaskColor] = useState<null | 'black' | 'white'>(null);
+  const [visibleHours, setVisibleHours] = useState<number>(10);
 
   // -- Data Loading & Persistence --
   useEffect(() => {
     (async () => {
       try {
-        const [start, end, forced] = await Promise.all([
+        const [start, end, visible] = await Promise.all([
           AsyncStorage.getItem('oggi_window_start_v1'),
           AsyncStorage.getItem('oggi_window_end_v1'),
-          AsyncStorage.getItem('oggi_forced_task_color_v1'),
+          AsyncStorage.getItem('oggi_visible_hours_v1'),
         ]);
         if (start) setWindowStart(start);
         if (end) setWindowEnd(end);
-        if (forced === 'black' || forced === 'white') setForcedTaskColor(forced);
+        if (visible) {
+             const v = parseInt(visible, 10);
+             if (!isNaN(v) && v >= 5 && v <= 24) setVisibleHours(v);
+        }
       } catch {}
     })();
   }, []);
@@ -94,9 +96,8 @@ export default function OggiScreen() {
     AsyncStorage.setItem('oggi_window_end_v1', windowEnd).catch(() => {});
   }, [windowEnd]);
   useEffect(() => {
-    const v = forcedTaskColor ?? 'auto';
-    AsyncStorage.setItem('oggi_forced_task_color_v1', v).catch(() => {});
-  }, [forcedTaskColor]);
+    AsyncStorage.setItem('oggi_visible_hours_v1', visibleHours.toString()).catch(() => {});
+  }, [visibleHours]);
 
   // -- Time Updates --
   useEffect(() => {
@@ -114,10 +115,16 @@ export default function OggiScreen() {
   const windowStartMin = toMinutes(windowStart);
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   
+  // Dynamic HOUR_HEIGHT based on visibleHours
+  // We assume roughly 70% of screen height is available for the timeline
+  const hourHeight = useMemo(() => {
+      return (Dimensions.get('window').height * 0.70) / visibleHours;
+  }, [visibleHours]);
+
   // Calcoliamo l'altezza totale della scroll view basandoci sui minuti totali visibili
-  // Usiamo una scala lineare: pixel = minuti * (HOUR_HEIGHT / 60)
+  // Usiamo una scala lineare: pixel = minuti * (hourHeight / 60)
   const totalMinutes = windowEndMin - windowStartMin;
-  const totalHeight = (totalMinutes / 60) * HOUR_HEIGHT;
+  const totalHeight = (totalMinutes / 60) * hourHeight;
   
   // Generiamo le etichette delle ore.
   // Partiamo dall'ora intera che contiene windowStartMin o subito dopo
@@ -293,9 +300,9 @@ export default function OggiScreen() {
     const visibleEnd = Math.min(endM, windowEndMin);
     
     // Coordinates
-    const top = ((visibleStart - windowStartMin) / 60) * HOUR_HEIGHT;
+    const top = ((visibleStart - windowStartMin) / 60) * hourHeight;
     const durationMin = visibleEnd - visibleStart;
-    const height = Math.max(1, (durationMin / 60) * HOUR_HEIGHT);
+    const height = Math.max(1, (durationMin / 60) * hourHeight);
     
     // Horizontal layout
     const lay = layoutById[event.id] || { col: 0, columns: 1 };
@@ -322,7 +329,7 @@ export default function OggiScreen() {
      const now = currentTime;
      const min = now.getHours() * 60 + now.getMinutes();
      if (min < windowStartMin || min > windowEndMin) return null;
-     return ((min - windowStartMin) / 60) * HOUR_HEIGHT;
+     return ((min - windowStartMin) / 60) * hourHeight;
   };
 
   return (
@@ -332,11 +339,9 @@ export default function OggiScreen() {
         <TouchableOpacity onPress={() => navigateDate('prev')} style={styles.navButton}>
           <Ionicons name="chevron-back" size={24} color={THEME.text} />
         </TouchableOpacity>
-        {activeTheme !== 'futuristic' && (
-          <Text style={[styles.dateText, isToday(currentDate, TZ) ? styles.todayDateText : styles.otherDateText]}>
-            {todayDate}
-          </Text>
-        )}
+        <Text style={[styles.dateText, isToday(currentDate, TZ) ? styles.todayDateText : styles.otherDateText]}>
+          {todayDate}
+        </Text>
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={() => navigateDate('next')} style={styles.navButton}>
              <Ionicons name="chevron-forward" size={24} color={THEME.text} />
@@ -355,7 +360,7 @@ export default function OggiScreen() {
              </View>
              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.allDayScroll}>
                {allDayEvents.map((e) => {
-                 const bg = forcedTaskColor === 'black' ? '#000000' : forcedTaskColor === 'white' ? '#ffffff' : e.color;
+                 const bg = e.color;
                  const light = isLightColor(bg);
                  return (
                    <View key={e.id} style={[styles.allDayItem, { backgroundColor: bg }]}>
@@ -384,7 +389,7 @@ export default function OggiScreen() {
                 
                 // Aggiungo un offset verticale di base (es. 10px) per evitare che la prima ora (00:00) sia tagliata
                 const BASE_OFFSET = 10; 
-                const top = (minutesFromStart / 60) * HOUR_HEIGHT + BASE_OFFSET;
+                const top = (minutesFromStart / 60) * hourHeight + BASE_OFFSET;
                 
                 return (
                   <View key={h} style={[styles.hourRow, { top }]}>
@@ -400,7 +405,7 @@ export default function OggiScreen() {
              {timedEvents.map(e => {
                const style = getEventStyle(e);
                if (!style) return null;
-               const bg = forcedTaskColor === 'black' ? '#000000' : forcedTaskColor === 'white' ? '#ffffff' : e.color;
+               const bg = e.color;
                const light = isLightColor(bg);
                
                // Aggiungo lo stesso offset di base anche agli eventi
@@ -460,8 +465,17 @@ export default function OggiScreen() {
                         if (m > 0) setWindowStart(`${String(Math.floor((m-60)/60)).padStart(2, '0')}:00`);
                      }}><Text style={styles.controlBtnText}>-</Text></TouchableOpacity>
                      <TouchableOpacity style={styles.controlBtn} onPress={() => {
-                        const m = toMinutes(windowStart);
-                        if (m < toMinutes(windowEnd) - 180) setWindowStart(`${String(Math.floor((m+60)/60)).padStart(2, '0')}:00`);
+                        const startM = toMinutes(windowStart);
+                        const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
+                        // Ensure at least 5 hour window (300 min)
+                        if (startM < endM - 300) {
+                            const nextStartM = startM + 60;
+                            const newDuration = (endM - nextStartM) / 60;
+                            if (visibleHours > newDuration) {
+                                setVisibleHours(Math.max(5, Math.floor(newDuration)));
+                            }
+                            setWindowStart(`${String(Math.floor(nextStartM/60)).padStart(2, '0')}:00`);
+                        }
                      }}><Text style={styles.controlBtnText}>+</Text></TouchableOpacity>
                   </View>
                </View>
@@ -471,8 +485,17 @@ export default function OggiScreen() {
                   <Text style={styles.settingLabel}>Fine: {windowEnd}</Text>
                   <View style={styles.settingControls}>
                      <TouchableOpacity style={styles.controlBtn} onPress={() => {
-                        const m = toMinutes(windowEnd);
-                        if (m > toMinutes(windowStart) + 180) setWindowEnd(`${String(Math.floor((m-60)/60)).padStart(2, '0')}:00`);
+                        const startM = toMinutes(windowStart);
+                        const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
+                        // Ensure at least 5 hour window (300 min)
+                        if (endM > startM + 300) {
+                             const nextEndM = endM - 60;
+                             const newDuration = (nextEndM - startM) / 60;
+                             if (visibleHours > newDuration) {
+                                 setVisibleHours(Math.max(5, Math.floor(newDuration)));
+                             }
+                             setWindowEnd(nextEndM === 1440 ? '24:00' : `${String(Math.floor(nextEndM/60)).padStart(2, '0')}:00`);
+                        }
                      }}><Text style={styles.controlBtnText}>-</Text></TouchableOpacity>
                      <TouchableOpacity style={styles.controlBtn} onPress={() => {
                         const m = toMinutes(windowEnd);
@@ -485,10 +508,37 @@ export default function OggiScreen() {
                </View>
 
                 <View style={styles.settingRow}>
-                    <Text style={styles.settingLabel}>Colore Task</Text>
-                    <TouchableOpacity onPress={() => setForcedTaskColor(prev => prev === null ? 'black' : prev === 'black' ? 'white' : null)} style={styles.controlBtnWide}>
-                        <Text style={styles.controlBtnText}>{forcedTaskColor === null ? 'Auto' : forcedTaskColor === 'black' ? 'Nero' : 'Bianco'}</Text>
-                    </TouchableOpacity>
+                    <Text style={styles.settingLabel}>Ore Visibili: {visibleHours}</Text>
+                    <View style={styles.settingControls}>
+                       <TouchableOpacity style={styles.controlBtn} onPress={() => {
+                          if (visibleHours > 5) setVisibleHours(prev => prev - 1);
+                       }}><Text style={styles.controlBtnText}>-</Text></TouchableOpacity>
+                       <TouchableOpacity style={styles.controlBtn} onPress={() => {
+                          if (visibleHours < 24) {
+                              const nextVisible = visibleHours + 1;
+                              setVisibleHours(nextVisible);
+                              
+                              // Adjust window if visible hours > duration
+                              const startM = toMinutes(windowStart);
+                              const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
+                              const currentDuration = (endM - startM) / 60;
+                              
+                              if (nextVisible > currentDuration) {
+                                   let newEndM = startM + (nextVisible * 60);
+                                   let newStartM = startM;
+                                   
+                                   if (newEndM > 1440) {
+                                       newEndM = 1440;
+                                       newStartM = Math.max(0, 1440 - (nextVisible * 60));
+                                   }
+                                   
+                                   const fmt = (m: number) => `${String(Math.floor(m/60)).padStart(2, '0')}:00`;
+                                   setWindowStart(fmt(newStartM));
+                                   setWindowEnd(newEndM === 1440 ? '24:00' : fmt(newEndM));
+                              }
+                          }
+                       }}><Text style={styles.controlBtnText}>+</Text></TouchableOpacity>
+                    </View>
                 </View>
 
                <TouchableOpacity style={styles.closeBtn} onPress={() => setShowSettings(false)}>
