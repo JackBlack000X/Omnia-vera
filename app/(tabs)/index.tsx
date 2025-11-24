@@ -162,7 +162,7 @@ export default function IndexScreen() {
 const styles = StyleSheet.create({
   screen: { 
     flex: 1, 
-    backgroundColor: THEME.background, 
+    backgroundColor: 'transparent', 
     paddingHorizontal: 16 
   },
   

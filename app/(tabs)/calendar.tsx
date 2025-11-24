@@ -561,7 +561,7 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#000000', paddingHorizontal: 0 },
+  screen: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: 0 },
   header: { marginTop: 16, marginBottom: 24, paddingHorizontal: 16 },
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1 },
