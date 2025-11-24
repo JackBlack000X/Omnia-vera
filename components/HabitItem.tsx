@@ -1,9 +1,11 @@
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
+import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
+import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 
 type Props = {
   habit: Habit;
@@ -26,11 +28,92 @@ const CARD_COLORS = [
   '#ec4899', // Rosa
 ];
 
+const PIXEL_SIZE = 0.625;
+const NOISE_INTENSITY = 35.0; // Increased to make noise more visible
+
+// Function to convert hex color to RGB array for shader (slightly darkened for noise)
+function getNoiseColor(hex: string): [number, number, number, number] {
+  const c = (hex || '').toLowerCase();
+  let r: number, g: number, b: number;
+  
+  if (c.startsWith('#') && c.length === 7) {
+    r = parseInt(c.slice(1, 3), 16);
+    g = parseInt(c.slice(3, 5), 16);
+    b = parseInt(c.slice(5, 7), 16);
+  } else if (c.startsWith('#') && c.length === 4) {
+    r = parseInt(c[1] + c[1], 16);
+    g = parseInt(c[2] + c[2], 16);
+    b = parseInt(c[3] + c[3], 16);
+  } else {
+    return [0.2, 0.2, 0.2, 1.0]; // Default dark grey
+  }
+  
+  // Very slight darken for noise effect (reduce by only 5-10% to keep color very visible)
+  r = Math.max(0, Math.floor(r * 0.92));
+  g = Math.max(0, Math.floor(g * 0.92));
+  b = Math.max(0, Math.floor(b * 0.92));
+  
+  // Convert to 0-1 range for shader
+  return [r / 255, g / 255, b / 255, 1.0];
+}
+
+const noiseShaderSource = `
+  uniform float threshold;
+  uniform float2 resolution;
+  uniform float4 noiseColor;
+  uniform float4 backgroundColor;
+  
+  // High-quality hash function to eliminate patterns (Gold Noise)
+  float random(vec2 st) {
+      float phi = 1.61803398874989484820459; 
+      return fract(tan(distance(st * phi, st) * 123.456) * st.x);
+  }
+
+  vec4 main(vec2 pos) {
+      // Quantize position to create "pixels"
+      vec2 gridPos = floor(pos / ${PIXEL_SIZE});
+      float r = random(gridPos);
+      
+      if (r * 100.0 < threshold) {
+          return noiseColor;
+      } else {
+          return backgroundColor;
+      }
+  }
+`;
+
+function NoiseOverlay({ width, height, darkColor }: { width: number; height: number; darkColor: [number, number, number, number] }) {
+  const noiseShader = useMemo(() => Skia.RuntimeEffect.Make(noiseShaderSource), []);
+
+  if (!noiseShader) return null;
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]} pointerEvents="none">
+      <Canvas style={{ width: width + 2, height: height + 2 }} mode="continuous">
+        <Fill>
+          <Shader 
+            source={noiseShader} 
+            uniforms={{ 
+              threshold: NOISE_INTENSITY, 
+              resolution: [width + 2, height + 2],
+              noiseColor: darkColor,
+              backgroundColor: [0.0, 0.0, 0.0, 0.0], // Transparent background
+            }} 
+          />
+        </Fill>
+      </Canvas>
+    </View>
+  );
+}
+
 export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldCloseMenu = false }: Props) {
+  const { activeTheme } = useAppTheme();
   const { history, getDay, toggleDone, removeHabit } = useHabits();
   const today = getDay(new Date());
   const isDone = useMemo(() => Boolean(history[today]?.completedByHabitId?.[habit.id]), [history, today, habit.id]);
   const swipeableRef = useRef<Swipeable>(null);
+  const [cardDimensions, setCardDimensions] = React.useState({ width: 0, height: 0 });
+  const [checkDimensions, setCheckDimensions] = React.useState({ width: 0, height: 0 });
 
   // Close menu when shouldCloseMenu becomes true
   useEffect(() => {
@@ -64,6 +147,8 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
   );
 
   const cardColor = habit.color ?? CARD_COLORS[index % CARD_COLORS.length];
+  // Calculate noise color matching the task color
+  const noiseColor = useMemo(() => getNoiseColor(cardColor), [cardColor]);
   // Only treat exact white as white background; all others use white text
   const isWhiteBg = useMemo(() => {
     const c = (cardColor || '').toLowerCase();
@@ -147,18 +232,56 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
       renderLeftActions={renderLeftActions} 
       overshootFriction={8}
     >
-      <View style={[styles.card, { backgroundColor: cardColor }]}>
+      <View 
+        style={[
+          styles.card, 
+          { backgroundColor: cardColor },
+          activeTheme === 'futuristic' && { 
+            borderRadius: 0,
+            transform: [{ skewX: '-30deg' }],
+            paddingHorizontal: 0,
+            marginHorizontal: 0,
+            height: 60,
+            paddingVertical: 12,
+            width: '90%',
+            alignSelf: 'center'
+          }
+        ]}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          setCardDimensions({ width, height });
+        }}
+      >
+        {activeTheme === 'futuristic' && cardDimensions.width > 0 && cardDimensions.height > 0 && (
+          <NoiseOverlay width={cardDimensions.width} height={cardDimensions.height} darkColor={noiseColor} />
+        )}
         <TouchableOpacity
           accessibilityRole="checkbox"
           accessibilityState={{ checked: isDone }}
           onPress={() => toggleDone(habit.id)}
-          style={styles.checkContainer}
+          style={[
+            styles.checkContainer,
+            activeTheme === 'futuristic' && { marginLeft: 10 }
+          ]}
         >
-          <View style={[
-            styles.check,
-            isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
-            isDone && styles.checkDone
-          ]}>
+          <View 
+            style={[
+              styles.check,
+              isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
+              isDone && styles.checkDone
+            ]}
+            onLayout={(e) => {
+              if (activeTheme === 'futuristic' && !isDone) {
+                const { width, height } = e.nativeEvent.layout;
+                setCheckDimensions({ width, height });
+              }
+            }}
+          >
+            {activeTheme === 'futuristic' && !isDone && checkDimensions.width > 0 && checkDimensions.height > 0 && (
+              <View style={{ position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, overflow: 'hidden', borderRadius: 10 }}>
+                <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
+              </View>
+            )}
             {isDone && (
               <Ionicons 
                 name="checkmark" 
@@ -184,7 +307,10 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
         </View>
         
         {isDaily && (
-          <View style={styles.dailyIndicator}>
+          <View style={[
+            styles.dailyIndicator,
+            activeTheme === 'futuristic' && { marginLeft: 2, left: -10 }
+          ]}>
             <View style={[
               styles.dailyCircle,
               isWhiteBg
@@ -260,7 +386,8 @@ const styles = StyleSheet.create({
   dailyIndicator: {
     marginLeft: 12,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    position: 'relative'
   },
   
   dailyCircle: {

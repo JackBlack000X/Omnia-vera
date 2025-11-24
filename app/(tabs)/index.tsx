@@ -148,7 +148,8 @@ export default function IndexScreen() {
           data={[...habits].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
+          style={activeTheme === 'futuristic' && { marginHorizontal: -16 }}
           showsVerticalScrollIndicator={false}
         />
       )}
