@@ -116,9 +116,10 @@ export default function OggiScreen() {
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   
   // Dynamic HOUR_HEIGHT based on visibleHours
-  // We assume roughly 70% of screen height is available for the timeline
+  // We use a larger portion of screen height (78%) to ensure hours are well spaced
+  // and fill the screen, especially when few hours are visible.
   const hourHeight = useMemo(() => {
-      return (Dimensions.get('window').height * 0.70) / visibleHours;
+      return (Dimensions.get('window').height * 0.78) / visibleHours;
   }, [visibleHours]);
 
   // Calcoliamo l'altezza totale della scroll view basandoci sui minuti totali visibili
@@ -335,7 +336,7 @@ export default function OggiScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
-      <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 60 }]}>
+      <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 50 }]}>
         <TouchableOpacity onPress={() => navigateDate('prev')} style={styles.navButton}>
           <Ionicons name="chevron-back" size={24} color={THEME.text} />
         </TouchableOpacity>
@@ -377,10 +378,9 @@ export default function OggiScreen() {
       {/* Main Timeline Scroll */}
       <ScrollView 
         style={styles.scrollView}
-        contentContainerStyle={{ height: Math.max(totalHeight + 100, Dimensions.get('window').height) }} // Ensure scrollable
         showsVerticalScrollIndicator={false}
       >
-         <View style={{ height: totalHeight + 80 }}> 
+         <View style={{ height: totalHeight + (visibleHours === 24 ? 0 : 43) }}> 
              {/* Grid Lines & Hours */}
              {hours.map(h => {
                 const minutesFromStart = (h * 60) - windowStartMin;
@@ -564,8 +564,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     backgroundColor: 'transparent',
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
   },
   navButton: {
     padding: 4,
