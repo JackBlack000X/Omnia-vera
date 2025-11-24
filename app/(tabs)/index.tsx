@@ -2,6 +2,7 @@ import { HabitItem } from '@/components/HabitItem';
 import { THEME } from '@/constants/theme';
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
+import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -26,6 +27,7 @@ function formatDateLong(date: Date, tz: string): string {
 
 export default function IndexScreen() {
   const router = useRouter();
+  const { activeTheme } = useAppTheme();
   const { habits, history, getDay, toggleDone, removeHabit, updateHabit, addHabit, reorder, resetToday, dayResetTime, setDayResetTime } = useHabits();
   const [input, setInput] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -88,12 +90,14 @@ export default function IndexScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Tasks</Text>
-      </View>
+    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      {activeTheme !== 'futuristic' && (
+        <View style={styles.header}>
+          <Text style={styles.title}>Tasks</Text>
+        </View>
+      )}
 
-      <View style={styles.progressSection}>
+      <View style={[styles.progressSection, activeTheme === 'futuristic' && { marginTop: 60 }]}>
         <Text style={styles.progressText}>{stats.pct}%</Text>
         <View style={styles.progressBarContainer}>
           <View style={styles.progressBarBg}>

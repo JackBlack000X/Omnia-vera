@@ -1,5 +1,6 @@
 import { getCalendarDays, getMonthName, getMonthYear, isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
+import { useAppTheme } from '@/lib/theme-context';
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -83,6 +84,7 @@ function calculateCompletedForLevel(level: CompletionLevel, total: number): numb
 
 export default function CalendarScreen() {
   const { habits, history } = useHabits();
+  const { activeTheme } = useAppTheme();
   const today = new Date();
   const { year: currentYear, month: currentMonth } = getMonthYear(today);
   
@@ -311,10 +313,10 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 60 }]}>
         <View style={styles.headerTop}>
           <View style={styles.headerText}>
-            <Text style={styles.title}>Calendario Abitudini</Text>
+            {activeTheme !== 'futuristic' && <Text style={styles.title}>Calendario Abitudini</Text>}
           </View>
           <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
             <View style={styles.infoCircle}>

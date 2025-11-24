@@ -11,8 +11,8 @@ export default function ShopScreen() {
   return (
     <View style={styles.background}>
       <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Shop</Text>
+        <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 60 }]}>
+          {activeTheme !== 'futuristic' && <Text style={styles.title}>Shop</Text>}
           <TouchableOpacity 
             onPress={() => router.push('/profile')}
             style={styles.profileBtn}

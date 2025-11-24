@@ -1,6 +1,7 @@
 import { THEME } from '@/constants/theme';
 import { isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
+import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useState } from 'react';
@@ -60,6 +61,7 @@ const HOUR_FONT_SIZE = 14;
 
 export default function OggiScreen() {
   const { habits, history, getDay } = useHabits();
+  const { activeTheme } = useAppTheme();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   
@@ -326,13 +328,15 @@ export default function OggiScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 60 }]}>
         <TouchableOpacity onPress={() => navigateDate('prev')} style={styles.navButton}>
           <Ionicons name="chevron-back" size={24} color={THEME.text} />
         </TouchableOpacity>
-        <Text style={[styles.dateText, isToday(currentDate, TZ) ? styles.todayDateText : styles.otherDateText]}>
-          {todayDate}
-        </Text>
+        {activeTheme !== 'futuristic' && (
+          <Text style={[styles.dateText, isToday(currentDate, TZ) ? styles.todayDateText : styles.otherDateText]}>
+            {todayDate}
+          </Text>
+        )}
         <View style={styles.headerRight}>
           <TouchableOpacity onPress={() => navigateDate('next')} style={styles.navButton}>
              <Ionicons name="chevron-forward" size={24} color={THEME.text} />
