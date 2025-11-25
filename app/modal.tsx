@@ -26,6 +26,74 @@ function formatDuration(minutes: number) {
   }
 }
 
+type HabitTimeSlot = { start: string; end: string | null };
+
+function normalizeTitle(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function extractHabitTimeSlots(habit: Habit): HabitTimeSlot[] {
+  const slots: HabitTimeSlot[] = [];
+  const schedule = habit.schedule;
+
+  if (schedule?.weeklyTimes) {
+    Object.values(schedule.weeklyTimes).forEach((entry) => {
+      if (entry?.start) {
+        slots.push({ start: entry.start, end: entry.end ?? null });
+      }
+    });
+  }
+
+  if (schedule?.monthlyTimes) {
+    Object.values(schedule.monthlyTimes).forEach((entry) => {
+      if (entry?.start) {
+        slots.push({ start: entry.start, end: entry.end ?? null });
+      }
+    });
+  }
+
+  if (schedule?.time) {
+    slots.push({ start: schedule.time, end: schedule.endTime ?? null });
+  }
+
+  if (habit.timeOverrides) {
+    Object.values(habit.timeOverrides).forEach((value) => {
+      if (typeof value === 'string') {
+        if (value) slots.push({ start: value, end: null });
+      } else if (value?.start) {
+        slots.push({ start: value.start, end: value.end ?? null });
+      }
+    });
+  }
+
+  return slots;
+}
+
+function findDuplicateHabitSlot(
+  habits: Habit[],
+  title: string,
+  start: string,
+  end: string | null,
+  ignoreHabitId?: string
+) {
+  const normalizedTitle = normalizeTitle(title);
+
+  for (const habit of habits) {
+    if (ignoreHabitId && habit.id === ignoreHabitId) continue;
+    if (normalizeTitle(habit.text) !== normalizedTitle) continue;
+
+    const match = extractHabitTimeSlots(habit).find(
+      (slot) => slot.start === start && (slot.end ?? null) === (end ?? null)
+    );
+
+    if (match) {
+      return { habit, slot: match };
+    }
+  }
+
+  return null;
+}
+
 // Simple full-screen confirmation modal
 function ConfirmationModal({ 
   visible, 
@@ -180,14 +248,7 @@ export default function ModalScreen() {
   // Check if it's all-day: no time configured and no weekly/monthly times
   // Also check if timeOverrides only contain "00:00" (all-day markers)
   const hasTimeOverrides = existing?.timeOverrides && Object.keys(existing.timeOverrides).length > 0;
-  const hasSpecificTimeOverrides = hasTimeOverrides && Object.values(existing?.timeOverrides ?? {}).some(time => {
-    if (typeof time === 'string') {
-      return time !== '00:00';
-    } else if (typeof time === 'object' && time !== null) {
-      return time.start !== '00:00' || time.end !== '24:00';
-    }
-    return false;
-  });
+  const hasSpecificTimeOverrides = hasTimeOverrides && Object.values(existing?.timeOverrides ?? {}).some(time => time !== '00:00');
   const isAllDay = !hasAnyTimeConfigured && !scheduleObj?.weeklyTimes && !scheduleObj?.monthlyTimes && !hasSpecificTimeOverrides;
   const initialMode: 'allDay' | 'timed' = isAllDay ? 'allDay' : 'timed';
   const [mode, setMode] = useState<'allDay' | 'timed'>(initialMode);
@@ -526,7 +587,43 @@ export default function ModalScreen() {
 
   function close() { router.back(); }
 
-  function save() {
+  const executeSave = (skipDuplicateCheck = false) => {
+    const shouldCheckDuplicate =
+      !skipDuplicateCheck &&
+      mode === 'timed' &&
+      (type === 'new' || type === 'edit' || type === 'schedule');
+
+    if (shouldCheckDuplicate) {
+      const baseTitle = type === 'schedule' ? (existing?.text ?? '') : text;
+      const trimmedTitle = baseTitle.trim();
+      const start = minutesToHhmm(startMin) as string;
+      const end = endMin !== null ? (minutesToHhmm(endMin) as string) : null;
+      const duplicate = findDuplicateHabitSlot(
+        habits,
+        trimmedTitle,
+        start,
+        end,
+        type === 'new' ? undefined : existing?.id
+      );
+      if (duplicate) {
+        const interval = end ? `${start}-${end}` : start;
+        const fallbackTitle = trimmedTitle.length > 0 ? trimmedTitle : 'Task senza nome';
+        const duplicateTitle = duplicate.habit.text?.trim().length
+          ? duplicate.habit.text
+          : fallbackTitle;
+        setConfirmationModal({
+          visible: true,
+          title: 'Task già esistente',
+          message: `Esiste già "${duplicateTitle}" con orario ${interval}. Vuoi crearla comunque?`,
+          onConfirm: () => {
+            setConfirmationModal((prev) => ({ ...prev, visible: false }));
+            executeSave(true);
+          },
+        });
+        return;
+      }
+    }
+
     if (type === 'new' || (type === 'edit' && existing)) {
       const t = text.trim();
       if (t.length <= 100) {
@@ -953,6 +1050,10 @@ export default function ModalScreen() {
       }
     }
     close();
+  };
+
+  function save() {
+    executeSave();
   }
 
   const COLORS = ['#000000', '#ef4444', '#f59e0b', '#fbbf24', '#10b981', '#60a5fa', '#3b82f6', '#6366f1', '#ec4899', '#ffffff', '#9ca3af'];

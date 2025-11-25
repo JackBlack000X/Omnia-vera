@@ -5,10 +5,10 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { GestureHandlerRootView, LongPressGestureHandler, PanGestureHandler, State } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
+import { Dimensions, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const TZ = 'Europe/Zurich';
@@ -63,10 +63,234 @@ function minutesToTime(minutes: number): string {
 // HOUR_HEIGHT moved to state to allow zooming
 // Margine sinistro per lasciare spazio all'etichetta dell'ora (es. "09:00")
 const LEFT_MARGIN = 65;
+const BASE_VERTICAL_OFFSET = 10;
+const DRAG_VISUAL_OFFSET = BASE_VERTICAL_OFFSET + 2; // compensate grid offset during drag
 // Altezza del separatore (linea grigia)
 const SEPARATOR_HEIGHT = 1;
 // Font size per l'etichetta dell'ora
 const HOUR_FONT_SIZE = 14;
+
+type OggiEvent = {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  isAllDay: boolean;
+  color: string;
+};
+
+type DraggableEventProps = {
+  event: OggiEvent;
+  layoutStyle: { top: number; height: number; left: number; width: number };
+  baseTop: number;
+  dragY: SharedValue<number>;
+  dragInitialTop: SharedValue<number>;
+  draggingEventId: string | null;
+  setDraggingEventId: (id: string | null) => void;
+  windowStartMin: number;
+  hourHeight: number;
+  currentDate: Date;
+  getDay: (date: Date) => string;
+  setTimeOverrideRange: (habitId: string, ymd: string, start: string, end: string) => void;
+  setPendingEventPositions: Dispatch<SetStateAction<Record<string, number>>>;
+};
+
+function DraggableEvent({
+  event,
+  layoutStyle,
+  baseTop,
+  dragY,
+  dragInitialTop,
+  draggingEventId,
+  setDraggingEventId,
+  windowStartMin,
+  hourHeight,
+  currentDate,
+  getDay,
+  setTimeOverrideRange,
+  setPendingEventPositions,
+}: DraggableEventProps) {
+  const isDragging = draggingEventId === event.id;
+  const bg = event.color;
+  const light = isLightColor(bg);
+
+  // Flag locale per gestire lo stato nello stesso gesto
+  const isDragActiveRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const panResponder = useMemo(() => {
+    return PanResponder.create({
+      // 1. Cattura il tocco immediatamente
+      onStartShouldSetPanResponder: () => true,
+      
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        // Se il drag è già attivo, cattura sempre
+        if (isDragActiveRef.current) return true;
+        // Altrimenti, cattura solo se movimento verticale significativo
+        return Math.abs(gestureState.dy) > 5;
+      },
+
+      // 2. Impedisce alla ScrollView nativa di interrompere il gesto se il drag è attivo
+      onShouldBlockNativeResponder: () => isDragActiveRef.current,
+
+      onPanResponderGrant: (evt) => {
+        // Avvia il timer: se l'utente tiene premuto senza muoversi troppo per 200ms...
+        longPressTimerRef.current = setTimeout(() => {
+          isDragActiveRef.current = true; // ...ATTIVA il drag
+          
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          
+          setDraggingEventId(event.id);
+          dragInitialTop.value = baseTop;
+          dragY.value = 0;
+        }, 200); // 200ms di attesa
+      },
+
+      onPanResponderMove: (evt, gestureState) => {
+        // Se l'utente si muove TROPPO in orizzontale prima che il timer scatti, annulla il drag (permette swipe)
+        if (!isDragActiveRef.current && Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy)) {
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+          return;
+        }
+
+        // Se il timer non è ancora scattato, non fare nulla (permette alla ScrollView di funzionare se ci si muove subito)
+        if (!isDragActiveRef.current) {
+          return;
+        }
+
+        // 3. Se isDragActive è true, muovi l'elemento
+        const rawY = gestureState.dy;
+        const currentTop = dragInitialTop.value + rawY;
+        const relativeTop = Math.max(0, currentTop - DRAG_VISUAL_OFFSET);
+        const minutesFromStart = (relativeTop / hourHeight) * 60;
+        const newStartMinutes = windowStartMin + minutesFromStart;
+        const roundedMinutes = Math.round(newStartMinutes / 15) * 15;
+        const clampedMinutes = Math.max(0, Math.min(1440, roundedMinutes));
+        const snappedMinutesFromStart = clampedMinutes - windowStartMin;
+        const snappedTop = (snappedMinutesFromStart / 60) * hourHeight + DRAG_VISUAL_OFFSET;
+        const snappedY = snappedTop - dragInitialTop.value;
+
+        dragY.value = snappedY;
+      },
+
+      onPanResponderTerminate: () => {
+        // Se la ScrollView ruba il tocco (es. scroll veloce subito), cancella il timer
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+        isDragActiveRef.current = false;
+        setDraggingEventId(null);
+        dragY.value = 0;
+      },
+
+      onPanResponderRelease: (evt, gestureState) => {
+        // Pulisci tutto al rilascio
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+
+        if (!isDragActiveRef.current) {
+          return;
+        }
+
+        // Calcola la posizione finale
+        const finalY = dragY.value;
+        const finalTop = dragInitialTop.value + finalY;
+        const relativeFinalTop = Math.max(0, finalTop - DRAG_VISUAL_OFFSET);
+        const minutesFromStart = (relativeFinalTop / hourHeight) * 60;
+        const newStartMinutes = windowStartMin + minutesFromStart;
+        const clampedMinutes = Math.max(0, Math.min(1440, Math.round(newStartMinutes)));
+
+        const originalStartM = toMinutes(event.startTime);
+        const originalEndM = toMinutes(event.endTime);
+        const duration = originalEndM - originalStartM;
+
+        const newEndMinutes = Math.min(1440, clampedMinutes + duration);
+
+        const newStartTime = minutesToTime(clampedMinutes);
+        const newEndTime = minutesToTime(newEndMinutes);
+
+        setPendingEventPositions((prev) => ({ ...prev, [event.id]: clampedMinutes }));
+
+        const selectedYmd = getDay(currentDate);
+        setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
+
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        
+        // Aggiorna la posizione base prima di resettare
+        dragInitialTop.value = finalTop;
+        dragY.value = 0;
+        isDragActiveRef.current = false;
+        setDraggingEventId(null);
+      },
+    });
+  }, [
+    event.id,
+    baseTop,
+    setDraggingEventId,
+    dragInitialTop,
+    dragY,
+    windowStartMin,
+    hourHeight,
+    event.startTime,
+    event.endTime,
+    getDay,
+    currentDate,
+    setTimeOverrideRange,
+    setPendingEventPositions,
+  ]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    top: dragInitialTop.value + dragY.value,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 1000 : 1,
+  }));
+
+  const EventComponent = isDragging ? Animated.View : View;
+  const eventStyle = isDragging
+    ? [
+        styles.eventItem,
+        {
+          height: layoutStyle.height,
+          left: layoutStyle.left,
+          width: layoutStyle.width,
+          backgroundColor: bg,
+        },
+        animatedStyle,
+      ]
+    : [
+        styles.eventItem,
+        {
+          top: baseTop,
+          height: layoutStyle.height,
+          left: layoutStyle.left,
+          width: layoutStyle.width,
+          backgroundColor: bg,
+          opacity: 1,
+          zIndex: 1,
+        },
+      ];
+
+  return (
+    <View {...panResponder.panHandlers}>
+      <EventComponent style={eventStyle}>
+        <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
+          {event.title}
+        </Text>
+        {layoutStyle.height > 30 && (
+          <Text style={[styles.eventTime, { color: light ? '#000' : '#FFF' }]}>
+            {event.startTime} - {event.endTime}
+          </Text>
+        )}
+      </EventComponent>
+    </View>
+  );
+}
 
 export default function OggiScreen() {
   const { habits, history, getDay, setTimeOverrideRange } = useHabits();
@@ -82,6 +306,7 @@ export default function OggiScreen() {
   
   // Drag state
   const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
+  const [pendingEventPositions, setPendingEventPositions] = useState<Record<string, number>>({});
   const dragY = useSharedValue(0);
   const dragInitialTop = useSharedValue(0);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -164,8 +389,6 @@ export default function OggiScreen() {
   };
 
   // -- Event Processing --
-  type OggiEvent = { id: string; title: string; startTime: string; endTime: string; isAllDay: boolean; color: string };
-  
   const weekday = useMemo(() => currentDate.getDay(), [currentDate]);
   const dayOfMonth = useMemo(() => currentDate.getDate(), [currentDate]);
   const monthIndex1 = useMemo(() => currentDate.getMonth() + 1, [currentDate]);
@@ -235,6 +458,22 @@ export default function OggiScreen() {
     }
     return { timedEvents: items, allDayEvents: allDay };
   }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1]);
+
+  useEffect(() => {
+    if (Object.keys(pendingEventPositions).length === 0) return;
+    setPendingEventPositions((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of Object.keys(prev)) {
+        const ev = timedEvents.find((e) => e.id === id);
+        if (!ev || toMinutes(ev.startTime) === prev[id]) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [timedEvents, pendingEventPositions]);
 
   // -- Layout Calculation for Overlaps --
   type LayoutInfo = { col: number; columns: number };
@@ -310,8 +549,11 @@ export default function OggiScreen() {
 
   // -- Helper to calculate styles --
   const getEventStyle = (event: OggiEvent) => {
-    const startM = toMinutes(event.startTime);
-    const endM = toMinutes(event.endTime);
+    const originalStart = toMinutes(event.startTime);
+    const originalEnd = toMinutes(event.endTime);
+    const pendingStart = pendingEventPositions[event.id];
+    const startM = pendingStart ?? originalStart;
+    const endM = pendingStart !== undefined ? Math.min(1440, startM + (originalEnd - originalStart)) : originalEnd;
     
     // Clip to view window
     if (endM <= windowStartMin || startM >= windowEndMin) return null;
@@ -400,6 +642,7 @@ export default function OggiScreen() {
           ref={scrollViewRef}
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={!draggingEventId}
         >
          <View style={{ height: totalHeight + (visibleHours === 24 ? 0 : 43 + (activeTheme !== 'futuristic' ? 55 : 0)) }}> 
              {/* Grid Lines & Hours */}
@@ -409,8 +652,7 @@ export default function OggiScreen() {
                 if (minutesFromStart < 0 || minutesFromStart > totalMinutes + 60) return null;
                 
                 // Aggiungo un offset verticale di base (es. 10px) per evitare che la prima ora (00:00) sia tagliata
-                const BASE_OFFSET = 10; 
-                const top = (minutesFromStart / 60) * hourHeight + BASE_OFFSET;
+                const top = (minutesFromStart / 60) * hourHeight + BASE_VERTICAL_OFFSET;
                 
                 return (
                   <View key={h} style={[styles.hourRow, { top }]}>
@@ -430,128 +672,25 @@ export default function OggiScreen() {
                const light = isLightColor(bg);
                
                // Aggiungo lo stesso offset di base anche agli eventi
-               const BASE_OFFSET = 10;
-               const baseTop = style.top + BASE_OFFSET;
-               
-               const isDragging = draggingEventId === e.id;
-
-               const handleLongPress = () => {
-                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                 setDraggingEventId(e.id);
-                 dragInitialTop.value = baseTop;
-                 dragY.value = 0;
-               };
-
-               const handlePanGesture = (event: any) => {
-                 'worklet';
-                 const rawY = event.nativeEvent.translationY;
-                 
-                 // Calcola lo snap ai 15 minuti (worklet-safe)
-                 const currentTop = dragInitialTop.value + rawY;
-                 const minutesFromStart = (currentTop / hourHeight) * 60;
-                 const newStartMinutes = windowStartMin + minutesFromStart;
-                 const roundedMinutes = Math.round(newStartMinutes / 15) * 15;
-                 const clampedMinutes = Math.max(0, Math.min(1440, roundedMinutes));
-                 const snappedMinutesFromStart = clampedMinutes - windowStartMin;
-                 const snappedTop = (snappedMinutesFromStart / 60) * hourHeight;
-                 const snappedY = snappedTop - dragInitialTop.value;
-                 
-                 dragY.value = withSpring(snappedY, {
-                   damping: 20,
-                   stiffness: 300,
-                 });
-               };
-
-               const finishDrag = () => {
-                 if (draggingEventId !== e.id) return;
-                 
-                 const finalY = dragY.value;
-                 const finalTop = dragInitialTop.value + finalY;
-                 const minutesFromStart = (finalTop / hourHeight) * 60;
-                 const newStartMinutes = windowStartMin + minutesFromStart;
-                 const clampedMinutes = Math.max(0, Math.min(1440, Math.round(newStartMinutes)));
-                 
-                 // Calcola la durata dell'evento originale
-                 const originalStartM = toMinutes(e.startTime);
-                 const originalEndM = toMinutes(e.endTime);
-                 const duration = originalEndM - originalStartM;
-                 
-                 // Calcola il nuovo endTime
-                 const newEndMinutes = Math.min(1440, clampedMinutes + duration);
-                 
-                 const newStartTime = minutesToTime(clampedMinutes);
-                 const newEndTime = minutesToTime(newEndMinutes);
-                 
-                 // Aggiorna l'orario usando setTimeOverrideRange per la data corrente
-                 const selectedYmd = getDay(currentDate);
-                 setTimeOverrideRange(e.id, selectedYmd, newStartTime, newEndTime);
-                 
-                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                 setDraggingEventId(null);
-                 dragY.value = 0;
-               };
-
-               const handlePanStateChange = (event: any) => {
-                 'worklet';
-                 if (event.nativeEvent.state === State.END) {
-                   runOnJS(finishDrag)();
-                 }
-               };
-
-               const animatedStyle = useAnimatedStyle(() => {
-                 return {
-                   top: dragInitialTop.value + dragY.value,
-                   opacity: 0.8,
-                   zIndex: 1000,
-                 };
-               });
-
-               const EventComponent = isDragging ? Animated.View : View;
-               const eventStyle = isDragging 
-                 ? [styles.eventItem, {
-                     height: style.height,
-                     left: style.left,
-                     width: style.width,
-                     backgroundColor: bg,
-                   }, animatedStyle]
-                 : [styles.eventItem, {
-                     top: baseTop,
-                     height: style.height,
-                     left: style.left,
-                     width: style.width,
-                     backgroundColor: bg,
-                     opacity: 1,
-                     zIndex: 1,
-                   }];
+               const baseTop = style.top + BASE_VERTICAL_OFFSET;
 
                return (
-                 <LongPressGestureHandler
+                 <DraggableEvent
                    key={e.id}
-                   onHandlerStateChange={(event) => {
-                     if (event.nativeEvent.state === State.ACTIVE) {
-                       runOnJS(handleLongPress)();
-                     }
-                   }}
-                   minDurationMs={300}
-                 >
-                   <PanGestureHandler
-                     onGestureEvent={handlePanGesture}
-                     onHandlerStateChange={handlePanStateChange}
-                     enabled={isDragging}
-                     simultaneousHandlers={[]}
-                   >
-                     <EventComponent style={eventStyle}>
-                        <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
-                          {e.title}
-                        </Text>
-                        {style.height > 30 && (
-                           <Text style={[styles.eventTime, { color: light ? '#000' : '#FFF' }]}>
-                             {e.startTime} - {e.endTime}
-                           </Text>
-                        )}
-                     </EventComponent>
-                   </PanGestureHandler>
-                 </LongPressGestureHandler>
+                   event={e}
+                   layoutStyle={style}
+                   baseTop={baseTop}
+                   dragY={dragY}
+                   dragInitialTop={dragInitialTop}
+                   draggingEventId={draggingEventId}
+                   setDraggingEventId={setDraggingEventId}
+                   windowStartMin={windowStartMin}
+                   hourHeight={hourHeight}
+                   currentDate={currentDate}
+                   getDay={getDay}
+                   setTimeOverrideRange={setTimeOverrideRange}
+                 setPendingEventPositions={setPendingEventPositions}
+                 />
                );
              })}
 
@@ -559,9 +698,8 @@ export default function OggiScreen() {
              {(() => {
                const top = getCurrentTimeTop();
                if (top === null) return null;
-               const BASE_OFFSET = 10;
                return (
-                 <View style={[styles.currentTimeIndicator, { top: top + BASE_OFFSET }]}>
+                 <View style={[styles.currentTimeIndicator, { top: top + BASE_VERTICAL_OFFSET }]}>
                     <View style={styles.currentTimeLine} />
                  </View>
                );
