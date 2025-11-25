@@ -100,8 +100,20 @@ export default function IndexScreen() {
       <View style={[styles.progressSection, activeTheme === 'futuristic' && { marginTop: 60 }]}>
         <Text style={styles.progressText}>{stats.pct}%</Text>
         <View style={styles.progressBarContainer}>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${stats.pct}%` }]} />
+          <View style={[
+            styles.progressBarBg,
+            activeTheme === 'futuristic' && {
+              borderRadius: 0,
+              transform: [{ skewX: '-30deg' }]
+            }
+          ]}>
+            <View style={[
+              styles.progressBarFill, 
+              { width: `${stats.pct}%` },
+              activeTheme === 'futuristic' && {
+                borderRadius: 0
+              }
+            ]} />
           </View>
           <View style={styles.progressActions}>
             <TouchableOpacity onPress={() => {
@@ -113,7 +125,13 @@ export default function IndexScreen() {
                   { text: 'Conferma', style: 'destructive', onPress: resetToday }
                 ]
               );
-            }} style={styles.progressBtn}>
+            }} style={[
+              styles.progressBtn,
+              activeTheme === 'futuristic' && {
+                borderRadius: 0,
+                transform: [{ skewX: '-30deg' }]
+              }
+            ]}>
               <Ionicons name="refresh-outline" size={16} color={THEME.textMuted} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => {
@@ -132,7 +150,13 @@ export default function IndexScreen() {
                   ...hourOptions
                 ]
               );
-            }} style={styles.progressBtn}>
+            }} style={[
+              styles.progressBtn,
+              activeTheme === 'futuristic' && {
+                borderRadius: 0,
+                transform: [{ skewX: '-30deg' }]
+              }
+            ]}>
               <Ionicons name="time-outline" size={16} color={THEME.textMuted} />
             </TouchableOpacity>
           </View>

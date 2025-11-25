@@ -4,8 +4,9 @@ import { useHabits } from '@/lib/habits/Provider';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { GestureHandlerRootView, LongPressGestureHandler, PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const TZ = 'Europe/Zurich';
@@ -49,6 +50,13 @@ function toMinutes(hhmm: string) {
   return h * 60 + m;
 }
 
+function minutesToTime(minutes: number): string {
+  if (minutes >= 1440) return '24:00';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 // -- Constants for Layout --
 // HOUR_HEIGHT moved to state to allow zooming
 // Margine sinistro per lasciare spazio all'etichetta dell'ora (es. "09:00")
@@ -59,7 +67,7 @@ const SEPARATOR_HEIGHT = 1;
 const HOUR_FONT_SIZE = 14;
 
 export default function OggiScreen() {
-  const { habits, history, getDay } = useHabits();
+  const { habits, history, getDay, setTimeOverrideRange } = useHabits();
   const { activeTheme } = useAppTheme();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -69,6 +77,11 @@ export default function OggiScreen() {
   const [windowStart, setWindowStart] = useState<string>('06:00');
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
   const [visibleHours, setVisibleHours] = useState<number>(10);
+  
+  // Drag state
+  const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ y: 0, initialTop: 0 });
+  const scrollViewRef = useRef<ScrollView>(null);
 
   // -- Data Loading & Persistence --
   useEffect(() => {
@@ -180,7 +193,9 @@ export default function OggiScreen() {
 
       // Time logic
       const ymd = selectedYmd;
-      const overrideStart = h.timeOverrides?.[ymd];
+      const override = h.timeOverrides?.[ymd];
+      const overrideStart = typeof override === 'string' ? override : override?.start;
+      const overrideEnd = typeof override === 'object' && override !== null ? override.end : null;
       
        // One-off logic
       const schedDays = h.schedule?.daysOfWeek ?? [];
@@ -191,7 +206,7 @@ export default function OggiScreen() {
       const weekly = h.schedule?.weeklyTimes?.[weekday] ?? null;
       const monthlyT = h.schedule?.monthlyTimes?.[dayOfMonth] ?? null;
       const start = overrideStart ?? (weekly?.start ?? monthlyT?.start ?? (h.schedule?.time ?? null));
-      const end = (weekly?.end ?? monthlyT?.end ?? (h.schedule?.endTime ?? null));
+      const end = overrideEnd ?? (weekly?.end ?? monthlyT?.end ?? (h.schedule?.endTime ?? null));
       const color = h.color ?? '#3b82f6';
       const title = h.text;
 
@@ -377,10 +392,12 @@ export default function OggiScreen() {
       )}
 
       {/* Main Timeline Scroll */}
-      <ScrollView 
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+        >
          <View style={{ height: totalHeight + (visibleHours === 24 ? 0 : 43 + (activeTheme !== 'futuristic' ? 55 : 0)) }}> 
              {/* Grid Lines & Hours */}
              {hours.map(h => {
@@ -411,28 +428,91 @@ export default function OggiScreen() {
                
                // Aggiungo lo stesso offset di base anche agli eventi
                const BASE_OFFSET = 10;
+               
+               const isDragging = draggingEventId === e.id;
+               const dragTop = isDragging ? dragOffset.initialTop + dragOffset.y : style.top + BASE_OFFSET;
+
+               const handleLongPress = () => {
+                 setDraggingEventId(e.id);
+                 setDragOffset({ y: 0, initialTop: style.top + BASE_OFFSET });
+               };
+
+               const handlePanGesture = (event: any) => {
+                 if (draggingEventId === e.id) {
+                   const newY = event.nativeEvent.translationY;
+                   setDragOffset(prev => ({ ...prev, y: newY }));
+                 }
+               };
+
+               const handlePanStateChange = (event: any) => {
+                 if (event.nativeEvent.state === State.END && draggingEventId === e.id) {
+                   // Calcola la nuova posizione in minuti
+                   const finalTop = dragOffset.initialTop + dragOffset.y;
+                   const minutesFromStart = (finalTop / hourHeight) * 60;
+                   const newStartMinutes = windowStartMin + minutesFromStart;
+                   
+                   // Arrotonda ai 15 minuti più vicini
+                   const roundedMinutes = Math.round(newStartMinutes / 15) * 15;
+                   const clampedMinutes = Math.max(0, Math.min(1440, roundedMinutes));
+                   
+                   // Calcola la durata dell'evento originale
+                   const originalStartM = toMinutes(e.startTime);
+                   const originalEndM = toMinutes(e.endTime);
+                   const duration = originalEndM - originalStartM;
+                   
+                   // Calcola il nuovo endTime
+                   const newEndMinutes = Math.min(1440, clampedMinutes + duration);
+                   
+                   const newStartTime = minutesToTime(clampedMinutes);
+                   const newEndTime = minutesToTime(newEndMinutes);
+                   
+                   // Aggiorna l'orario usando setTimeOverrideRange per la data corrente
+                   const selectedYmd = getDay(currentDate);
+                   setTimeOverrideRange(e.id, selectedYmd, newStartTime, newEndTime);
+                   
+                   setDraggingEventId(null);
+                   setDragOffset({ y: 0, initialTop: 0 });
+                 }
+               };
 
                return (
-                 <TouchableOpacity 
-                    key={e.id}
-                    activeOpacity={0.8}
-                    style={[styles.eventItem, { 
-                      top: style.top + BASE_OFFSET,
-                      height: style.height,
-                      left: style.left,
-                      width: style.width,
-                      backgroundColor: bg
-                    }]}
+                 <LongPressGestureHandler
+                   key={e.id}
+                   onHandlerStateChange={(event) => {
+                     if (event.nativeEvent.state === State.ACTIVE) {
+                       handleLongPress();
+                     }
+                   }}
+                   minDurationMs={300}
                  >
-                    <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
-                      {e.title}
-                    </Text>
-                    {style.height > 30 && (
-                       <Text style={[styles.eventTime, { color: light ? '#000' : '#FFF' }]}>
-                         {e.startTime} - {e.endTime}
-                       </Text>
-                    )}
-                 </TouchableOpacity>
+                   <PanGestureHandler
+                     onGestureEvent={handlePanGesture}
+                     onHandlerStateChange={handlePanStateChange}
+                     enabled={draggingEventId === e.id}
+                     simultaneousHandlers={[]}
+                   >
+                     <View
+                       style={[styles.eventItem, { 
+                         top: dragTop,
+                         height: style.height,
+                         left: style.left,
+                         width: style.width,
+                         backgroundColor: bg,
+                         opacity: isDragging ? 0.8 : 1,
+                         zIndex: isDragging ? 1000 : 1,
+                       }]}
+                     >
+                        <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
+                          {e.title}
+                        </Text>
+                        {style.height > 30 && (
+                           <Text style={[styles.eventTime, { color: light ? '#000' : '#FFF' }]}>
+                             {e.startTime} - {e.endTime}
+                           </Text>
+                        )}
+                     </View>
+                   </PanGestureHandler>
+                 </LongPressGestureHandler>
                );
              })}
 
@@ -449,6 +529,7 @@ export default function OggiScreen() {
              })()}
          </View>
       </ScrollView>
+      </GestureHandlerRootView>
 
       {/* Settings Modal (Simplified for brevity, keeping core functional) */}
       <Modal visible={showSettings} animationType="slide" transparent onRequestClose={() => setShowSettings(false)}>

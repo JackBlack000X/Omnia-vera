@@ -40,6 +40,7 @@ export type HabitsContextType = {
   resetToday: () => Promise<void>;
   getDay: (date: Date | string) => string;
   setTimeOverride: (id: string, date: string, hhmm: string | null) => void;
+  setTimeOverrideRange: (id: string, date: string, startTime: string | null, endTime: string | null) => void;
   updateScheduleTime: (id: string, hhmm: string | null) => void;
   updateScheduleTimes: (id: string, startTime: string | null, endTime: string | null) => void;
   updateSchedule: (id: string, daysOfWeek: number[], hhmm: string | null) => void;
@@ -238,8 +239,25 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     setHabits(prev => {
       const next = prev.map(h => {
         if (h.id !== id) return h;
-        const nextOverrides = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
+        const nextOverrides = { ...(h.timeOverrides ?? {}) } as Record<string, string | { start: string; end: string }>;
         if (hhmm) nextOverrides[date] = hhmm; else delete nextOverrides[date];
+        return { ...h, timeOverrides: nextOverrides };
+      });
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const setTimeOverrideRange = useCallback((id: string, date: string, startTime: string | null, endTime: string | null) => {
+    setHabits(prev => {
+      const next = prev.map(h => {
+        if (h.id !== id) return h;
+        const nextOverrides = { ...(h.timeOverrides ?? {}) } as Record<string, string | { start: string; end: string }>;
+        if (startTime && endTime) {
+          nextOverrides[date] = { start: startTime, end: endTime };
+        } else {
+          delete nextOverrides[date];
+        }
         return { ...h, timeOverrides: nextOverrides };
       });
       AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
@@ -317,8 +335,8 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime,
     addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, resetToday, getDay,
-    setTimeOverride, updateScheduleTime, updateScheduleTimes, updateSchedule, setDayResetTime, setHabits, resetStorage,
-  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, resetToday, getDay, setTimeOverride, updateScheduleTime, updateScheduleTimes, updateSchedule, setDayResetTime, setHabits, resetStorage]);
+    setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleTimes, updateSchedule, setDayResetTime, setHabits, resetStorage,
+  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleTimes, updateSchedule, setDayResetTime, setHabits, resetStorage]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

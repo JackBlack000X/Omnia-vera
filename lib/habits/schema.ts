@@ -14,7 +14,7 @@ export type Habit = {
   text: string;
   order: number;
   schedule?: HabitSchedule;
-  timeOverrides?: Record<string, string>; // date YYYY-MM-DD -> 'HH:MM'
+  timeOverrides?: Record<string, string | { start: string; end: string }>; // date YYYY-MM-DD -> 'HH:MM' or { start, end }
   color?: string; // hex color for card/background
   createdAt?: string; // YYYY-MM-DD creation date in Europe/Zurich
 };

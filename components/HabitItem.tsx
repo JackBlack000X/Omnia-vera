@@ -268,7 +268,12 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
             style={[
               styles.check,
               isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
-              isDone && styles.checkDone
+              isDone && styles.checkDone,
+              activeTheme === 'futuristic' && { 
+                borderRadius: 0,
+                aspectRatio: 1,
+                transform: [{ skewX: '-2deg' }]
+              }
             ]}
             onLayout={(e) => {
               if (activeTheme === 'futuristic' && !isDone) {
@@ -315,7 +320,12 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
               styles.dailyCircle,
               isWhiteBg
                 ? { backgroundColor: '#111111', borderColor: 'rgba(0,0,0,0.3)' }
-                : null
+                : null,
+              activeTheme === 'futuristic' && {
+                borderRadius: 0,
+                aspectRatio: 1,
+                transform: [{ skewX: '-2deg' }]
+              }
             ]} />
           </View>
         )}

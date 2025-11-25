@@ -180,7 +180,14 @@ export default function ModalScreen() {
   // Check if it's all-day: no time configured and no weekly/monthly times
   // Also check if timeOverrides only contain "00:00" (all-day markers)
   const hasTimeOverrides = existing?.timeOverrides && Object.keys(existing.timeOverrides).length > 0;
-  const hasSpecificTimeOverrides = hasTimeOverrides && Object.values(existing?.timeOverrides ?? {}).some(time => time !== '00:00');
+  const hasSpecificTimeOverrides = hasTimeOverrides && Object.values(existing?.timeOverrides ?? {}).some(time => {
+    if (typeof time === 'string') {
+      return time !== '00:00';
+    } else if (typeof time === 'object' && time !== null) {
+      return time.start !== '00:00' || time.end !== '24:00';
+    }
+    return false;
+  });
   const isAllDay = !hasAnyTimeConfigured && !scheduleObj?.weeklyTimes && !scheduleObj?.monthlyTimes && !hasSpecificTimeOverrides;
   const initialMode: 'allDay' | 'timed' = isAllDay ? 'allDay' : 'timed';
   const [mode, setMode] = useState<'allDay' | 'timed'>(initialMode);

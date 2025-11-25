@@ -26,8 +26,8 @@ export default function TabLayout() {
           right: 0,
           height: 50 + insets.top,
           backgroundColor: 'transparent',
-          borderBottomWidth: 1,
-          borderBottomColor: 'rgba(255,255,255,0.1)',
+          borderBottomWidth: 0,
+          borderTopWidth: 0,
           elevation: 0,
           paddingTop: insets.top,
           paddingBottom: 0,
@@ -50,7 +50,7 @@ export default function TabLayout() {
         },
         tabBarBackground: () => (
           isFuturistic ? (
-            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} />
+            <View style={{ flex: 1, backgroundColor: '#000000' }} />
           ) : (
             <BlurView
               intensity={12}
