@@ -5,7 +5,7 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -96,6 +96,10 @@ type DraggableEventProps = {
   setPendingEventPositions: Dispatch<SetStateAction<Record<string, number>>>;
   setRecentlyMovedEventId: (id: string | null) => void;
   setLastMovedEventId: (id: string) => void;
+  setCurrentDragPosition: (minutes: number | null) => void;
+  timedEvents: OggiEvent[];
+  layoutById: Record<string, { col: number; columns: number }>;
+  calculateDragLayout: (draggedEventId: string, newStartMinutes: number) => { width: number; left: number };
 };
 
 function DraggableEvent({
@@ -115,10 +119,18 @@ function DraggableEvent({
   setPendingEventPositions,
   setRecentlyMovedEventId,
   setLastMovedEventId,
+  setCurrentDragPosition,
+  timedEvents,
+  layoutById,
+  calculateDragLayout,
 }: DraggableEventProps) {
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
   const light = isLightColor(bg);
+
+  // Shared values for dynamic width and left during drag
+  const dragWidthValue = useSharedValue(layoutStyle.width);
+  const dragLeftValue = useSharedValue(layoutStyle.left);
 
   // Flag locale per gestire lo stato nello stesso gesto
   const isDragActiveRef = useRef(false);
@@ -185,6 +197,15 @@ function DraggableEvent({
 
         dragY.value = snappedY;
 
+        // Update current drag position so other events can recalculate their layout
+        setCurrentDragPosition(clampedMinutes);
+
+        // Calculate dynamic width and left using the layout calculation function
+        // This simulates the layout as if the dragged event is already in its new position
+        const dragLayout = calculateDragLayout(event.id, clampedMinutes);
+        dragWidthValue.value = dragLayout.width;
+        dragLeftValue.value = dragLayout.left;
+
         // 4. Feedback aptico quando attraversa una nuova linea di snap
         if (lastSnappedMinuteRef.current !== null && lastSnappedMinuteRef.current !== clampedMinutes) {
           // Feedback più forte per le ore intere, più leggero per i quarti d'ora
@@ -207,6 +228,7 @@ function DraggableEvent({
         isDragActiveRef.current = false;
         lastSnappedMinuteRef.current = null;
         setDraggingEventId(null);
+        setCurrentDragPosition(null);
         dragY.value = 0;
       },
 
@@ -258,6 +280,7 @@ function DraggableEvent({
         isDragActiveRef.current = false;
         lastSnappedMinuteRef.current = null;
         setDraggingEventId(null);
+        setCurrentDragPosition(null);
       },
     });
   }, [
@@ -277,12 +300,29 @@ function DraggableEvent({
     setPendingEventPositions,
     setRecentlyMovedEventId,
     setLastMovedEventId,
+    setCurrentDragPosition,
+    timedEvents,
+    hourHeight,
+    windowStartMin,
+    dragWidthValue,
+    dragLeftValue,
+    calculateDragLayout,
   ]);
+
+  // Update drag width and left when layout changes
+  useEffect(() => {
+    if (isDragging) {
+      dragWidthValue.value = layoutStyle.width;
+      dragLeftValue.value = layoutStyle.left;
+    }
+  }, [isDragging, layoutStyle.width, layoutStyle.left, dragWidthValue, dragLeftValue]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     top: dragInitialTop.value + dragY.value,
     opacity: isDragging ? 0.8 : 1,
     zIndex: isDragging ? 1000 : 1,
+    width: isDragging ? dragWidthValue.value : layoutStyle.width,
+    left: isDragging ? dragLeftValue.value : layoutStyle.left,
   }));
 
   const EventComponent = isDragging ? Animated.View : View;
@@ -291,8 +331,6 @@ function DraggableEvent({
         styles.eventItem,
         {
           height: layoutStyle.height,
-          left: layoutStyle.left,
-          width: layoutStyle.width,
           backgroundColor: bg,
         },
         animatedStyle,
@@ -342,6 +380,8 @@ export default function OggiScreen() {
   const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
   const [pendingEventPositions, setPendingEventPositions] = useState<Record<string, number>>({});
   const [recentlyMovedEventId, setRecentlyMovedEventId] = useState<string | null>(null);
+  // Track current drag position in minutes (updated during drag)
+  const [currentDragPosition, setCurrentDragPosition] = useState<number | null>(null);
   const dragY = useSharedValue(0);
   const dragInitialTop = useSharedValue(0);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -740,6 +780,239 @@ export default function OggiScreen() {
     }
   }, [layoutById, timedEvents, pendingEventPositions, columnOrderByTime]);
 
+  // Function to calculate layout during drag (as if the dragged event is already in its new position)
+  const calculateDragLayout = useCallback((draggedEventId: string, newStartMinutes: number): { width: number; left: number } => {
+    // Find the dragged event
+    const draggedEvent = timedEvents.find(e => e.id === draggedEventId);
+    if (!draggedEvent) {
+      // Fallback: return default width
+      const screenWidth = Dimensions.get('window').width;
+      const availableWidth = screenWidth - LEFT_MARGIN;
+      return { width: availableWidth - 2, left: LEFT_MARGIN };
+    }
+
+    // Get original column from layoutById
+    const originalLayout = layoutById[draggedEventId] || { col: 0, columns: 1 };
+    const originalCol = originalLayout.col;
+    const originalColumns = originalLayout.columns;
+
+    // Create temporary events list: remove dragged event from original position, add it at new position
+    const originalStartM = toMinutes(draggedEvent.startTime);
+    const originalEndM = toMinutes(draggedEvent.endTime);
+    const duration = originalEndM - originalStartM;
+    const newEndMinutes = Math.min(1440, newStartMinutes + duration);
+
+    // Check if dragged event in new position still overlaps with other events in original position
+    // Find events that overlap with the original position
+    const eventsInOriginalPosition = timedEvents.filter(e => {
+      if (e.id === draggedEventId) return false;
+      const eStart = toMinutes(e.startTime);
+      const eEnd = toMinutes(e.endTime);
+      // Check if event overlaps with original position (even partially)
+      return !(eEnd <= originalStartM || eStart >= originalEndM);
+    });
+
+    // Check if dragged event in new position still overlaps with any of these events
+    const stillOverlaps = eventsInOriginalPosition.some(e => {
+      const eStart = toMinutes(e.startTime);
+      const eEnd = toMinutes(e.endTime);
+      // Check if dragged event in new position overlaps with this event (even partially)
+      return !(newEndMinutes <= eStart || newStartMinutes >= eEnd);
+    });
+
+    // If still overlaps, maintain original column
+    if (stillOverlaps && eventsInOriginalPosition.length > 0) {
+      // Calculate layout for events in original position (without dragged event)
+      const eventsForOriginalLayout = eventsInOriginalPosition.map(e => {
+        const startM = toMinutes(e.startTime);
+        const endM = toMinutes(e.endTime);
+        return {
+          ...e,
+          s: startM,
+          e: endM,
+          duration: endM - startM,
+        };
+      }).sort((a, b) => {
+        if (a.s !== b.s) return a.s - b.s;
+        if (a.duration !== b.duration) return b.duration - a.duration;
+        return 0;
+      });
+
+      // Calculate how many columns are needed for these events
+      let maxCols = 1;
+      const tempColumns: typeof eventsForOriginalLayout[] = [];
+      for (const ev of eventsForOriginalLayout) {
+        let placed = false;
+        for (let i = 0; i < tempColumns.length; i++) {
+          const col = tempColumns[i];
+          const lastInCol = col[col.length - 1];
+          if (lastInCol.e <= ev.s) {
+            col.push(ev);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          tempColumns.push([ev]);
+        }
+        maxCols = Math.max(maxCols, tempColumns.length);
+      }
+
+      // Add dragged event to the count (it's still overlapping)
+      const totalCols = maxCols + 1; // +1 for dragged event
+      const screenWidth = Dimensions.get('window').width;
+      const availableWidth = screenWidth - LEFT_MARGIN;
+      const colWidth = availableWidth / totalCols;
+      const left = LEFT_MARGIN + (originalCol * colWidth);
+
+      return {
+        width: colWidth - 2, // 2px spacing
+        left,
+      };
+    }
+
+    // Create events list without the dragged event
+    const eventsWithoutDragged = timedEvents.filter(e => e.id !== draggedEventId);
+
+    // Create a temporary event with the new position
+    const tempDraggedEvent: OggiEvent = {
+      ...draggedEvent,
+      startTime: minutesToTime(newStartMinutes),
+      endTime: minutesToTime(newEndMinutes),
+    };
+
+    // Combine: all other events + dragged event at new position
+    const tempEvents = [...eventsWithoutDragged, tempDraggedEvent];
+
+    // Calculate layout for all events (same logic as layoutById)
+    const events = tempEvents.map(e => {
+      const startM = toMinutes(e.startTime);
+      const endM = toMinutes(e.endTime);
+      return {
+        ...e,
+        s: startM,
+        e: endM,
+        duration: endM - startM,
+        isRecentlyMoved: e.id === draggedEventId,
+        isLastMoved: e.id === draggedEventId,
+      };
+    }).sort((a, b) => {
+      if (a.s !== b.s) return a.s - b.s;
+      if (a.duration !== b.duration) return b.duration - a.duration;
+      const aShouldGoRight = a.isRecentlyMoved || a.isLastMoved;
+      const bShouldGoRight = b.isRecentlyMoved || b.isLastMoved;
+      if (aShouldGoRight && !bShouldGoRight) return 1;
+      if (!aShouldGoRight && bShouldGoRight) return -1;
+      return 0;
+    });
+
+    // Identify clusters - events that overlap in time (even partially)
+    // This correctly handles partial overlaps: if a 1-hour task is moved 15min up,
+    // the bottom 45min still overlap with other tasks, so they must share space
+    let clusters: typeof events[] = [];
+    let currentCluster: typeof events = [];
+    let clusterEnd = -1;
+
+    for (const ev of events) {
+      if (currentCluster.length === 0) {
+        currentCluster.push(ev);
+        clusterEnd = ev.e;
+      } else {
+        // Check if event overlaps with cluster (even partially)
+        // Two events overlap if: ev.s < clusterEnd (event starts before cluster ends)
+        // This ensures partial overlaps are correctly detected
+        if (ev.s < clusterEnd) {
+          currentCluster.push(ev);
+          clusterEnd = Math.max(clusterEnd, ev.e);
+        } else {
+          clusters.push(currentCluster);
+          currentCluster = [ev];
+          clusterEnd = ev.e;
+        }
+      }
+    }
+    if (currentCluster.length > 0) clusters.push(currentCluster);
+
+    // Process each cluster and find layout for dragged event
+    const layout: Record<string, LayoutInfo> = {};
+    
+    for (const cluster of clusters) {
+      const sortedCluster = [...cluster].sort((a, b) => {
+        if (a.s !== b.s) return a.s - b.s;
+        if (a.duration !== b.duration) return b.duration - a.duration;
+        const aShouldGoRight = a.isRecentlyMoved || a.isLastMoved;
+        const bShouldGoRight = b.isRecentlyMoved || b.isLastMoved;
+        if (aShouldGoRight && !bShouldGoRight) return 1;
+        if (!aShouldGoRight && bShouldGoRight) return -1;
+        return 0;
+      });
+
+      const columns: typeof sortedCluster[] = [];
+      for (const ev of sortedCluster) {
+        let placed = false;
+
+        const sameStartCols: number[] = [];
+        for (let i = 0; i < columns.length; i++) {
+          const col = columns[i];
+          if (col.some(existingEv => existingEv.s === ev.s && existingEv.duration === ev.duration)) {
+            sameStartCols.push(i);
+          }
+        }
+        const hasSameStartEvents = sameStartCols.length > 0;
+
+        if ((ev.isLastMoved || ev.isRecentlyMoved) && hasSameStartEvents) {
+          columns.push([ev]);
+          layout[ev.id] = { col: columns.length - 1, columns: 1 };
+          placed = true;
+        } else if (!hasSameStartEvents) {
+          for (let i = 0; i < columns.length; i++) {
+            const col = columns[i];
+            const lastInCol = col[col.length - 1];
+            if (lastInCol.e <= ev.s) {
+              col.push(ev);
+              layout[ev.id] = { col: i, columns: 1 };
+              placed = true;
+              break;
+            }
+          }
+        } else {
+          for (let i = 0; i < columns.length; i++) {
+            const col = columns[i];
+            const lastInCol = col[col.length - 1];
+            if (lastInCol.e <= ev.s) {
+              col.push(ev);
+              layout[ev.id] = { col: i, columns: 1 };
+              placed = true;
+              break;
+            }
+          }
+        }
+
+        if (!placed) {
+          columns.push([ev]);
+          layout[ev.id] = { col: columns.length - 1, columns: 1 };
+        }
+      }
+
+      // Update total columns for everyone in this cluster
+      const totalCols = columns.length;
+      for (const ev of cluster) {
+        layout[ev.id].columns = totalCols;
+      }
+    }
+
+    // Get layout for dragged event
+    const draggedLayout = layout[draggedEventId] || { col: 0, columns: 1 };
+    const screenWidth = Dimensions.get('window').width;
+    const availableWidth = screenWidth - LEFT_MARGIN;
+    const colWidth = availableWidth / draggedLayout.columns;
+    const left = LEFT_MARGIN + (draggedLayout.col * colWidth);
+
+    return {
+      width: colWidth - 2, // 2px spacing
+      left,
+    };
+  }, [timedEvents, columnOrderByTime, layoutById]);
 
   // -- Helper to calculate styles --
   const getEventStyle = (event: OggiEvent) => {
@@ -761,7 +1034,190 @@ export default function OggiScreen() {
     const height = Math.max(1, (durationMin / 60) * hourHeight);
     
     // Horizontal layout
-    const lay = layoutById[event.id] || { col: 0, columns: 1 };
+    // If a task is being dragged and this event is not the dragged one,
+    // check if the dragged task has exited the overlap zone
+    let lay = layoutById[event.id] || { col: 0, columns: 1 };
+    
+    if (draggingEventId && draggingEventId !== event.id && currentDragPosition !== null) {
+      const draggedEvent = timedEvents.find(e => e.id === draggingEventId);
+      if (draggedEvent) {
+        const draggedOriginalStart = toMinutes(draggedEvent.startTime);
+        const draggedOriginalEnd = toMinutes(draggedEvent.endTime);
+        
+        // Check if this event overlaps with dragged event's original position
+        const overlapsOriginal = !(endM <= draggedOriginalStart || startM >= draggedOriginalEnd);
+        
+        if (overlapsOriginal) {
+          // Check if dragged event in its current position (from currentDragPosition or pendingEventPositions) still overlaps
+          const draggedCurrentStart = currentDragPosition ?? pendingEventPositions[draggingEventId] ?? draggedOriginalStart;
+          const draggedDuration = draggedOriginalEnd - draggedOriginalStart;
+          const draggedCurrentEnd = Math.min(1440, draggedCurrentStart + draggedDuration);
+          
+          // Check if dragged event still overlaps with this event
+          const stillOverlaps = !(draggedCurrentEnd <= startM || draggedCurrentStart >= endM);
+          
+          if (!stillOverlaps) {
+            // Dragged event has exited: recalculate layout without it
+            const eventsWithoutDragged = timedEvents.filter(e => e.id !== draggingEventId);
+            const eventsForLayout = eventsWithoutDragged.map(e => {
+              const eStart = toMinutes(e.startTime);
+              const eEnd = toMinutes(e.endTime);
+              return {
+                ...e,
+                s: eStart,
+                e: eEnd,
+                duration: eEnd - eStart,
+              };
+            }).sort((a, b) => {
+              if (a.s !== b.s) return a.s - b.s;
+              if (a.duration !== b.duration) return b.duration - a.duration;
+              return 0;
+            });
+            
+            // Find cluster that contains this event
+            let clusters: typeof eventsForLayout[] = [];
+            let currentCluster: typeof eventsForLayout = [];
+            let clusterEnd = -1;
+            
+            for (const ev of eventsForLayout) {
+              if (currentCluster.length === 0) {
+                currentCluster.push(ev);
+                clusterEnd = ev.e;
+              } else {
+                if (ev.s < clusterEnd) {
+                  currentCluster.push(ev);
+                  clusterEnd = Math.max(clusterEnd, ev.e);
+                } else {
+                  clusters.push(currentCluster);
+                  currentCluster = [ev];
+                  clusterEnd = ev.e;
+                }
+              }
+            }
+            if (currentCluster.length > 0) clusters.push(currentCluster);
+            
+            // Find the cluster containing this event
+            const cluster = clusters.find(c => c.some(e => e.id === event.id)) || [];
+            
+            if (cluster.length > 0 && cluster.some(e => e.id === event.id)) {
+              // Calculate layout for this cluster without dragged event
+              const tempColumns: typeof cluster[] = [];
+              for (const ev of cluster) {
+                let placed = false;
+                for (let i = 0; i < tempColumns.length; i++) {
+                  const col = tempColumns[i];
+                  const lastInCol = col[col.length - 1];
+                  if (lastInCol.e <= ev.s) {
+                    col.push(ev);
+                    placed = true;
+                    break;
+                  }
+                }
+                if (!placed) {
+                  tempColumns.push([ev]);
+                }
+              }
+              
+              const totalCols = tempColumns.length;
+              const eventCol = tempColumns.findIndex(col => col.some(e => e.id === event.id));
+              if (eventCol !== -1) {
+                lay = { col: eventCol, columns: totalCols };
+              }
+            }
+          }
+        } else {
+          // This event did NOT overlap with dragged event's original position
+          // Check if dragged event in new position now overlaps with this event
+          const draggedCurrentStart = currentDragPosition ?? pendingEventPositions[draggingEventId] ?? draggedOriginalStart;
+          const draggedDuration = draggedOriginalEnd - draggedOriginalStart;
+          const draggedCurrentEnd = Math.min(1440, draggedCurrentStart + draggedDuration);
+          
+          // Check if dragged event now overlaps with this event
+          const nowOverlaps = !(draggedCurrentEnd <= startM || draggedCurrentStart >= endM);
+          
+          if (nowOverlaps) {
+            // Dragged event has entered: recalculate layout with it included
+            const eventsWithoutDragged = timedEvents.filter(e => e.id !== draggingEventId);
+            const draggedEvent = timedEvents.find(e => e.id === draggingEventId);
+            if (draggedEvent) {
+              const tempDraggedEvent = {
+                ...draggedEvent,
+                s: draggedCurrentStart,
+                e: draggedCurrentEnd,
+                duration: draggedDuration,
+              };
+              
+              const eventsForLayout = [...eventsWithoutDragged.map(e => {
+                const eStart = toMinutes(e.startTime);
+                const eEnd = toMinutes(e.endTime);
+                return {
+                  ...e,
+                  s: eStart,
+                  e: eEnd,
+                  duration: eEnd - eStart,
+                };
+              }), tempDraggedEvent].sort((a, b) => {
+                if (a.s !== b.s) return a.s - b.s;
+                if (a.duration !== b.duration) return b.duration - a.duration;
+                return 0;
+              });
+              
+              // Find cluster that contains this event
+              let clusters: typeof eventsForLayout[] = [];
+              let currentCluster: typeof eventsForLayout = [];
+              let clusterEnd = -1;
+              
+              for (const ev of eventsForLayout) {
+                if (currentCluster.length === 0) {
+                  currentCluster.push(ev);
+                  clusterEnd = ev.e;
+                } else {
+                  if (ev.s < clusterEnd) {
+                    currentCluster.push(ev);
+                    clusterEnd = Math.max(clusterEnd, ev.e);
+                  } else {
+                    clusters.push(currentCluster);
+                    currentCluster = [ev];
+                    clusterEnd = ev.e;
+                  }
+                }
+              }
+              if (currentCluster.length > 0) clusters.push(currentCluster);
+              
+              // Find the cluster containing this event
+              const cluster = clusters.find(c => c.some(e => e.id === event.id)) || [];
+              
+              if (cluster.length > 0 && cluster.some(e => e.id === event.id)) {
+                // Calculate layout for this cluster with dragged event included
+                const tempColumns: typeof cluster[] = [];
+                for (const ev of cluster) {
+                  let placed = false;
+                  for (let i = 0; i < tempColumns.length; i++) {
+                    const col = tempColumns[i];
+                    const lastInCol = col[col.length - 1];
+                    if (lastInCol.e <= ev.s) {
+                      col.push(ev);
+                      placed = true;
+                      break;
+                    }
+                  }
+                  if (!placed) {
+                    tempColumns.push([ev]);
+                  }
+                }
+                
+                const totalCols = tempColumns.length;
+                const eventCol = tempColumns.findIndex(col => col.some(e => e.id === event.id));
+                if (eventCol !== -1) {
+                  lay = { col: eventCol, columns: totalCols };
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
     const screenWidth = Dimensions.get('window').width;
     const availableWidth = screenWidth - LEFT_MARGIN; // Removed right padding to use full width
     const colWidth = availableWidth / lay.columns;
@@ -890,6 +1346,10 @@ export default function OggiScreen() {
                    setPendingEventPositions={setPendingEventPositions}
                    setRecentlyMovedEventId={setRecentlyMovedEventId}
                    setLastMovedEventId={setLastMovedEventId}
+                   setCurrentDragPosition={setCurrentDragPosition}
+                   timedEvents={timedEvents}
+                   layoutById={layoutById}
+                   calculateDragLayout={calculateDragLayout}
                  />
                );
              })}
