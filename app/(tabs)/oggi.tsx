@@ -94,6 +94,8 @@ type DraggableEventProps = {
   setTimeOverrideRange: (habitId: string, ymd: string, start: string, end: string) => void;
   updateScheduleTimes: (habitId: string, start: string | null, end: string | null) => void;
   setPendingEventPositions: Dispatch<SetStateAction<Record<string, number>>>;
+  setRecentlyMovedEventId: (id: string | null) => void;
+  setLastMovedEventId: (id: string) => void;
 };
 
 function DraggableEvent({
@@ -111,6 +113,8 @@ function DraggableEvent({
   setTimeOverrideRange,
   updateScheduleTimes,
   setPendingEventPositions,
+  setRecentlyMovedEventId,
+  setLastMovedEventId,
 }: DraggableEventProps) {
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
@@ -235,6 +239,10 @@ function DraggableEvent({
         const newEndTime = minutesToTime(newEndMinutes);
 
         setPendingEventPositions((prev) => ({ ...prev, [event.id]: clampedMinutes }));
+        // Mark this event as recently moved so it goes to the right when layout recalculates
+        setRecentlyMovedEventId(event.id);
+        // Immediately mark as last moved so layout calculation uses it
+        setLastMovedEventId(event.id);
 
         const selectedYmd = getDay(currentDate);
         // Salva l'override per la data specifica
@@ -267,6 +275,8 @@ function DraggableEvent({
     setTimeOverrideRange,
     updateScheduleTimes,
     setPendingEventPositions,
+    setRecentlyMovedEventId,
+    setLastMovedEventId,
   ]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -331,6 +341,7 @@ export default function OggiScreen() {
   // Drag state
   const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
   const [pendingEventPositions, setPendingEventPositions] = useState<Record<string, number>>({});
+  const [recentlyMovedEventId, setRecentlyMovedEventId] = useState<string | null>(null);
   const dragY = useSharedValue(0);
   const dragInitialTop = useSharedValue(0);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -498,16 +509,70 @@ export default function OggiScreen() {
       return changed ? next : prev;
     });
   }, [timedEvents, pendingEventPositions]);
+  
+  // Track the last moved event ID
+  // When two events have same start time and duration, the one moved last goes to the right
+  const [lastMovedEventId, setLastMovedEventId] = useState<string | null>(null);
+  
+  // Track the column order for events with same start time and duration
+  // Maps timeKey (start-duration) to array of event IDs in column order (left to right)
+  const [columnOrderByTime, setColumnOrderByTime] = useState<Record<string, string[]>>({});
+  
+  // When an event is moved, update the last moved event ID
+  useEffect(() => {
+    if (!recentlyMovedEventId) return;
+    
+    const movedEvent = timedEvents.find(e => e.id === recentlyMovedEventId);
+    if (movedEvent && !pendingEventPositions[recentlyMovedEventId]) {
+      // Event has been saved, mark it as the last moved event
+      setLastMovedEventId(recentlyMovedEventId);
+    }
+  }, [recentlyMovedEventId, timedEvents, pendingEventPositions]);
+  
+  // Clear recently moved flag after a delay
+  useEffect(() => {
+    if (!recentlyMovedEventId) return;
+    
+    const movedEvent = timedEvents.find(e => e.id === recentlyMovedEventId);
+    if (!movedEvent) {
+      setRecentlyMovedEventId(null);
+      return;
+    }
+    
+    const timer = setTimeout(() => {
+      setRecentlyMovedEventId(null);
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, [recentlyMovedEventId, timedEvents]);
 
   // -- Layout Calculation for Overlaps --
   type LayoutInfo = { col: number; columns: number };
   const layoutById = useMemo<Record<string, LayoutInfo>>(() => {
-    // Sort by start time
-    const events = timedEvents.map(e => ({
-      ...e,
-      s: toMinutes(e.startTime),
-      e: toMinutes(e.endTime)
-    })).sort((a, b) => a.s - b.s || a.e - b.e);
+    // Sort by start time, and if same start time, longer tasks go left (shorter go right)
+    // If same start and same duration, last moved task goes right
+    const events = timedEvents.map(e => {
+      const startM = toMinutes(e.startTime);
+      const endM = toMinutes(e.endTime);
+      const isLastMoved = e.id === lastMovedEventId;
+      return {
+        ...e,
+        s: startM,
+        e: endM,
+        duration: endM - startM,
+        isRecentlyMoved: pendingEventPositions.hasOwnProperty(e.id) || e.id === recentlyMovedEventId,
+        isLastMoved
+      };
+    }).sort((a, b) => {
+      if (a.s !== b.s) return a.s - b.s; // Different start time
+      if (a.duration !== b.duration) return b.duration - a.duration; // Same start, different duration (longer first)
+      // Same start and same duration: last moved or recently moved go right
+      const aShouldGoRight = a.isRecentlyMoved || a.isLastMoved;
+      const bShouldGoRight = b.isRecentlyMoved || b.isLastMoved;
+      if (aShouldGoRight && !bShouldGoRight) return 1;
+      if (!aShouldGoRight && bShouldGoRight) return -1;
+      return 0; // Both same status, maintain order
+    });
 
     const active: Array<{ id: string; end: number; col: number }> = [];
     const layout: Record<string, LayoutInfo> = {};
@@ -541,21 +606,83 @@ export default function OggiScreen() {
 
     // Process each cluster
     for (const cluster of clusters) {
-      // Simple column packing for the cluster
-      const columns: typeof cluster[] = [];
-      for (const ev of cluster) {
-        let placed = false;
-        for (let i = 0; i < columns.length; i++) {
-          const col = columns[i];
-          const lastInCol = col[col.length - 1];
-          if (lastInCol.e <= ev.s) {
-            col.push(ev);
-            layout[ev.id] = { col: i, columns: 1 }; // Will update columns later
-            placed = true;
-            break;
+      // Sort cluster: events with same start and duration, last moved goes right
+      // But preserve relative order of non-moved events
+      const sortedCluster = [...cluster].sort((a, b) => {
+        if (a.s !== b.s) return a.s - b.s; // Different start time: sort by start
+        if (a.duration !== b.duration) return b.duration - a.duration; // Same start, different duration: longer first
+        // Same start and same duration
+        const aShouldGoRight = a.isRecentlyMoved || a.isLastMoved;
+        const bShouldGoRight = b.isRecentlyMoved || b.isLastMoved;
+        
+        // If one is moved and the other isn't, moved goes right
+        if (aShouldGoRight && !bShouldGoRight) return 1; // a goes after b (right)
+        if (!aShouldGoRight && bShouldGoRight) return -1; // a goes before b (left)
+        
+        // Both same status: use saved column order if available
+        const timeKey = `${a.s}-${a.duration}`;
+        const savedOrder = columnOrderByTime[timeKey];
+        if (savedOrder && !aShouldGoRight && !bShouldGoRight) {
+          // Both not moved: use saved column order
+          const aIndex = savedOrder.indexOf(a.id);
+          const bIndex = savedOrder.indexOf(b.id);
+          if (aIndex !== -1 && bIndex !== -1) {
+            return aIndex - bIndex; // Maintain saved column order
           }
         }
+        
+        return 0; // Maintain current order
+      });
+      
+      const columns: typeof sortedCluster[] = [];
+      for (const ev of sortedCluster) {
+        let placed = false;
+        
+        // Check if there are already events with same start time and duration in columns
+        const sameStartCols: number[] = [];
+        for (let i = 0; i < columns.length; i++) {
+          const col = columns[i];
+          if (col.some(existingEv => existingEv.s === ev.s && existingEv.duration === ev.duration)) {
+            sameStartCols.push(i);
+          }
+        }
+        const hasSameStartEvents = sameStartCols.length > 0;
+        
+        // If event is last moved/recently moved and there are same-start events, 
+        // force it to a new rightmost column (always goes right)
+        if ((ev.isLastMoved || ev.isRecentlyMoved) && hasSameStartEvents) {
+          columns.push([ev]);
+          layout[ev.id] = { col: columns.length - 1, columns: 1 };
+          placed = true;
+        } else if (!hasSameStartEvents) {
+          // Normal first-fit logic: try to place in existing column
+          for (let i = 0; i < columns.length; i++) {
+            const col = columns[i];
+            const lastInCol = col[col.length - 1];
+            if (lastInCol.e <= ev.s) {
+              col.push(ev);
+              layout[ev.id] = { col: i, columns: 1 }; // Will update columns later
+              placed = true;
+              break;
+            }
+          }
+        } else {
+          // Has same start events but not moved: goes to first available column
+          // (this maintains creation order for non-moved events)
+          for (let i = 0; i < columns.length; i++) {
+            const col = columns[i];
+            const lastInCol = col[col.length - 1];
+            if (lastInCol.e <= ev.s) {
+              col.push(ev);
+              layout[ev.id] = { col: i, columns: 1 };
+              placed = true;
+              break;
+            }
+          }
+        }
+        
         if (!placed) {
+          // Create new column (either no fit found, or has same start as existing events)
           columns.push([ev]);
           layout[ev.id] = { col: columns.length - 1, columns: 1 };
         }
@@ -568,7 +695,50 @@ export default function OggiScreen() {
     }
 
     return layout;
-  }, [timedEvents]);
+  }, [timedEvents, pendingEventPositions, recentlyMovedEventId, lastMovedEventId, columnOrderByTime]);
+  
+  // Save column order for events with same start time and duration
+  useEffect(() => {
+    if (Object.keys(pendingEventPositions).length > 0) return; // Don't update during drag
+    
+    const newOrder: Record<string, string[]> = {};
+    
+    // Group events by start time and duration
+    const eventsByTime: Record<string, typeof timedEvents> = {};
+    for (const e of timedEvents) {
+      const startM = toMinutes(e.startTime);
+      const endM = toMinutes(e.endTime);
+      const duration = endM - startM;
+      const timeKey = `${startM}-${duration}`;
+      if (!eventsByTime[timeKey]) eventsByTime[timeKey] = [];
+      eventsByTime[timeKey].push(e);
+    }
+    
+    // For each group, get the column order from layout (left to right)
+    for (const timeKey in eventsByTime) {
+      const group = eventsByTime[timeKey];
+      if (group.length > 1) {
+        // Get current layout for these events
+        const layoutInfo = group.map(e => ({
+          id: e.id,
+          col: layoutById[e.id]?.col ?? 999
+        })).sort((a, b) => a.col - b.col);
+        
+        const orderByCol = layoutInfo.map(item => item.id);
+        
+        // Only save if order is different from saved order
+        const currentOrder = columnOrderByTime[timeKey];
+        if (JSON.stringify(currentOrder) !== JSON.stringify(orderByCol)) {
+          newOrder[timeKey] = orderByCol;
+        }
+      }
+    }
+    
+    // Update if there are changes
+    if (Object.keys(newOrder).length > 0) {
+      setColumnOrderByTime(prev => ({ ...prev, ...newOrder }));
+    }
+  }, [layoutById, timedEvents, pendingEventPositions, columnOrderByTime]);
 
 
   // -- Helper to calculate styles --
@@ -718,6 +888,8 @@ export default function OggiScreen() {
                    setTimeOverrideRange={setTimeOverrideRange}
                    updateScheduleTimes={updateScheduleTimes}
                    setPendingEventPositions={setPendingEventPositions}
+                   setRecentlyMovedEventId={setRecentlyMovedEventId}
+                   setLastMovedEventId={setLastMovedEventId}
                  />
                );
              })}
