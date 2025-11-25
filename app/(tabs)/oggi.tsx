@@ -92,6 +92,7 @@ type DraggableEventProps = {
   currentDate: Date;
   getDay: (date: Date) => string;
   setTimeOverrideRange: (habitId: string, ymd: string, start: string, end: string) => void;
+  updateScheduleTimes: (habitId: string, start: string | null, end: string | null) => void;
   setPendingEventPositions: Dispatch<SetStateAction<Record<string, number>>>;
 };
 
@@ -108,6 +109,7 @@ function DraggableEvent({
   currentDate,
   getDay,
   setTimeOverrideRange,
+  updateScheduleTimes,
   setPendingEventPositions,
 }: DraggableEventProps) {
   const isDragging = draggingEventId === event.id;
@@ -117,6 +119,7 @@ function DraggableEvent({
   // Flag locale per gestire lo stato nello stesso gesto
   const isDragActiveRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSnappedMinuteRef = useRef<number | null>(null);
 
   const panResponder = useMemo(() => {
     return PanResponder.create({
@@ -134,6 +137,9 @@ function DraggableEvent({
       onShouldBlockNativeResponder: () => isDragActiveRef.current,
 
       onPanResponderGrant: (evt) => {
+        // Reset del tracking della linea di snap
+        lastSnappedMinuteRef.current = null;
+        
         // Avvia il timer: se l'utente tiene premuto senza muoversi troppo per 200ms...
         longPressTimerRef.current = setTimeout(() => {
           isDragActiveRef.current = true; // ...ATTIVA il drag
@@ -174,6 +180,18 @@ function DraggableEvent({
         const snappedY = snappedTop - dragInitialTop.value;
 
         dragY.value = snappedY;
+
+        // 4. Feedback aptico quando attraversa una nuova linea di snap
+        if (lastSnappedMinuteRef.current !== null && lastSnappedMinuteRef.current !== clampedMinutes) {
+          // Feedback più forte per le ore intere, più leggero per i quarti d'ora
+          const isFullHour = clampedMinutes % 60 === 0;
+          if (isFullHour) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          } else {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }
+        }
+        lastSnappedMinuteRef.current = clampedMinutes;
       },
 
       onPanResponderTerminate: () => {
@@ -183,6 +201,7 @@ function DraggableEvent({
           longPressTimerRef.current = null;
         }
         isDragActiveRef.current = false;
+        lastSnappedMinuteRef.current = null;
         setDraggingEventId(null);
         dragY.value = 0;
       },
@@ -218,7 +237,10 @@ function DraggableEvent({
         setPendingEventPositions((prev) => ({ ...prev, [event.id]: clampedMinutes }));
 
         const selectedYmd = getDay(currentDate);
+        // Salva l'override per la data specifica
         setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
+        // Aggiorna anche lo schedule generale della task (per la tab tasks)
+        updateScheduleTimes(event.id, newStartTime, newEndTime);
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         
@@ -226,6 +248,7 @@ function DraggableEvent({
         dragInitialTop.value = finalTop;
         dragY.value = 0;
         isDragActiveRef.current = false;
+        lastSnappedMinuteRef.current = null;
         setDraggingEventId(null);
       },
     });
@@ -242,6 +265,7 @@ function DraggableEvent({
     getDay,
     currentDate,
     setTimeOverrideRange,
+    updateScheduleTimes,
     setPendingEventPositions,
   ]);
 
@@ -293,7 +317,7 @@ function DraggableEvent({
 }
 
 export default function OggiScreen() {
-  const { habits, history, getDay, setTimeOverrideRange } = useHabits();
+  const { habits, history, getDay, setTimeOverrideRange, updateScheduleTimes } = useHabits();
   const { activeTheme } = useAppTheme();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -575,9 +599,12 @@ export default function OggiScreen() {
     
     // Adjust for visual separation from grid lines
     // Add 2px top margin to sit below the hour line
-    // Subtract 4px height to sit above the next hour line (and account for top margin)
+    // Subtract height to sit above the next hour line (and account for top margin)
+    // If event ends exactly on the hour, use 3.75px buffer instead of 4px
+    const endsOnHour = endM % 60 === 0;
+    const heightBuffer = endsOnHour ? 3.75 : 4;
     const adjustedTop = top + 2;
-    const adjustedHeight = Math.max(1, height - 4); // No min height limit, purely proportional
+    const adjustedHeight = Math.max(1, height - heightBuffer); // No min height limit, purely proportional
 
     return {
       top: adjustedTop,
@@ -689,7 +716,8 @@ export default function OggiScreen() {
                    currentDate={currentDate}
                    getDay={getDay}
                    setTimeOverrideRange={setTimeOverrideRange}
-                 setPendingEventPositions={setPendingEventPositions}
+                   updateScheduleTimes={updateScheduleTimes}
+                   setPendingEventPositions={setPendingEventPositions}
                  />
                );
              })}
