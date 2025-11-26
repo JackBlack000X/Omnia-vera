@@ -60,14 +60,9 @@ function minutesToTime(minutes: number): string {
 }
 
 // -- Constants for Layout --
-// HOUR_HEIGHT moved to state to allow zooming
-// Margine sinistro per lasciare spazio all'etichetta dell'ora (es. "09:00")
 const LEFT_MARGIN = 65;
 const BASE_VERTICAL_OFFSET = 10;
-const DRAG_VISUAL_OFFSET = BASE_VERTICAL_OFFSET + 2; // compensate grid offset during drag
-// Altezza del separatore (linea grigia)
-const SEPARATOR_HEIGHT = 1;
-// Font size per l'etichetta dell'ora
+const DRAG_VISUAL_OFFSET = BASE_VERTICAL_OFFSET + 2; 
 const HOUR_FONT_SIZE = 14;
 
 type OggiEvent = {
@@ -78,6 +73,8 @@ type OggiEvent = {
   isAllDay: boolean;
   color: string;
 };
+
+type LayoutInfo = { col: number; columns: number; span: number };
 
 type DraggableEventProps = {
   event: OggiEvent;
@@ -101,8 +98,8 @@ type DraggableEventProps = {
   setLastMovedEventId: (id: string) => void;
   setCurrentDragPosition: (minutes: number | null) => void;
   timedEvents: OggiEvent[];
-  layoutById: Record<string, { col: number; columns: number }>;
-  calculateDragLayout: (draggedEventId: string, newStartMinutes: number) => { width: number; left: number };
+  layoutById: Record<string, LayoutInfo>;
+  calculateDragLayout: (draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean) => { width: number; left: number };
 };
 
 function DraggableEvent({
@@ -134,11 +131,23 @@ function DraggableEvent({
   const bg = event.color;
   const light = isLightColor(bg);
 
-  // Shared values for dynamic width and left during drag
   const dragWidthValue = useSharedValue(layoutStyle.width);
   const dragLeftValue = useSharedValue(layoutStyle.left);
 
-  // Flag locale per gestire lo stato nello stesso gesto
+  // --- REFS ---
+  const layoutStyleRef = useRef(layoutStyle);
+  const timedEventsRef = useRef(timedEvents);
+  const calculateDragLayoutRef = useRef(calculateDragLayout);
+  const layoutByIdRef = useRef(layoutById);
+  const initialSnapshotRef = useRef({ width: 0, left: 0 });
+  
+  const overlapClearedRef = useRef(false);
+
+  layoutStyleRef.current = layoutStyle;
+  timedEventsRef.current = timedEvents;
+  calculateDragLayoutRef.current = calculateDragLayout;
+  layoutByIdRef.current = layoutById;
+
   const isDragActiveRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSnappedMinuteRef = useRef<number | null>(null);
@@ -148,48 +157,42 @@ function DraggableEvent({
 
   const panResponder = useMemo(() => {
     return PanResponder.create({
-      // 1. Cattura il tocco immediatamente
       onStartShouldSetPanResponder: () => true,
-      
       onMoveShouldSetPanResponder: (evt, gestureState) => {
-        // Se il drag è già attivo, cattura sempre
         if (isDragActiveRef.current) return true;
-        // Altrimenti, cattura solo se movimento verticale significativo
         return Math.abs(gestureState.dy) > 5;
       },
-
-      // 2. Impedisce alla ScrollView nativa di interrompere il gesto se il drag è attivo
       onShouldBlockNativeResponder: () => isDragActiveRef.current,
 
       onPanResponderGrant: (evt) => {
-        // Reset del tracking della linea di snap
         lastSnappedMinuteRef.current = null;
-        // Store initial touch position in absolute screen coordinates
         initialTouchYRef.current = evt.nativeEvent.pageY;
+        overlapClearedRef.current = false;
         
-        // Avvia il timer: se l'utente tiene premuto senza muoversi troppo per 200ms...
         longPressTimerRef.current = setTimeout(() => {
-          isDragActiveRef.current = true; // ...ATTIVA il drag
+          isDragActiveRef.current = true;
           setDragClearedOriginalOverlap(false);
           setDragSizingLocked(true);
           hasMovedRef.current = false;
           initialStartMinutesRef.current = toMinutes(event.startTime);
           
-          // Initialize drag width and left using CURRENT layoutStyle values first
-          // This prevents flash when setDraggingEventId causes layout recalculation
-          dragWidthValue.value = layoutStyle.width;
-          dragLeftValue.value = layoutStyle.left;
-    dragInitialTop.value = baseTop;
-    dragY.value = 0;
+          const currentLayout = layoutStyleRef.current;
+          initialSnapshotRef.current = { 
+            width: currentLayout.width, 
+            left: currentLayout.left 
+          };
+          
+          dragWidthValue.value = currentLayout.width;
+          dragLeftValue.value = currentLayout.left;
+          dragInitialTop.value = baseTop;
+          dragY.value = 0;
           
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          
           setDraggingEventId(event.id);
-        }, 200); // 200ms di attesa
+        }, 200);
       },
 
       onPanResponderMove: (evt, gestureState) => {
-        // Se l'utente si muove TROPPO in orizzontale prima che il timer scatti, annulla il drag (permette swipe)
         if (!isDragActiveRef.current && Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy)) {
           if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
@@ -198,33 +201,23 @@ function DraggableEvent({
           return;
         }
 
-        // Se il timer non è ancora scattato, non fare nulla (permette alla ScrollView di funzionare se ci si muove subito)
-        if (!isDragActiveRef.current) {
-          return;
-        }
+        if (!isDragActiveRef.current) return;
 
-        // 3. Se isDragActive è true, muovi l'elemento
-        // Use absolute touch position to calculate offset, so it works even if layout changes
-        if (initialTouchYRef.current === null) {
-          initialTouchYRef.current = evt.nativeEvent.pageY;
-        }
+        if (initialTouchYRef.current === null) initialTouchYRef.current = evt.nativeEvent.pageY;
         const currentTouchY = evt.nativeEvent.pageY;
         const touchDeltaY = currentTouchY - initialTouchYRef.current;
         
-        // Calculate current top position using the initial baseTop + the touch movement
         const initialBaseTop = dragInitialTop.value;
         const currentTop = initialBaseTop + touchDeltaY;
         const relativeTop = Math.max(0, currentTop - DRAG_VISUAL_OFFSET);
         const minutesFromStart = (relativeTop / hourHeight) * 60;
-    const newStartMinutes = windowStartMin + minutesFromStart;
-    const roundedMinutes = Math.round(newStartMinutes / 15) * 15;
-    const clampedMinutes = Math.max(0, Math.min(1440, roundedMinutes));
-    const snappedMinutesFromStart = clampedMinutes - windowStartMin;
+        const newStartMinutes = windowStartMin + minutesFromStart;
+        const roundedMinutes = Math.round(newStartMinutes / 15) * 15;
+        const clampedMinutes = Math.max(0, Math.min(1440, roundedMinutes));
+        
+        const snappedMinutesFromStart = clampedMinutes - windowStartMin;
         const snappedTop = (snappedMinutesFromStart / 60) * hourHeight + DRAG_VISUAL_OFFSET;
-        // Calculate snappedY relative to the initial baseTop
-        const snappedY = snappedTop - initialBaseTop;
-
-        dragY.value = snappedY;
+        dragY.value = snappedTop - initialBaseTop;
 
         const initialStartM = initialStartMinutesRef.current ?? toMinutes(event.startTime);
         const movedMinutes = Math.abs(clampedMinutes - initialStartM);
@@ -233,53 +226,50 @@ function DraggableEvent({
           setDragSizingLocked(false);
         }
 
-        if (!dragClearedOriginalOverlap && hasMovedRef.current) {
+        if (!overlapClearedRef.current && hasMovedRef.current) {
           const originalStartM = toMinutes(event.startTime);
           const originalEndM = toMinutes(event.endTime);
           const duration = originalEndM - originalStartM;
           const draggedCurrentEnd = Math.min(1440, clampedMinutes + duration);
-          const overlapsAny = timedEvents.some((other) => {
+          
+          const currentTimedEvents = timedEventsRef.current;
+          const overlapsAny = currentTimedEvents.some((other) => {
             if (other.id === event.id) return false;
             const otherStart = toMinutes(other.startTime);
             const otherEnd = toMinutes(other.endTime);
             return !(draggedCurrentEnd <= otherStart || clampedMinutes >= otherEnd);
           });
+          
           if (!overlapsAny) {
             setDragClearedOriginalOverlap(true);
+            overlapClearedRef.current = true;
           }
         }
 
         if (hasMovedRef.current) {
-          // Update current drag position so other events can recalculate their layout
-          setCurrentDragPosition(clampedMinutes);
-
-          // Calculate dynamic width and left using the layout calculation function
-          // This simulates the layout as if the dragged event is already in its new position
-          const dragLayout = calculateDragLayout(event.id, clampedMinutes);
-          dragWidthValue.value = dragLayout.width;
-          dragLeftValue.value = dragLayout.left;
+          if (!overlapClearedRef.current) {
+             dragWidthValue.value = initialSnapshotRef.current.width;
+             dragLeftValue.value = initialSnapshotRef.current.left;
+          } else {
+             setCurrentDragPosition(clampedMinutes);
+             const dragLayout = calculateDragLayoutRef.current(event.id, clampedMinutes, true);
+             dragWidthValue.value = dragLayout.width;
+             dragLeftValue.value = dragLayout.left;
+          }
         } else {
-          // Keep original sizing until user moves at least one snap
-          dragWidthValue.value = layoutStyle.width;
-          dragLeftValue.value = layoutStyle.left;
+          dragWidthValue.value = initialSnapshotRef.current.width;
+          dragLeftValue.value = initialSnapshotRef.current.left;
           setCurrentDragPosition(null);
         }
 
-        // 4. Feedback aptico quando attraversa una nuova linea di snap
         if (lastSnappedMinuteRef.current !== null && lastSnappedMinuteRef.current !== clampedMinutes) {
-          // Feedback più forte per le ore intere, più leggero per i quarti d'ora
           const isFullHour = clampedMinutes % 60 === 0;
-          if (isFullHour) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          } else {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }
+          Haptics.impactAsync(isFullHour ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
         }
         lastSnappedMinuteRef.current = clampedMinutes;
       },
 
       onPanResponderTerminate: () => {
-        // Se la ScrollView ruba il tocco (es. scroll veloce subito), cancella il timer
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
@@ -289,6 +279,7 @@ function DraggableEvent({
         hasMovedRef.current = false;
         initialStartMinutesRef.current = null;
         setDragClearedOriginalOverlap(false);
+        overlapClearedRef.current = false;
         setDragSizingLocked(false);
         setDraggingEventId(null);
         setCurrentDragPosition(null);
@@ -296,51 +287,42 @@ function DraggableEvent({
       },
 
       onPanResponderRelease: (evt, gestureState) => {
-        // Pulisci tutto al rilascio
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
         }
 
-        if (!isDragActiveRef.current) {
-          return;
-        }
+        if (!isDragActiveRef.current) return;
 
-        // Calcola la posizione finale
-    const finalY = dragY.value;
-    const finalTop = dragInitialTop.value + finalY;
+        const finalY = dragY.value;
+        const finalTop = dragInitialTop.value + finalY;
         const relativeFinalTop = Math.max(0, finalTop - DRAG_VISUAL_OFFSET);
         const minutesFromStart = (relativeFinalTop / hourHeight) * 60;
-    const newStartMinutes = windowStartMin + minutesFromStart;
-    const clampedMinutes = Math.max(0, Math.min(1440, Math.round(newStartMinutes)));
+        const newStartMinutes = windowStartMin + minutesFromStart;
+        const clampedMinutes = Math.max(0, Math.min(1440, Math.round(newStartMinutes)));
 
-    const originalStartM = toMinutes(event.startTime);
-    const originalEndM = toMinutes(event.endTime);
-    const duration = originalEndM - originalStartM;
+        const originalStartM = toMinutes(event.startTime);
+        const originalEndM = toMinutes(event.endTime);
+        const duration = originalEndM - originalStartM;
+        const newEndMinutes = Math.min(1440, clampedMinutes + duration);
 
-    const newEndMinutes = Math.min(1440, clampedMinutes + duration);
-
-    const newStartTime = minutesToTime(clampedMinutes);
-    const newEndTime = minutesToTime(newEndMinutes);
+        const newStartTime = minutesToTime(clampedMinutes);
+        const newEndTime = minutesToTime(newEndMinutes);
 
         setPendingEventPositions((prev) => ({ ...prev, [event.id]: clampedMinutes }));
-        const allowForceRight = dragClearedOriginalOverlap;
-        if (allowForceRight) {
-          // Mark this event as recently moved so it goes to the right when layout recalculates
-          setRecentlyMovedEventId(event.id);
-          // Immediately mark as last moved so layout calculation uses it
-          setLastMovedEventId(event.id);
+        
+        // IMPORTANT: Always update last moved.
+        if (hasMovedRef.current) {
+           setRecentlyMovedEventId(event.id);
+           setLastMovedEventId(event.id);
         }
 
-    const selectedYmd = getDay(currentDate);
-        // Salva l'override per la data specifica
-    setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
-        // Aggiorna anche lo schedule generale della task (per la tab tasks)
+        const selectedYmd = getDay(currentDate);
+        setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
         updateScheduleTimes(event.id, newStartTime, newEndTime);
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         
-        // Aggiorna la posizione base prima di resettare
         dragInitialTop.value = finalTop;
         dragY.value = 0;
         isDragActiveRef.current = false;
@@ -348,6 +330,7 @@ function DraggableEvent({
         hasMovedRef.current = false;
         initialStartMinutesRef.current = null;
         setDragClearedOriginalOverlap(false);
+        overlapClearedRef.current = false;
         setDragSizingLocked(false);
         setDraggingEventId(null);
         setCurrentDragPosition(null);
@@ -355,36 +338,27 @@ function DraggableEvent({
     });
   }, [
     event.id,
+    event.startTime, 
+    event.endTime,
     baseTop,
-    setDraggingEventId,
-    dragClearedOriginalOverlap,
-    setDragClearedOriginalOverlap,
-    dragInitialTop,
-    dragY,
     windowStartMin,
     hourHeight,
-    event.startTime,
-    event.endTime,
-    getDay,
+    dragInitialTop,
+    dragY,
+    dragWidthValue,
+    dragLeftValue,
     currentDate,
-    setTimeOverrideRange,
-    updateScheduleTimes,
+    setDraggingEventId,
+    setDragClearedOriginalOverlap,
+    setDragSizingLocked,
     setPendingEventPositions,
     setRecentlyMovedEventId,
     setLastMovedEventId,
     setCurrentDragPosition,
-    timedEvents,
-    hourHeight,
-    windowStartMin,
-    dragWidthValue,
-    dragLeftValue,
-    layoutStyle.left,
-    layoutStyle.width,
-    calculateDragLayout,
+    setTimeOverrideRange,
+    updateScheduleTimes,
+    getDay
   ]);
-
-  // Don't update drag width/left from layoutStyle during drag
-  // They are initialized in onPanResponderGrant and updated in onPanResponderMove via calculateDragLayout
 
   const animatedStyle = useAnimatedStyle(() => ({
     top: dragInitialTop.value + dragY.value,
@@ -395,6 +369,7 @@ function DraggableEvent({
   }));
 
   const EventComponent = isDragging ? Animated.View : View;
+  
   const eventStyle = isDragging
     ? [
         styles.eventItem,
@@ -439,25 +414,22 @@ export default function OggiScreen() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  // Settings state
   const [showSettings, setShowSettings] = useState(false);
   const [windowStart, setWindowStart] = useState<string>('06:00');
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
   const [visibleHours, setVisibleHours] = useState<number>(10);
   
-  // Drag state
   const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
   const [pendingEventPositions, setPendingEventPositions] = useState<Record<string, number>>({});
   const [recentlyMovedEventId, setRecentlyMovedEventId] = useState<string | null>(null);
-  // Track current drag position in minutes (updated during drag)
   const [currentDragPosition, setCurrentDragPosition] = useState<number | null>(null);
   const [dragClearedOriginalOverlap, setDragClearedOriginalOverlap] = useState(false);
   const [dragSizingLocked, setDragSizingLocked] = useState(false);
   const dragY = useSharedValue(0);
   const dragInitialTop = useSharedValue(0);
   const scrollViewRef = useRef<ScrollView>(null);
+  const originalLayoutRef = useRef<Record<string, LayoutInfo>>({});
 
-  // -- Data Loading & Persistence --
   useEffect(() => {
     (async () => {
       try {
@@ -486,7 +458,6 @@ export default function OggiScreen() {
     AsyncStorage.setItem('oggi_visible_hours_v1', visibleHours.toString()).catch(() => {});
   }, [visibleHours]);
 
-  // -- Time Updates --
   useEffect(() => {
     const updateTime = () => setCurrentTime(new Date());
     updateTime();
@@ -494,34 +465,24 @@ export default function OggiScreen() {
     return () => clearInterval(interval);
   }, []);
 
-
-  // -- Derived State for Layout --
   const today = getDay(currentDate);
   const todayDate = useMemo(() => formatDateLong(currentDate, TZ), [currentDate]);
 
   const windowStartMin = toMinutes(windowStart);
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   
-  // Dynamic HOUR_HEIGHT based on visibleHours
-  // We use a larger portion of screen height (78% default, 77.5% for classic) to ensure hours are well spaced
-  // and fill the screen, especially when few hours are visible.
   const hourHeight = useMemo(() => {
       const factor = activeTheme === 'futuristic' ? 0.78 : 0.775;
       return (Dimensions.get('window').height * factor) / visibleHours;
   }, [visibleHours, activeTheme]);
 
-  // Calcoliamo l'altezza totale della scroll view basandoci sui minuti totali visibili
-  // Usiamo una scala lineare: pixel = minuti * (hourHeight / 60)
   const totalMinutes = windowEndMin - windowStartMin;
   const totalHeight = (totalMinutes / 60) * hourHeight;
   
-  // Generiamo le etichette delle ore.
-  // Partiamo dall'ora intera che contiene windowStartMin o subito dopo
   const hours = useMemo(() => {
     const startHour = Math.floor(windowStartMin / 60);
-    const endHour = Math.floor((windowEndMin - 1) / 60); // Ultima ora che inizia prima della fine
+    const endHour = Math.floor((windowEndMin - 1) / 60);
     const result = [];
-    // Aggiungiamo un'ora extra alla fine per chiudere la griglia se necessario
     for (let h = startHour; h <= endHour + 1; h++) {
       result.push(h);
     }
@@ -534,7 +495,6 @@ export default function OggiScreen() {
     setCurrentDate(newDate);
   };
 
-  // -- Event Processing --
   const weekday = useMemo(() => currentDate.getDay(), [currentDate]);
   const dayOfMonth = useMemo(() => currentDate.getDate(), [currentDate]);
   const monthIndex1 = useMemo(() => currentDate.getMonth() + 1, [currentDate]);
@@ -544,7 +504,6 @@ export default function OggiScreen() {
     const allDay: OggiEvent[] = [];
     
     for (const h of habits) {
-      // Logic for date filtering (same as before)
       const selectedYmd = getDay(currentDate);
       const hasOverrideForSelected = !!h.timeOverrides?.[selectedYmd];
       if (h.createdAt && selectedYmd < h.createdAt && !hasOverrideForSelected) continue;
@@ -563,13 +522,11 @@ export default function OggiScreen() {
       }
       if (!showToday) continue;
 
-      // Time logic
       const ymd = selectedYmd;
       const override = h.timeOverrides?.[ymd];
       const overrideStart = typeof override === 'string' ? override : override?.start;
       const overrideEnd = typeof override === 'object' && override !== null ? override.end : null;
       
-       // One-off logic
       const schedDays = h.schedule?.daysOfWeek ?? [];
       const schedMonth = h.schedule?.monthDays ?? [];
       const isOneOff = (schedDays.length === 0 && schedMonth.length === 0 && h.timeOverrides && Object.keys(h.timeOverrides).length > 0);
@@ -585,7 +542,6 @@ export default function OggiScreen() {
       if (!start && !end) {
         allDay.push({ id: h.id, title, startTime: '00:00', endTime: '24:00', isAllDay: true, color });
       } else if (start) {
-        // Normalize end time
         let finalEnd = end;
         if (!end) {
            const [sh] = start.split(':').map(Number);
@@ -596,7 +552,6 @@ export default function OggiScreen() {
         }
         items.push({ id: h.id, title, startTime: start, endTime: finalEnd!, isAllDay: false, color });
       } else if (!start && end) {
-        // Only end provided
         const [eh] = end.split(':').map(Number);
         const startHour = Math.max(0, eh - 1);
         items.push({ id: h.id, title, startTime: `${String(startHour).padStart(2, '0')}:00`, endTime: end === '23:59' ? '24:00' : end, isAllDay: false, color });
@@ -621,84 +576,50 @@ export default function OggiScreen() {
     });
   }, [timedEvents, pendingEventPositions]);
   
-  // Track the last moved event ID
-  // When two events have same start time and duration, the one moved last goes to the right
   const [lastMovedEventId, setLastMovedEventId] = useState<string | null>(null);
-  
-  // Track the column order for events with same start time and duration
-  // Maps timeKey (start-duration) to array of event IDs in column order (left to right)
   const [columnOrderByTime, setColumnOrderByTime] = useState<Record<string, string[]>>({});
   
-  // When an event is moved, update the last moved event ID
   useEffect(() => {
     if (!recentlyMovedEventId) return;
-    
     const movedEvent = timedEvents.find(e => e.id === recentlyMovedEventId);
     if (movedEvent && !pendingEventPositions[recentlyMovedEventId]) {
-      // Event has been saved, mark it as the last moved event
       setLastMovedEventId(recentlyMovedEventId);
     }
   }, [recentlyMovedEventId, timedEvents, pendingEventPositions]);
   
-  // Clear recently moved flag after a delay
   useEffect(() => {
     if (!recentlyMovedEventId) return;
-    
     const movedEvent = timedEvents.find(e => e.id === recentlyMovedEventId);
     if (!movedEvent) {
       setRecentlyMovedEventId(null);
       return;
     }
-    
     const timer = setTimeout(() => {
       setRecentlyMovedEventId(null);
     }, 1000);
-    
     return () => clearTimeout(timer);
   }, [recentlyMovedEventId, timedEvents]);
 
-  // -- Layout Calculation for Overlaps --
-  type LayoutInfo = { col: number; columns: number };
-  const layoutById = useMemo<Record<string, LayoutInfo>>(() => {
-    // Sort by start time, and if same start time, longer tasks go left (shorter go right)
-    // If same start and same duration, last moved task goes right
-    const events = timedEvents.map(e => {
-      const startM = toMinutes(e.startTime);
-      const endM = toMinutes(e.endTime);
-      const isLastMoved = e.id === lastMovedEventId;
-      return {
-      ...e,
-        s: startM,
-        e: endM,
-        duration: endM - startM,
-        isRecentlyMoved: pendingEventPositions.hasOwnProperty(e.id) || e.id === recentlyMovedEventId,
-        isLastMoved
-      };
-    }).sort((a, b) => {
-      if (a.s !== b.s) return a.s - b.s; // Different start time
-      if (a.duration !== b.duration) return b.duration - a.duration; // Same start, different duration (longer first)
-      // Same start and same duration: last moved or recently moved go right
-      const aShouldGoRight = a.isRecentlyMoved || a.isLastMoved;
-      const bShouldGoRight = b.isRecentlyMoved || b.isLastMoved;
-      if (aShouldGoRight && !bShouldGoRight) return 1;
-      if (!aShouldGoRight && bShouldGoRight) return -1;
-      return 0; // Both same status, maintain order
-    });
-
-    const active: Array<{ id: string; end: number; col: number }> = [];
+  // LOGIC CORE: CALCULATE LAYOUT
+  const calculateLayout = useCallback((
+    events: (OggiEvent & { s: number; e: number; duration: number; isLastMoved: boolean })[],
+    draggedEventId: string | null,
+    originalLayout?: Record<string, LayoutInfo>, // Original layout to preserve columns if still overlapping
+  ) => {
     const layout: Record<string, LayoutInfo> = {};
     
-    // Simple column assignment strategy: first fit
-    // This is a simplified version of the "packing" algorithm
-    // Note: For perfect Google Calendar style layout, we need a more complex graph coloring or cluster analysis.
-    // Here we use a simpler greedy approach per cluster of overlapping events.
-    
-    // Identify clusters
+    // 1. Form Clusters based on time
     let clusters: typeof events[] = [];
     let currentCluster: typeof events = [];
     let clusterEnd = -1;
 
-    for (const ev of events) {
+    // Sort by Time for clustering
+    const sortedByTime = [...events].sort((a, b) => {
+        if (a.s !== b.s) return a.s - b.s;
+        return b.duration - a.duration;
+    });
+
+    for (const ev of sortedByTime) {
       if (currentCluster.length === 0) {
         currentCluster.push(ev);
         clusterEnd = ev.e;
@@ -715,223 +636,196 @@ export default function OggiScreen() {
     }
     if (currentCluster.length > 0) clusters.push(currentCluster);
 
-    // Process each cluster
+    // 2. Process Clusters
     for (const cluster of clusters) {
-      // Sort cluster: events with same start and duration, last moved goes right
-      // But preserve relative order of non-moved events
-      const sortedCluster = [...cluster].sort((a, b) => {
-        if (a.s !== b.s) return a.s - b.s; // Different start time: sort by start
-        if (a.duration !== b.duration) return b.duration - a.duration; // Same start, different duration: longer first
-        // Same start and same duration
-        const aShouldGoRight = a.isRecentlyMoved || a.isLastMoved;
-        const bShouldGoRight = b.isRecentlyMoved || b.isLastMoved;
+        // SEPARATE MOVER AND STATIC
+        // The "Mover" is the one currently being dragged OR the last one dropped (lastMovedEventId)
+        // IMPORTANT: We handle only ONE mover at a time to prevent chain swaps
+        const moverId = draggedEventId || lastMovedEventId;
         
-        // If one is moved and the other isn't, moved goes right
-        if (aShouldGoRight && !bShouldGoRight) return 1; // a goes after b (right)
-        if (!aShouldGoRight && bShouldGoRight) return -1; // a goes before b (left)
-        
-        // Both same status: use saved column order if available
-        const timeKey = `${a.s}-${a.duration}`;
-        const savedOrder = columnOrderByTime[timeKey];
-        if (savedOrder && !aShouldGoRight && !bShouldGoRight) {
-          // Both not moved: use saved column order
-          const aIndex = savedOrder.indexOf(a.id);
-          const bIndex = savedOrder.indexOf(b.id);
-          if (aIndex !== -1 && bIndex !== -1) {
-            return aIndex - bIndex; // Maintain saved column order
-          }
-        }
-        
-        return 0; // Maintain current order
-      });
-      
-      const columns: typeof sortedCluster[] = [];
-      
-      // Separate moved events (last moved or recently moved) from others
-      const movedEvents = sortedCluster.filter(ev => ev.isLastMoved || ev.isRecentlyMoved);
-      const otherEvents = sortedCluster.filter(ev => !ev.isLastMoved && !ev.isRecentlyMoved);
-      
-      // First, place all non-moved events
-      for (const ev of otherEvents) {
-        let placed = false;
-        
-        // Check if there are already events with same start time and duration in columns
-        const sameStartCols: number[] = [];
-        for (let i = 0; i < columns.length; i++) {
-          const col = columns[i];
-          if (col.some(existingEv => existingEv.s === ev.s && existingEv.duration === ev.duration)) {
-            sameStartCols.push(i);
-          }
-        }
-        const hasSameStartEvents = sameStartCols.length > 0;
-        
-        if (!hasSameStartEvents) {
-          // Normal first-fit logic: try to place in existing column
-        for (let i = 0; i < columns.length; i++) {
-          const col = columns[i];
-          const lastInCol = col[col.length - 1];
-          if (lastInCol.e <= ev.s) {
-            col.push(ev);
-              layout[ev.id] = { col: i, columns: 1 };
-            placed = true;
-            break;
-          }
-        }
-        } else {
-          // Has same start events: goes to first available column
-          // (this maintains creation order for non-moved events)
-          for (let i = 0; i < columns.length; i++) {
-            const col = columns[i];
-            const lastInCol = col[col.length - 1];
-            if (lastInCol.e <= ev.s) {
-              col.push(ev);
-              layout[ev.id] = { col: i, columns: 1 };
-              placed = true;
-              break;
+        const mover = cluster.find(e => e.id === moverId);
+        const statics = cluster.filter(e => e.id !== moverId);
+
+        // NO SORTING: Keep statics in their original order (no time-based ordering)
+        // This prevents tasks from changing columns based on start time
+
+        const columns: typeof events[] = [];
+
+        // A. Place Statics (Preserve original column if still overlapping with dragged task)
+        for (const ev of statics) {
+            let placed = false;
+            
+            // If we have original layout and dragged task, check if still overlapping
+            if (originalLayout && originalLayout[ev.id] && draggedEventId && originalLayout[draggedEventId] && mover) {
+                const stillOverlaps = Math.max(ev.s, mover.s) < Math.min(ev.e, mover.e);
+                
+                // Get original column positions
+                const originalEvCol = originalLayout[ev.id].col;
+                const originalDraggedCol = originalLayout[draggedEventId].col;
+                const wasToTheRight = originalEvCol > originalDraggedCol;
+                
+                // If still overlapping, MUST preserve original column
+                // CRITICAL: if task was to the right, it MUST stay right until completely out of overlap
+                if (stillOverlaps) {
+                    const originalCol = originalLayout[ev.id].col;
+                    // Ensure column array exists
+                    while (columns.length <= originalCol) {
+                        columns.push([]);
+                    }
+                    
+                    // Check if original column is free (no collision with other statics that are not this one)
+                    const hasCollision = columns[originalCol].some(existingEv => 
+                        existingEv.id !== ev.id && Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                    );
+                    
+                    if (!hasCollision) {
+                        // Preserve original column
+                        columns[originalCol].push(ev);
+                        layout[ev.id] = { col: originalCol, columns: 1, span: 1 };
+                        placed = true;
+                    }
+                    // If collision in original column, fall through to First Fit below
+                }
             }
-          }
+            
+            // If not placed yet (not overlapping or original column not available), use First Fit
+            if (!placed) {
+                for (let i = 0; i < columns.length; i++) {
+                    const col = columns[i];
+                    const hasCollision = col.some(existingEv => 
+                        Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                    );
+                    if (!hasCollision) {
+                        col.push(ev);
+                        layout[ev.id] = { col: i, columns: 1, span: 1 };
+                        placed = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (!placed) {
+                columns.push([ev]);
+                layout[ev.id] = { col: columns.length - 1, columns: 1, span: 1 };
+            }
+        }
+
+        // B. Place Mover (Force Right on Collision)
+        if (mover) {
+            let targetCol = 0;
+            let placed = false;
+
+            // Try to fit in existing columns (filling gaps)
+            for (let i = 0; i < columns.length; i++) {
+                const col = columns[i];
+                const hasCollision = col.some(existingEv => 
+                    Math.max(mover.s, existingEv.s) < Math.min(mover.e, existingEv.e)
+                );
+                
+                if (!hasCollision) {
+                    col.push(mover);
+                    layout[mover.id] = { col: i, columns: 1, span: 1 };
+                    placed = true;
+                    break;
+                }
+            }
+
+            // If collision in all columns, create new one at the end
+            if (!placed) {
+                columns.push([mover]);
+                layout[mover.id] = { col: columns.length - 1, columns: 1, span: 1 };
+            }
         }
         
-        if (!placed) {
-          columns.push([ev]);
-          layout[ev.id] = { col: columns.length - 1, columns: 1 };
+        const totalCols = columns.length;
+
+        // C. Expansion Logic
+        for (let i = 0; i < columns.length; i++) {
+            const colEvents = columns[i];
+            for (const ev of colEvents) {
+                let span = 1;
+                for (let nextCol = i + 1; nextCol < totalCols; nextCol++) {
+                    const nextColEvents = columns[nextCol];
+                    const hasOverlap = nextColEvents.some(otherEv => 
+                        Math.max(ev.s, otherEv.s) < Math.min(ev.e, otherEv.e)
+                    );
+                    if (!hasOverlap) {
+                        span++;
+                    } else {
+                        break;
+                    }
+                }
+                layout[ev.id].columns = totalCols;
+                layout[ev.id].span = span;
+            }
         }
-      }
-      
-      // Then, place moved events (always to the right if they overlap)
-      for (const ev of movedEvents) {
-        // Check if this moved event overlaps with any other event in cluster (even partially)
-        const overlapsWithOthers = cluster.some(otherEv => {
-          if (otherEv.id === ev.id) return false;
-          // Check if events overlap (even partially)
-          return !(ev.e <= otherEv.s || ev.s >= otherEv.e);
+    }
+    return layout;
+  }, [lastMovedEventId]);
+
+  const layoutById = useMemo<Record<string, LayoutInfo>>(() => {
+    // Save original layout when drag starts
+    if (draggingEventId && Object.keys(originalLayoutRef.current).length === 0) {
+      const events = timedEvents.map(e => {
+        const startM = toMinutes(e.startTime);
+        const endM = toMinutes(e.endTime);
+        return {
+          ...e,
+          s: startM,
+          e: endM,
+          duration: endM - startM,
+          isLastMoved: e.id === lastMovedEventId
+        };
+      });
+      const baseLayout = calculateLayout(events, null);
+      originalLayoutRef.current = baseLayout;
+    }
+    
+    // Clear original layout when drag ends
+    if (!draggingEventId && Object.keys(originalLayoutRef.current).length > 0) {
+      originalLayoutRef.current = {};
+    }
+
+    // If dragging and we have a current drag position, calculate preview layout
+    // This shows how other tasks will move to make space for the dragged task
+    if (draggingEventId && currentDragPosition !== null) {
+      const draggedEvent = timedEvents.find(e => e.id === draggingEventId);
+      if (draggedEvent) {
+        const originalStartM = toMinutes(draggedEvent.startTime);
+        const originalEndM = toMinutes(draggedEvent.endTime);
+        const duration = originalEndM - originalStartM;
+        const newEndMinutes = Math.min(1440, currentDragPosition + duration);
+
+        const events = timedEvents.map(e => {
+          if (e.id === draggingEventId) {
+            return {
+              ...e,
+              s: currentDragPosition,
+              e: newEndMinutes,
+              duration,
+              isLastMoved: true // Force mover status for preview
+            };
+          }
+          
+          const startM = toMinutes(e.startTime);
+          const endM = toMinutes(e.endTime);
+          return {
+            ...e,
+            s: startM,
+            e: endM,
+            duration: endM - startM,
+            isLastMoved: e.id === lastMovedEventId
+          };
         });
 
-        if (overlapsWithOthers) {
-          // Always place moved event in rightmost column when overlapping
-          columns.push([ev]);
-          layout[ev.id] = { col: columns.length - 1, columns: 1 };
-        } else {
-          // No overlap: try to place in existing column or create new one
-          let placed = false;
-          for (let i = 0; i < columns.length; i++) {
-            const col = columns[i];
-            const lastInCol = col[col.length - 1];
-            if (lastInCol.e <= ev.s) {
-              col.push(ev);
-              layout[ev.id] = { col: i, columns: 1 };
-              placed = true;
-              break;
-            }
-          }
-          if (!placed) {
-            columns.push([ev]);
-            layout[ev.id] = { col: columns.length - 1, columns: 1 };
-          }
-        }
-      }
-      // Update total columns for everyone in this cluster
-      const totalCols = columns.length;
-      for (const ev of cluster) {
-        layout[ev.id].columns = totalCols;
+        // Calculate layout with dragged task at preview position
+        // Pass original layout to preserve columns if still overlapping
+        return calculateLayout(events, draggingEventId, originalLayoutRef.current);
       }
     }
 
-    return layout;
-  }, [timedEvents, pendingEventPositions, recentlyMovedEventId, lastMovedEventId, columnOrderByTime]);
-  
-  // Save column order for events with same start time and duration
-  useEffect(() => {
-    if (Object.keys(pendingEventPositions).length > 0) return; // Don't update during drag
-    
-    const newOrder: Record<string, string[]> = {};
-    
-    // Group events by start time and duration
-    const eventsByTime: Record<string, typeof timedEvents> = {};
-    for (const e of timedEvents) {
-      const startM = toMinutes(e.startTime);
-      const endM = toMinutes(e.endTime);
-      const duration = endM - startM;
-      const timeKey = `${startM}-${duration}`;
-      if (!eventsByTime[timeKey]) eventsByTime[timeKey] = [];
-      eventsByTime[timeKey].push(e);
-    }
-    
-    // For each group, get the column order from layout (left to right)
-    for (const timeKey in eventsByTime) {
-      const group = eventsByTime[timeKey];
-      if (group.length > 1) {
-        // Get current layout for these events
-        const layoutInfo = group.map(e => ({
-          id: e.id,
-          col: layoutById[e.id]?.col ?? 999
-        })).sort((a, b) => a.col - b.col);
-        
-        const orderByCol = layoutInfo.map(item => item.id);
-        
-        // Only save if order is different from saved order
-        const currentOrder = columnOrderByTime[timeKey];
-        if (JSON.stringify(currentOrder) !== JSON.stringify(orderByCol)) {
-          newOrder[timeKey] = orderByCol;
-        }
-      }
-    }
-    
-    // Update if there are changes
-    if (Object.keys(newOrder).length > 0) {
-      setColumnOrderByTime(prev => ({ ...prev, ...newOrder }));
-    }
-  }, [layoutById, timedEvents, pendingEventPositions, columnOrderByTime]);
-
-  // Function to calculate layout during drag (as if the dragged event is already in its new position)
-  const calculateDragLayout = useCallback((draggedEventId: string, newStartMinutes: number): { width: number; left: number } => {
-    // Find the dragged event
-    const draggedEvent = timedEvents.find(e => e.id === draggedEventId);
-    if (!draggedEvent) {
-      // Fallback: return default width
-      const screenWidth = Dimensions.get('window').width;
-      const availableWidth = screenWidth - LEFT_MARGIN;
-      return { width: availableWidth - 2, left: LEFT_MARGIN };
-    }
-
-    // Get original column from layoutById
-    const originalLayout = layoutById[draggedEventId] || { col: 0, columns: 1 };
-    const originalCol = originalLayout.col;
-    const originalColumns = originalLayout.columns;
-
-    // Create temporary events list: remove dragged event from original position, add it at new position
-    const originalStartM = toMinutes(draggedEvent.startTime);
-    const originalEndM = toMinutes(draggedEvent.endTime);
-    const duration = originalEndM - originalStartM;
-    const newEndMinutes = Math.min(1440, newStartMinutes + duration);
-    const screenWidth = Dimensions.get('window').width;
-    const availableWidth = screenWidth - LEFT_MARGIN;
-
-    if (!dragClearedOriginalOverlap) {
-      const columns = Math.max(1, originalColumns);
-      const colWidth = availableWidth / columns;
-      const left = LEFT_MARGIN + (originalCol * colWidth);
-      return {
-        width: colWidth - 2,
-        left,
-      };
-    }
-
-    // Create events list without the dragged event
-    const eventsWithoutDragged = timedEvents.filter(e => e.id !== draggedEventId);
-
-    // Create a temporary event with the new position
-    const tempDraggedEvent: OggiEvent = {
-      ...draggedEvent,
-      startTime: minutesToTime(newStartMinutes),
-      endTime: minutesToTime(newEndMinutes),
-    };
-
-    // Combine: all other events + dragged event at new position
-    const tempEvents = [...eventsWithoutDragged, tempDraggedEvent];
-
-    // Calculate layout for all events (same logic as layoutById)
-    const events = tempEvents.map(e => {
+    // Normal layout calculation (no drag or no preview position yet)
+    const events = timedEvents.map(e => {
       const startM = toMinutes(e.startTime);
       const endM = toMinutes(e.endTime);
       return {
@@ -939,165 +833,79 @@ export default function OggiScreen() {
         s: startM,
         e: endM,
         duration: endM - startM,
-        isRecentlyMoved: e.id === draggedEventId,
-        isLastMoved: e.id === draggedEventId,
+        isLastMoved: e.id === lastMovedEventId
       };
-    }).sort((a, b) => {
-      if (a.s !== b.s) return a.s - b.s;
-      if (a.duration !== b.duration) return b.duration - a.duration;
-      const aShouldGoRight = a.isRecentlyMoved || a.isLastMoved;
-      const bShouldGoRight = b.isRecentlyMoved || b.isLastMoved;
-      if (aShouldGoRight && !bShouldGoRight) return 1;
-      if (!aShouldGoRight && bShouldGoRight) return -1;
-      return 0;
+    });
+    
+    return calculateLayout(events, draggingEventId);
+  }, [timedEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayout]);
+  
+  const calculateDragLayout = useCallback((draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean): { width: number; left: number } => {
+    const draggedEvent = timedEvents.find(e => e.id === draggedEventId);
+    if (!draggedEvent) {
+      const screenWidth = Dimensions.get('window').width;
+      const availableWidth = screenWidth - LEFT_MARGIN;
+      return { width: availableWidth - 2, left: LEFT_MARGIN };
+    }
+
+    const originalLayout = layoutById[draggedEventId] || { col: 0, columns: 1, span: 1 };
+
+    if (!hasClearedOverlap) {
+      const screenWidth = Dimensions.get('window').width;
+      const availableWidth = screenWidth - LEFT_MARGIN;
+      const columns = Math.max(1, originalLayout.columns);
+      const colWidth = availableWidth / columns;
+      const left = LEFT_MARGIN + (originalLayout.col * colWidth);
+      return { width: (colWidth * originalLayout.span) - 2, left };
+    }
+
+    const originalStartM = toMinutes(draggedEvent.startTime);
+    const originalEndM = toMinutes(draggedEvent.endTime);
+    const duration = originalEndM - originalStartM;
+    const newEndMinutes = Math.min(1440, newStartMinutes + duration);
+
+    const tempDraggedEvent = {
+      ...draggedEvent,
+      startTime: minutesToTime(newStartMinutes),
+      endTime: minutesToTime(newEndMinutes),
+    };
+
+    const events = timedEvents.map(e => {
+      if (e.id === draggedEventId) return {
+          ...tempDraggedEvent,
+          s: newStartMinutes,
+          e: newEndMinutes,
+          duration,
+          isLastMoved: true
+      };
+      
+      const startM = toMinutes(e.startTime);
+      const endM = toMinutes(e.endTime);
+      return {
+        ...e,
+        s: startM,
+        e: endM,
+        duration: endM - startM,
+        // Important: Pass lastMovedEventId here so calculateLayout knows who WAS moved before
+        // But draggingEventId takes precedence inside calculateLayout
+        isLastMoved: e.id === lastMovedEventId 
+      };
     });
 
-    // Identify clusters - events that overlap in time (even partially)
-    // This correctly handles partial overlaps: if a 1-hour task is moved 15min up,
-    // the bottom 45min still overlap with other tasks, so they must share space
-    let clusters: typeof events[] = [];
-    let currentCluster: typeof events = [];
-    let clusterEnd = -1;
-
-    for (const ev of events) {
-      if (currentCluster.length === 0) {
-        currentCluster.push(ev);
-        clusterEnd = ev.e;
-      } else {
-        // Check if event overlaps with cluster (even partially)
-        // Two events overlap if: ev.s < clusterEnd (event starts before cluster ends)
-        // This ensures partial overlaps are correctly detected
-        if (ev.s < clusterEnd) {
-          currentCluster.push(ev);
-          clusterEnd = Math.max(clusterEnd, ev.e);
-        } else {
-          clusters.push(currentCluster);
-          currentCluster = [ev];
-          clusterEnd = ev.e;
-        }
-      }
-    }
-    if (currentCluster.length > 0) clusters.push(currentCluster);
-
-    // Process each cluster and find layout for dragged event
-    const layout: Record<string, LayoutInfo> = {};
+    const tempLayout = calculateLayout(events, draggedEventId);
     
-    for (const cluster of clusters) {
-      const sortedCluster = [...cluster].sort((a, b) => {
-        if (a.s !== b.s) return a.s - b.s;
-        if (a.duration !== b.duration) return b.duration - a.duration;
-        const aShouldGoRight = a.isRecentlyMoved || a.isLastMoved;
-        const bShouldGoRight = b.isRecentlyMoved || b.isLastMoved;
-        if (aShouldGoRight && !bShouldGoRight) return 1;
-        if (!aShouldGoRight && bShouldGoRight) return -1;
-        return 0;
-      });
-
-      const columns: typeof sortedCluster[] = [];
-      
-      // Separate dragged event from others
-      const draggedEv = sortedCluster.find(ev => ev.id === draggedEventId);
-      const otherEvents = sortedCluster.filter(ev => ev.id !== draggedEventId);
-      
-      // First, place all non-dragged events
-      for (const ev of otherEvents) {
-        let placed = false;
-
-        const sameStartCols: number[] = [];
-        for (let i = 0; i < columns.length; i++) {
-          const col = columns[i];
-          if (col.some(existingEv => existingEv.s === ev.s && existingEv.duration === ev.duration)) {
-            sameStartCols.push(i);
-          }
-        }
-        const hasSameStartEvents = sameStartCols.length > 0;
-
-        if ((ev.isLastMoved || ev.isRecentlyMoved) && hasSameStartEvents) {
-          columns.push([ev]);
-          layout[ev.id] = { col: columns.length - 1, columns: 1 };
-          placed = true;
-        } else if (!hasSameStartEvents) {
-          for (let i = 0; i < columns.length; i++) {
-            const col = columns[i];
-            const lastInCol = col[col.length - 1];
-            if (lastInCol.e <= ev.s) {
-              col.push(ev);
-              layout[ev.id] = { col: i, columns: 1 };
-              placed = true;
-              break;
-            }
-          }
-        } else {
-          for (let i = 0; i < columns.length; i++) {
-            const col = columns[i];
-            const lastInCol = col[col.length - 1];
-            if (lastInCol.e <= ev.s) {
-              col.push(ev);
-              layout[ev.id] = { col: i, columns: 1 };
-              placed = true;
-              break;
-            }
-          }
-        }
-
-        if (!placed) {
-          columns.push([ev]);
-          layout[ev.id] = { col: columns.length - 1, columns: 1 };
-        }
-      }
-      
-      // Then, place the dragged event (always to the right if it overlaps)
-      if (draggedEv) {
-        // Check if dragged event overlaps with any other event in cluster (even partially)
-        const overlapsWithOthers = cluster.some(otherEv => {
-          if (otherEv.id === draggedEventId) return false;
-          // Check if events overlap (even partially)
-          return !(draggedEv.e <= otherEv.s || draggedEv.s >= otherEv.e);
-        });
-
-        if (overlapsWithOthers) {
-          // Always place dragged event in rightmost column when overlapping
-          columns.push([draggedEv]);
-          layout[draggedEv.id] = { col: columns.length - 1, columns: 1 };
-        } else {
-          // No overlap: try to place in existing column or create new one
-          let placed = false;
-          for (let i = 0; i < columns.length; i++) {
-            const col = columns[i];
-            const lastInCol = col[col.length - 1];
-            if (lastInCol.e <= draggedEv.s) {
-              col.push(draggedEv);
-              layout[draggedEv.id] = { col: i, columns: 1 };
-              placed = true;
-              break;
-            }
-          }
-          if (!placed) {
-            columns.push([draggedEv]);
-            layout[draggedEv.id] = { col: columns.length - 1, columns: 1 };
-          }
-        }
-      }
-
-      // Update total columns for everyone in this cluster
-      const totalCols = columns.length;
-      for (const ev of cluster) {
-        layout[ev.id].columns = totalCols;
-      }
-    }
-
-    // Get layout for dragged event
-    const draggedLayout = layout[draggedEventId] || { col: 0, columns: 1 };
+    const draggedLayout = tempLayout[draggedEventId] || { col: 0, columns: 1, span: 1 };
+    const screenWidth = Dimensions.get('window').width;
+    const availableWidth = screenWidth - LEFT_MARGIN;
     const colWidth = availableWidth / draggedLayout.columns;
     const left = LEFT_MARGIN + (draggedLayout.col * colWidth);
 
     return {
-      width: colWidth - 2, // 2px spacing
+      width: (colWidth * draggedLayout.span) - 2,
       left,
     };
-  }, [timedEvents, columnOrderByTime, layoutById, dragClearedOriginalOverlap]);
+  }, [timedEvents, layoutById, calculateLayout, lastMovedEventId]);
 
-  // -- Helper to calculate styles --
   const getEventStyle = (event: OggiEvent) => {
     const originalStart = toMinutes(event.startTime);
     const originalEnd = toMinutes(event.endTime);
@@ -1105,235 +913,33 @@ export default function OggiScreen() {
     const startM = pendingStart ?? originalStart;
     const endM = pendingStart !== undefined ? Math.min(1440, startM + (originalEnd - originalStart)) : originalEnd;
     
-    // Clip to view window
     if (endM <= windowStartMin || startM >= windowEndMin) return null;
     
     const visibleStart = Math.max(startM, windowStartMin);
     const visibleEnd = Math.min(endM, windowEndMin);
     
-    // Coordinates
     const top = ((visibleStart - windowStartMin) / 60) * hourHeight;
     const durationMin = visibleEnd - visibleStart;
     const height = Math.max(1, (durationMin / 60) * hourHeight);
     
-    // Horizontal layout
-    // If a task is being dragged and this event is not the dragged one,
-    // check if the dragged task has exited the overlap zone
-    let lay = layoutById[event.id] || { col: 0, columns: 1 };
-    
-    if (draggingEventId && draggingEventId !== event.id && currentDragPosition !== null && !dragSizingLocked) {
-      const draggedEvent = timedEvents.find(e => e.id === draggingEventId);
-      if (draggedEvent) {
-        const draggedOriginalStart = toMinutes(draggedEvent.startTime);
-        const draggedOriginalEnd = toMinutes(draggedEvent.endTime);
-        const draggedDuration = draggedOriginalEnd - draggedOriginalStart;
-        const draggedCurrentStart =
-          currentDragPosition ?? pendingEventPositions[draggingEventId] ?? draggedOriginalStart;
-        const draggedCurrentEnd = Math.min(1440, draggedCurrentStart + draggedDuration);
-
-        const overlapsOriginal = !(endM <= draggedOriginalStart || startM >= draggedOriginalEnd);
-        const currentlyOverlaps = !(draggedCurrentEnd <= startM || draggedCurrentStart >= endM);
-
-        if (dragClearedOriginalOverlap && overlapsOriginal && !currentlyOverlaps) {
-          // Dragged event has exited this overlap: recalc layout without it
-          const eventsWithoutDragged = timedEvents.filter(e => e.id !== draggingEventId);
-          const eventsForLayout = eventsWithoutDragged
-            .map(e => {
-              const eStart = toMinutes(e.startTime);
-              const eEnd = toMinutes(e.endTime);
-              return {
-                ...e,
-                s: eStart,
-                e: eEnd,
-                duration: eEnd - eStart,
-              };
-            })
-            .sort((a, b) => {
-              if (a.s !== b.s) return a.s - b.s;
-              if (a.duration !== b.duration) return b.duration - a.duration;
-              return 0;
-            });
-
-          let clusters: typeof eventsForLayout[] = [];
-          let currentCluster: typeof eventsForLayout = [];
-          let clusterEnd = -1;
-
-          for (const ev of eventsForLayout) {
-            if (currentCluster.length === 0) {
-              currentCluster.push(ev);
-              clusterEnd = ev.e;
-            } else {
-              if (ev.s < clusterEnd) {
-                currentCluster.push(ev);
-                clusterEnd = Math.max(clusterEnd, ev.e);
-              } else {
-                clusters.push(currentCluster);
-                currentCluster = [ev];
-                clusterEnd = ev.e;
-              }
-            }
-          }
-          if (currentCluster.length > 0) clusters.push(currentCluster);
-
-          const cluster = clusters.find(c => c.some(e => e.id === event.id)) || [];
-
-          if (cluster.length > 0 && cluster.some(e => e.id === event.id)) {
-            const tempColumns: typeof cluster[] = [];
-            for (const ev of cluster) {
-              let placed = false;
-              for (let i = 0; i < tempColumns.length; i++) {
-                const col = tempColumns[i];
-                const lastInCol = col[col.length - 1];
-                if (lastInCol.e <= ev.s) {
-                  col.push(ev);
-                  placed = true;
-                  break;
-                }
-              }
-              if (!placed) {
-                tempColumns.push([ev]);
-              }
-            }
-
-            const totalCols = tempColumns.length;
-            const eventCol = tempColumns.findIndex(col => col.some(e => e.id === event.id));
-            if (eventCol !== -1) {
-              lay = { col: eventCol, columns: totalCols };
-            }
-          }
-        } else if (dragClearedOriginalOverlap && currentlyOverlaps) {
-          // Dragged event has entered (after clearing original overlap): include it
-          const eventsWithoutDragged = timedEvents.filter(e => e.id !== draggingEventId);
-          const tempDraggedEvent = {
-            ...draggedEvent,
-            s: draggedCurrentStart,
-            e: draggedCurrentEnd,
-            duration: draggedDuration,
-          };
-
-          const eventsForLayout = [
-            ...eventsWithoutDragged.map(e => {
-              const eStart = toMinutes(e.startTime);
-              const eEnd = toMinutes(e.endTime);
-              return {
-                ...e,
-                s: eStart,
-                e: eEnd,
-                duration: eEnd - eStart,
-              };
-            }),
-            tempDraggedEvent,
-          ].sort((a, b) => {
-            if (a.s !== b.s) return a.s - b.s;
-            if (a.duration !== b.duration) return b.duration - a.duration;
-            return 0;
-          });
-
-          let clusters: typeof eventsForLayout[] = [];
-          let currentCluster: typeof eventsForLayout = [];
-          let clusterEnd = -1;
-
-          for (const ev of eventsForLayout) {
-            if (currentCluster.length === 0) {
-              currentCluster.push(ev);
-              clusterEnd = ev.e;
-            } else {
-              if (ev.s < clusterEnd) {
-                currentCluster.push(ev);
-                clusterEnd = Math.max(clusterEnd, ev.e);
-              } else {
-                clusters.push(currentCluster);
-                currentCluster = [ev];
-                clusterEnd = ev.e;
-              }
-            }
-          }
-          if (currentCluster.length > 0) clusters.push(currentCluster);
-
-          const cluster = clusters.find(c => c.some(e => e.id === event.id)) || [];
-
-          if (cluster.length > 0 && cluster.some(e => e.id === event.id)) {
-            const sortedCluster = [...cluster].sort((a, b) => {
-              if (a.s !== b.s) return a.s - b.s;
-              if (a.duration !== b.duration) return b.duration - a.duration;
-              return 0;
-            });
-
-            const draggedEv = sortedCluster.find(ev => ev.id === draggingEventId);
-            const otherEvents = sortedCluster.filter(ev => ev.id !== draggingEventId);
-
-            const tempColumns: typeof sortedCluster[] = [];
-
-            for (const ev of otherEvents) {
-              let placed = false;
-              for (let i = 0; i < tempColumns.length; i++) {
-                const col = tempColumns[i];
-                const lastInCol = col[col.length - 1];
-                if (lastInCol.e <= ev.s) {
-                  col.push(ev);
-                  placed = true;
-                  break;
-                }
-              }
-              if (!placed) {
-                tempColumns.push([ev]);
-              }
-            }
-
-            if (draggedEv) {
-              const overlapsWithOthers = cluster.some(otherEv => {
-                if (otherEv.id === draggingEventId) return false;
-                return !(draggedEv.e <= otherEv.s || draggedEv.s >= otherEv.e);
-              });
-
-              if (overlapsWithOthers) {
-                tempColumns.push([draggedEv]);
-              } else {
-                let placed = false;
-                for (let i = 0; i < tempColumns.length; i++) {
-                  const col = tempColumns[i];
-                  const lastInCol = col[col.length - 1];
-                  if (lastInCol.e <= draggedEv.s) {
-                    col.push(draggedEv);
-                    placed = true;
-                    break;
-                  }
-                }
-                if (!placed) {
-                  tempColumns.push([draggedEv]);
-                }
-              }
-            }
-
-            const totalCols = tempColumns.length;
-            const eventCol = tempColumns.findIndex(col => col.some(e => e.id === event.id));
-            if (eventCol !== -1) {
-              lay = { col: eventCol, columns: totalCols };
-            }
-          }
-        }
-      }
-    }
+    let lay = layoutById[event.id] || { col: 0, columns: 1, span: 1 };
     
     const screenWidth = Dimensions.get('window').width;
-    const availableWidth = screenWidth - LEFT_MARGIN; // Removed right padding to use full width
+    const availableWidth = screenWidth - LEFT_MARGIN;
     const colWidth = availableWidth / lay.columns;
     const left = LEFT_MARGIN + (lay.col * colWidth);
+    const width = (colWidth * lay.span) - 2;
     
-    // Adjust for visual separation from grid lines
-    // Add 2px top margin to sit below the hour line
-    // Subtract height to sit above the next hour line (and account for top margin)
-    // If event ends exactly on the hour, use 3.75px buffer instead of 4px
     const endsOnHour = endM % 60 === 0;
     const heightBuffer = endsOnHour ? 3.75 : 4;
     const adjustedTop = top + 2;
-    const adjustedHeight = Math.max(1, height - heightBuffer); // No min height limit, purely proportional
+    const adjustedHeight = Math.max(1, height - heightBuffer);
 
     return {
       top: adjustedTop,
       height: adjustedHeight,
       left,
-      width: colWidth - 2, // 2px spacing
+      width,
     };
   };
   
@@ -1398,10 +1004,8 @@ export default function OggiScreen() {
              {/* Grid Lines & Hours */}
              {hours.map(h => {
                 const minutesFromStart = (h * 60) - windowStartMin;
-                // Don't draw if completely out of bounds
                 if (minutesFromStart < 0 || minutesFromStart > totalMinutes + 60) return null;
                 
-                // Aggiungo un offset verticale di base (es. 10px) per evitare che la prima ora (00:00) sia tagliata
                 const top = (minutesFromStart / 60) * hourHeight + BASE_VERTICAL_OFFSET;
                 
                 return (
@@ -1419,9 +1023,7 @@ export default function OggiScreen() {
                const style = getEventStyle(e);
                if (!style) return null;
                const bg = e.color;
-               const light = isLightColor(bg);
                
-               // Aggiungo lo stesso offset di base anche agli eventi
                const baseTop = style.top + BASE_VERTICAL_OFFSET;
 
                return (
@@ -1468,7 +1070,7 @@ export default function OggiScreen() {
       </ScrollView>
       </GestureHandlerRootView>
 
-      {/* Settings Modal (Simplified for brevity, keeping core functional) */}
+      {/* Settings Modal */}
       <Modal visible={showSettings} animationType="slide" transparent onRequestClose={() => setShowSettings(false)}>
          <View style={styles.modalBackdrop}>
             <View style={styles.modalCard}>
@@ -1485,7 +1087,6 @@ export default function OggiScreen() {
                      <TouchableOpacity style={styles.controlBtn} onPress={() => {
                         const startM = toMinutes(windowStart);
                         const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
-                        // Ensure at least 5 hour window (300 min)
                         if (startM < endM - 300) {
                             const nextStartM = startM + 60;
                             const newDuration = (endM - nextStartM) / 60;
@@ -1505,7 +1106,6 @@ export default function OggiScreen() {
                      <TouchableOpacity style={styles.controlBtn} onPress={() => {
                         const startM = toMinutes(windowStart);
                         const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
-                        // Ensure at least 5 hour window (300 min)
                         if (endM > startM + 300) {
                              const nextEndM = endM - 60;
                              const newDuration = (nextEndM - startM) / 60;
@@ -1536,7 +1136,6 @@ export default function OggiScreen() {
                               const nextVisible = visibleHours + 1;
                               setVisibleHours(nextVisible);
                               
-                              // Adjust window if visible hours > duration
                               const startM = toMinutes(windowStart);
                               const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
                               const currentDuration = (endM - startM) / 60;
