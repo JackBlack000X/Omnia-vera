@@ -136,6 +136,7 @@ function DraggableEvent({
   const isDragActiveRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSnappedMinuteRef = useRef<number | null>(null);
+  const initialTouchYRef = useRef<number | null>(null);
 
   const panResponder = useMemo(() => {
     return PanResponder.create({
@@ -155,16 +156,34 @@ function DraggableEvent({
       onPanResponderGrant: (evt) => {
         // Reset del tracking della linea di snap
         lastSnappedMinuteRef.current = null;
+        // Store initial touch position in absolute screen coordinates
+        initialTouchYRef.current = evt.nativeEvent.pageY;
         
         // Avvia il timer: se l'utente tiene premuto senza muoversi troppo per 200ms...
         longPressTimerRef.current = setTimeout(() => {
           isDragActiveRef.current = true; // ...ATTIVA il drag
           
+          // Initialize drag width and left using CURRENT layoutStyle values first
+          // This prevents flash when setDraggingEventId causes layout recalculation
+          dragWidthValue.value = layoutStyle.width;
+          dragLeftValue.value = layoutStyle.left;
+          dragInitialTop.value = baseTop;
+          dragY.value = 0;
+          
+          // Set current drag position BEFORE setDraggingEventId
+          // This ensures layout is calculated correctly from the start
+          const initialStartM = toMinutes(event.startTime);
+          setCurrentDragPosition(initialStartM);
+          
+          // Then immediately update with calculateDragLayout to ensure correct values
+          // This accounts for any layout changes that might occur
+          const initialDragLayout = calculateDragLayout(event.id, initialStartM);
+          dragWidthValue.value = initialDragLayout.width;
+          dragLeftValue.value = initialDragLayout.left;
+          
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           
           setDraggingEventId(event.id);
-          dragInitialTop.value = baseTop;
-          dragY.value = 0;
         }, 200); // 200ms di attesa
       },
 
@@ -184,8 +203,16 @@ function DraggableEvent({
         }
 
         // 3. Se isDragActive è true, muovi l'elemento
-        const rawY = gestureState.dy;
-        const currentTop = dragInitialTop.value + rawY;
+        // Use absolute touch position to calculate offset, so it works even if layout changes
+        if (initialTouchYRef.current === null) {
+          initialTouchYRef.current = evt.nativeEvent.pageY;
+        }
+        const currentTouchY = evt.nativeEvent.pageY;
+        const touchDeltaY = currentTouchY - initialTouchYRef.current;
+        
+        // Calculate current top position using the initial baseTop + the touch movement
+        const initialBaseTop = dragInitialTop.value;
+        const currentTop = initialBaseTop + touchDeltaY;
         const relativeTop = Math.max(0, currentTop - DRAG_VISUAL_OFFSET);
         const minutesFromStart = (relativeTop / hourHeight) * 60;
         const newStartMinutes = windowStartMin + minutesFromStart;
@@ -193,7 +220,8 @@ function DraggableEvent({
         const clampedMinutes = Math.max(0, Math.min(1440, roundedMinutes));
         const snappedMinutesFromStart = clampedMinutes - windowStartMin;
         const snappedTop = (snappedMinutesFromStart / 60) * hourHeight + DRAG_VISUAL_OFFSET;
-        const snappedY = snappedTop - dragInitialTop.value;
+        // Calculate snappedY relative to the initial baseTop
+        const snappedY = snappedTop - initialBaseTop;
 
         dragY.value = snappedY;
 
@@ -309,13 +337,8 @@ function DraggableEvent({
     calculateDragLayout,
   ]);
 
-  // Update drag width and left when layout changes
-  useEffect(() => {
-    if (isDragging) {
-      dragWidthValue.value = layoutStyle.width;
-      dragLeftValue.value = layoutStyle.left;
-    }
-  }, [isDragging, layoutStyle.width, layoutStyle.left, dragWidthValue, dragLeftValue]);
+  // Don't update drag width/left from layoutStyle during drag
+  // They are initialized in onPanResponderGrant and updated in onPanResponderMove via calculateDragLayout
 
   const animatedStyle = useAnimatedStyle(() => ({
     top: dragInitialTop.value + dragY.value,
@@ -675,7 +698,13 @@ export default function OggiScreen() {
       });
       
       const columns: typeof sortedCluster[] = [];
-      for (const ev of sortedCluster) {
+      
+      // Separate moved events (last moved or recently moved) from others
+      const movedEvents = sortedCluster.filter(ev => ev.isLastMoved || ev.isRecentlyMoved);
+      const otherEvents = sortedCluster.filter(ev => !ev.isLastMoved && !ev.isRecentlyMoved);
+      
+      // First, place all non-moved events
+      for (const ev of otherEvents) {
         let placed = false;
         
         // Check if there are already events with same start time and duration in columns
@@ -688,26 +717,20 @@ export default function OggiScreen() {
         }
         const hasSameStartEvents = sameStartCols.length > 0;
         
-        // If event is last moved/recently moved and there are same-start events, 
-        // force it to a new rightmost column (always goes right)
-        if ((ev.isLastMoved || ev.isRecentlyMoved) && hasSameStartEvents) {
-          columns.push([ev]);
-          layout[ev.id] = { col: columns.length - 1, columns: 1 };
-          placed = true;
-        } else if (!hasSameStartEvents) {
+        if (!hasSameStartEvents) {
           // Normal first-fit logic: try to place in existing column
           for (let i = 0; i < columns.length; i++) {
             const col = columns[i];
             const lastInCol = col[col.length - 1];
             if (lastInCol.e <= ev.s) {
               col.push(ev);
-              layout[ev.id] = { col: i, columns: 1 }; // Will update columns later
+              layout[ev.id] = { col: i, columns: 1 };
               placed = true;
               break;
             }
           }
         } else {
-          // Has same start events but not moved: goes to first available column
+          // Has same start events: goes to first available column
           // (this maintains creation order for non-moved events)
           for (let i = 0; i < columns.length; i++) {
             const col = columns[i];
@@ -722,9 +745,41 @@ export default function OggiScreen() {
         }
         
         if (!placed) {
-          // Create new column (either no fit found, or has same start as existing events)
           columns.push([ev]);
           layout[ev.id] = { col: columns.length - 1, columns: 1 };
+        }
+      }
+      
+      // Then, place moved events (always to the right if they overlap)
+      for (const ev of movedEvents) {
+        // Check if this moved event overlaps with any other event in cluster (even partially)
+        const overlapsWithOthers = cluster.some(otherEv => {
+          if (otherEv.id === ev.id) return false;
+          // Check if events overlap (even partially)
+          return !(ev.e <= otherEv.s || ev.s >= otherEv.e);
+        });
+
+        if (overlapsWithOthers) {
+          // Always place moved event in rightmost column when overlapping
+          columns.push([ev]);
+          layout[ev.id] = { col: columns.length - 1, columns: 1 };
+        } else {
+          // No overlap: try to place in existing column or create new one
+          let placed = false;
+          for (let i = 0; i < columns.length; i++) {
+            const col = columns[i];
+            const lastInCol = col[col.length - 1];
+            if (lastInCol.e <= ev.s) {
+              col.push(ev);
+              layout[ev.id] = { col: i, columns: 1 };
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) {
+            columns.push([ev]);
+            layout[ev.id] = { col: columns.length - 1, columns: 1 };
+          }
         }
       }
       // Update total columns for everyone in this cluster
@@ -948,7 +1003,13 @@ export default function OggiScreen() {
       });
 
       const columns: typeof sortedCluster[] = [];
-      for (const ev of sortedCluster) {
+      
+      // Separate dragged event from others
+      const draggedEv = sortedCluster.find(ev => ev.id === draggedEventId);
+      const otherEvents = sortedCluster.filter(ev => ev.id !== draggedEventId);
+      
+      // First, place all non-dragged events
+      for (const ev of otherEvents) {
         let placed = false;
 
         const sameStartCols: number[] = [];
@@ -991,6 +1052,39 @@ export default function OggiScreen() {
         if (!placed) {
           columns.push([ev]);
           layout[ev.id] = { col: columns.length - 1, columns: 1 };
+        }
+      }
+      
+      // Then, place the dragged event (always to the right if it overlaps)
+      if (draggedEv) {
+        // Check if dragged event overlaps with any other event in cluster (even partially)
+        const overlapsWithOthers = cluster.some(otherEv => {
+          if (otherEv.id === draggedEventId) return false;
+          // Check if events overlap (even partially)
+          return !(draggedEv.e <= otherEv.s || draggedEv.s >= otherEv.e);
+        });
+
+        if (overlapsWithOthers) {
+          // Always place dragged event in rightmost column when overlapping
+          columns.push([draggedEv]);
+          layout[draggedEv.id] = { col: columns.length - 1, columns: 1 };
+        } else {
+          // No overlap: try to place in existing column or create new one
+          let placed = false;
+          for (let i = 0; i < columns.length; i++) {
+            const col = columns[i];
+            const lastInCol = col[col.length - 1];
+            if (lastInCol.e <= draggedEv.s) {
+              col.push(draggedEv);
+              layout[draggedEv.id] = { col: i, columns: 1 };
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) {
+            columns.push([draggedEv]);
+            layout[draggedEv.id] = { col: columns.length - 1, columns: 1 };
+          }
         }
       }
 
@@ -1189,8 +1283,21 @@ export default function OggiScreen() {
               
               if (cluster.length > 0 && cluster.some(e => e.id === event.id)) {
                 // Calculate layout for this cluster with dragged event included
-                const tempColumns: typeof cluster[] = [];
-                for (const ev of cluster) {
+                // Sort cluster to process events in order
+                const sortedCluster = [...cluster].sort((a, b) => {
+                  if (a.s !== b.s) return a.s - b.s;
+                  if (a.duration !== b.duration) return b.duration - a.duration;
+                  return 0;
+                });
+                
+                // Separate dragged event from others
+                const draggedEv = sortedCluster.find(ev => ev.id === draggingEventId);
+                const otherEvents = sortedCluster.filter(ev => ev.id !== draggingEventId);
+                
+                const tempColumns: typeof sortedCluster[] = [];
+                
+                // First, place all non-dragged events
+                for (const ev of otherEvents) {
                   let placed = false;
                   for (let i = 0; i < tempColumns.length; i++) {
                     const col = tempColumns[i];
@@ -1203,6 +1310,36 @@ export default function OggiScreen() {
                   }
                   if (!placed) {
                     tempColumns.push([ev]);
+                  }
+                }
+                
+                // Then, place the dragged event (always to the right if it overlaps)
+                if (draggedEv) {
+                  // Check if dragged event overlaps with any other event in cluster (even partially)
+                  const overlapsWithOthers = cluster.some(otherEv => {
+                    if (otherEv.id === draggingEventId) return false;
+                    // Check if events overlap (even partially)
+                    return !(draggedEv.e <= otherEv.s || draggedEv.s >= otherEv.e);
+                  });
+
+                  if (overlapsWithOthers) {
+                    // Always place dragged event in rightmost column when overlapping
+                    tempColumns.push([draggedEv]);
+                  } else {
+                    // No overlap: try to place in existing column or create new one
+                    let placed = false;
+                    for (let i = 0; i < tempColumns.length; i++) {
+                      const col = tempColumns[i];
+                      const lastInCol = col[col.length - 1];
+                      if (lastInCol.e <= draggedEv.s) {
+                        col.push(draggedEv);
+                        placed = true;
+                        break;
+                      }
+                    }
+                    if (!placed) {
+                      tempColumns.push([draggedEv]);
+                    }
                   }
                 }
                 
