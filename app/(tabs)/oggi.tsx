@@ -75,6 +75,12 @@ type OggiEvent = {
 };
 
 type LayoutInfo = { col: number; columns: number; span: number };
+type PairLock = {
+  leftId: string;
+  rightId: string;
+  leftCol: number;
+  rightCol: number;
+};
 
 type DraggableEventProps = {
   event: OggiEvent;
@@ -437,6 +443,7 @@ export default function OggiScreen() {
   
   // Stores the stable layout (snapshot) to use as a lock during drag
   const stableLayoutRef = useRef<Record<string, LayoutInfo>>({});
+  const pairLockRef = useRef<Record<string, PairLock>>({});
 
   useEffect(() => {
     (async () => {
@@ -614,6 +621,38 @@ export default function OggiScreen() {
     lockedLayout?: Record<string, LayoutInfo> // "Frozen" layout from snapshot
   ) => {
     const layout: Record<string, LayoutInfo> = {};
+    const eventMap = events.reduce<Record<string, (typeof events)[number]>>((acc, ev) => {
+      acc[ev.id] = ev;
+      return acc;
+    }, {});
+
+    const prunePairLocks = () => {
+      const locks = pairLockRef.current;
+      for (const key of Object.keys(locks)) {
+        const lock = locks[key];
+        const left = eventMap[lock.leftId];
+        const right = eventMap[lock.rightId];
+        if (!left || !right) {
+          delete locks[key];
+          continue;
+        }
+        const stillOverlap = Math.max(left.s, right.s) < Math.min(left.e, right.e);
+        const sameStart = left.s === right.s;
+        const rightStartsEarlier = right.s < left.s;
+        if (!stillOverlap || (!sameStart && !rightStartsEarlier)) {
+          delete locks[key];
+        }
+      }
+    };
+
+    prunePairLocks();
+
+    const lockEntries = Object.entries(pairLockRef.current);
+    const lockLookup = lockEntries.reduce<Record<string, { col: number; pairKey: string; partnerId: string }>>((acc, [key, lock]) => {
+      acc[lock.leftId] = { col: lock.leftCol, pairKey: key, partnerId: lock.rightId };
+      acc[lock.rightId] = { col: lock.rightCol, pairKey: key, partnerId: lock.leftId };
+      return acc;
+    }, {});
     
     // 1. Cluster based on time
     let clusters: typeof events[] = [];
@@ -661,6 +700,31 @@ export default function OggiScreen() {
         for (const ev of insertionOrder) {
             const isMover = draggedEventId ? (ev.id === draggedEventId) : (ev.id === lastMovedEventId);
             let startSearchCol = 0;
+
+            const lockInfo = lockLookup[ev.id];
+            if (lockInfo) {
+                const partnerStillInCluster = cluster.some(c => c.id === lockInfo.partnerId);
+                if (!partnerStillInCluster) {
+                    delete pairLockRef.current[lockInfo.pairKey];
+                    delete lockLookup[ev.id];
+                    delete lockLookup[lockInfo.partnerId];
+                } else {
+                    while (columns.length <= lockInfo.col) columns.push([]);
+                    const lockedColumn = columns[lockInfo.col];
+                    const hasCollision = lockedColumn.some(existingEv =>
+                        Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                    );
+                    if (!hasCollision) {
+                        lockedColumn.push(ev);
+                        layout[ev.id] = { col: lockInfo.col, columns: 1, span: 1 };
+                        continue;
+                    } else {
+                        delete pairLockRef.current[lockInfo.pairKey];
+                        delete lockLookup[ev.id];
+                        delete lockLookup[lockInfo.partnerId];
+                    }
+                }
+            }
 
             // --- COLUMN LOCK LOGIC ---
             // Ensure static tasks respect the dragged task's space if they were originally overlapping
@@ -792,6 +856,56 @@ export default function OggiScreen() {
                 }
                 layout[ev.id].columns = totalCols;
                 layout[ev.id].span = span;
+            }
+        }
+
+        const ensurePairLock = (leftId: string, rightId: string) => {
+            const leftLayout = layout[leftId];
+            const rightLayout = layout[rightId];
+            if (!leftLayout || !rightLayout) return;
+            const key = `${leftId}->${rightId}`;
+            pairLockRef.current[key] = {
+                leftId,
+                rightId,
+                leftCol: leftLayout.col,
+                rightCol: rightLayout.col,
+            };
+        };
+
+        const removePairLock = (leftId: string, rightId: string) => {
+            delete pairLockRef.current[`${leftId}->${rightId}`];
+        };
+
+        for (let i = 0; i < cluster.length; i++) {
+            for (let j = i + 1; j < cluster.length; j++) {
+                const a = cluster[i];
+                const b = cluster[j];
+                const overlap = Math.max(a.s, b.s) < Math.min(a.e, b.e);
+                if (!overlap) {
+                    removePairLock(a.id, b.id);
+                    removePairLock(b.id, a.id);
+                    continue;
+                }
+                const layoutA = layout[a.id];
+                const layoutB = layout[b.id];
+                if (!layoutA || !layoutB) continue;
+                if (layoutA.col === layoutB.col) {
+                    removePairLock(a.id, b.id);
+                    removePairLock(b.id, a.id);
+                    continue;
+                }
+                const left = layoutA.col < layoutB.col ? a : b;
+                const right = left.id === a.id ? b : a;
+                if (a.s === b.s) {
+                    ensurePairLock(left.id, right.id);
+                    continue;
+                }
+                if (right.s < left.s) {
+                    ensurePairLock(left.id, right.id);
+                } else {
+                    removePairLock(left.id, right.id);
+                    removePairLock(right.id, left.id);
+                }
             }
         }
     }
