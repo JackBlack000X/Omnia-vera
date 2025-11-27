@@ -726,6 +726,17 @@ export default function OggiScreen() {
                 }
             }
 
+            if (!lockInfo && isMover) {
+                const sameStartOverlap = cluster.some(other => {
+                    if (other.id === ev.id) return false;
+                    if (other.s !== ev.s) return false;
+                    return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
+                });
+                if (sameStartOverlap) {
+                    startSearchCol = columns.length;
+                }
+            }
+
             // --- COLUMN LOCK LOGIC ---
             // Ensure static tasks respect the dragged task's space if they were originally overlapping
             // AND the dragged task was to the left.
@@ -941,7 +952,8 @@ export default function OggiScreen() {
                 events[draggedIdx] = { ...d, s: currentDragPosition, e: newEnd };
             }
         }
-        return calculateLayout(events, draggingEventId, stableLayoutRef.current);
+        const lockSnapshot = dragClearedOriginalOverlap ? undefined : stableLayoutRef.current;
+        return calculateLayout(events, draggingEventId, lockSnapshot);
     } 
     
     return calculateLayout(events, null);
