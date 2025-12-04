@@ -469,42 +469,9 @@ function DraggableEvent({
     debugLabel += ` ${positionType.toUpperCase()}`;
   }
   
-  // Add "D" if this task is being dragged
+  // Add "DRAG" if this task is being dragged
   if (isDragging) {
-    debugLabel += ' D';
-    // If this task is being dragged, check if it should also have NEAR (reciprocal)
-    // If any other task has NEAR because it's near this dragged task, this dragged task also has NEAR
-    const currentStart = toMinutes(event.startTime);
-    const currentEnd = toMinutes(event.endTime);
-    
-    const hasNearTask = timedEvents.some(other => {
-      if (other.id === event.id) return false;
-      const otherStart = toMinutes(other.startTime);
-      const otherEnd = toMinutes(other.endTime);
-      // Direct overlap with dragged task
-      const directOverlap = Math.max(currentStart, otherStart) < Math.min(currentEnd, otherEnd);
-      if (directOverlap) return true;
-      
-      // Or check if other task is to the right and overlaps with a task that overlaps with dragged
-      const otherLayout = layoutById[other.id] || { col: 0, columns: 1, span: 1 };
-      if (otherLayout.col === currentLayout.col + 1) {
-        // Other task is to the right, check if it overlaps with a task that overlaps with dragged
-        const middleTask = timedEvents.find(middle => {
-          if (middle.id === event.id || middle.id === other.id) return false;
-          const middleStart = toMinutes(middle.startTime);
-          const middleEnd = toMinutes(middle.endTime);
-          const middleOverlapsDragged = Math.max(currentStart, middleStart) < Math.min(currentEnd, middleEnd);
-          const middleOverlapsOther = Math.max(otherStart, middleStart) < Math.min(otherEnd, middleEnd);
-          return middleOverlapsDragged && middleOverlapsOther;
-        });
-        if (middleTask) return true;
-      }
-      return false;
-    });
-    
-    if (hasNearTask) {
-      debugLabel += ' NEAR';
-    }
+    debugLabel += ' DRAG';
   } else if (draggingEventId) {
     // Check if this task is near the dragged task (recursively: if it touches a task with NEAR, it also has NEAR)
     const draggedEvent = timedEvents.find(e => e.id === draggingEventId);
@@ -1260,13 +1227,15 @@ export default function OggiScreen() {
                     return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
                 });
                 
-                // Also include tasks that touch exactly (same start or end)
+                // Also include tasks that touch exactly (same start or end) - but NOT for span calculation
                 const touchingTasks = cluster.filter(other => {
                     if (other.id === ev.id) return false;
                     return (ev.e === other.s) || (ev.s === other.e);
                 });
                 
-                const allRelevantTasks = [...new Set([...overlappingTasks, ...touchingTasks])];
+                // For span calculation: only overlapping tasks count, NOT touching tasks
+                // If tasks touch exactly (same time), they don't affect span calculation
+                const allRelevantTasks = [...overlappingTasks];
                 
                 if (allRelevantTasks.length > 0) {
                     // CHECKER: If task has Top/Bottom/Middle, render immediately
@@ -1302,8 +1271,8 @@ export default function OggiScreen() {
                         }
                     }
                     
-                    // Calculate total columns: all tasks in cluster (including D)
-                    const totalCols = cluster.length;
+                    // Calculate total columns: use columns.length (number of columns created)
+                    const totalCols = columns.length;
                     
                     // Calculate span: totalCols - tasksInDSpace
                     // Example: if totalCols = 4 and tasksInDSpace = 2, then span = 2
@@ -1399,8 +1368,8 @@ export default function OggiScreen() {
                             }
                         }
                         
-                        // Calculate total columns: all tasks in cluster (including D)
-                        const totalCols = cluster.length;
+                        // Calculate total columns: use columns.length (number of columns created)
+                        const totalCols = columns.length;
                         
                         // Calculate span: totalCols - tasksInDSpace
                         const dSpan = Math.max(1, totalCols - tasksInDSpace);
