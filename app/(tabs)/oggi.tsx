@@ -1408,24 +1408,46 @@ export default function OggiScreen() {
                             const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
                             
                             if (firstFreeCol !== null) {
-                                // Start from the first free column and count consecutive free columns
-                                dStartCol = firstFreeCol;
-                                let consecutiveCount = 1;
+                                // Check if we can form a consecutive sequence of dSpan columns starting from firstFreeCol
+                                // IMPORTANT: Check directly against occupiedCols for more reliable results
+                                let canFormFullSpan = true;
+                                let consecutiveCount = 0;
                                 
-                                // Count consecutive free columns starting from firstFreeCol
-                                for (let i = 1; i < freeCols.length; i++) {
-                                    if (freeCols[i] === firstFreeCol + consecutiveCount) {
+                                // Check if all columns from firstFreeCol to firstFreeCol + dSpan - 1 are free
+                                // Verify directly against occupiedCols to ensure accuracy
+                                for (let col = firstFreeCol; col < firstFreeCol + dSpan && col < totalCols; col++) {
+                                    if (!occupiedCols.has(col)) {
                                         consecutiveCount++;
-                                        if (consecutiveCount >= dSpan) {
-                                            break;
-                                        }
-                                    } else if (freeCols[i] > firstFreeCol + consecutiveCount) {
-                                        // Gap in sequence, stop counting
+                                    } else {
+                                        // This column is occupied, cannot form full span
+                                        canFormFullSpan = false;
                                         break;
                                     }
                                 }
                                 
-                                actualSpan = Math.min(consecutiveCount, dSpan);
+                                if (canFormFullSpan && consecutiveCount >= dSpan) {
+                                    // We can form the full span starting from firstFreeCol
+                                    dStartCol = firstFreeCol;
+                                    actualSpan = dSpan;
+                                } else {
+                                    // Cannot form full span, count consecutive free columns starting from firstFreeCol
+                                    // Use a more reliable method: check directly against occupiedCols
+                                    dStartCol = firstFreeCol;
+                                    consecutiveCount = 1;
+                                    
+                                    // Count consecutive free columns starting from firstFreeCol
+                                    // Check up to totalCols to ensure we don't miss any columns
+                                    for (let col = firstFreeCol + 1; col < totalCols && consecutiveCount < dSpan; col++) {
+                                        if (!occupiedCols.has(col)) {
+                                            consecutiveCount++;
+                                        } else {
+                                            // Gap in sequence, stop counting
+                                            break;
+                                        }
+                                    }
+                                    
+                                    actualSpan = Math.min(consecutiveCount, dSpan);
+                                }
                             } else {
                                 // No free columns, use normal logic
                                 dStartCol = freeCols[0];
@@ -1634,24 +1656,46 @@ export default function OggiScreen() {
                                 const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
                                 
                                 if (firstFreeCol !== null) {
-                                    // Start from the first free column and count consecutive free columns
-                                    dStartCol = firstFreeCol;
-                                    let consecutiveCount = 1;
+                                    // Check if we can form a consecutive sequence of dSpan columns starting from firstFreeCol
+                                    // IMPORTANT: Check directly against occupiedCols for more reliable results
+                                    let canFormFullSpan = true;
+                                    let consecutiveCount = 0;
                                     
-                                    // Count consecutive free columns starting from firstFreeCol
-                                    for (let i = 1; i < freeCols.length; i++) {
-                                        if (freeCols[i] === firstFreeCol + consecutiveCount) {
+                                    // Check if all columns from firstFreeCol to firstFreeCol + dSpan - 1 are free
+                                    // Verify directly against occupiedCols to ensure accuracy
+                                    for (let col = firstFreeCol; col < firstFreeCol + dSpan && col < totalCols; col++) {
+                                        if (!occupiedCols.has(col)) {
                                             consecutiveCount++;
-                                            if (consecutiveCount >= dSpan) {
-                                                break;
-                                            }
-                                        } else if (freeCols[i] > firstFreeCol + consecutiveCount) {
-                                            // Gap in sequence, stop counting
+                                        } else {
+                                            // This column is occupied, cannot form full span
+                                            canFormFullSpan = false;
                                             break;
                                         }
                                     }
                                     
-                                    actualSpan = Math.min(consecutiveCount, dSpan);
+                                    if (canFormFullSpan && consecutiveCount >= dSpan) {
+                                        // We can form the full span starting from firstFreeCol
+                                        dStartCol = firstFreeCol;
+                                        actualSpan = dSpan;
+                                    } else {
+                                        // Cannot form full span, count consecutive free columns starting from firstFreeCol
+                                        // Use a more reliable method: check directly against occupiedCols
+                                        dStartCol = firstFreeCol;
+                                        consecutiveCount = 1;
+                                        
+                                        // Count consecutive free columns starting from firstFreeCol
+                                        // Check up to totalCols to ensure we don't miss any columns
+                                        for (let col = firstFreeCol + 1; col < totalCols && consecutiveCount < dSpan; col++) {
+                                            if (!occupiedCols.has(col)) {
+                                                consecutiveCount++;
+                                            } else {
+                                                // Gap in sequence, stop counting
+                                                break;
+                                            }
+                                        }
+                                        
+                                        actualSpan = Math.min(consecutiveCount, dSpan);
+                                    }
                                 } else {
                                     // No free columns, use normal logic
                                     dStartCol = freeCols[0];
