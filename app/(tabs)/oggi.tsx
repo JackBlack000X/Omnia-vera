@@ -1259,20 +1259,47 @@ export default function OggiScreen() {
                         }
                     }
                     
-                    // Also check columns array directly for tasks that might be placed but layout not updated
+                    // Also check columns array directly for ALL tasks that might be placed but layout not updated
+                    // IMPORTANT: Check ALL tasks in columns, not just those in allRelevantTasks,
+                    // because tasks might be placed but their layout not yet updated
                     for (let colIdx = 0; colIdx < columns.length; colIdx++) {
                         const col = columns[colIdx];
+                        // Check if ANY task in this column overlaps with the dragged task
                         const hasOverlappingTask = col.some(existingEv => {
                             if (existingEv.id === ev.id) return false;
-                            return allRelevantTasks.some(ot => ot.id === existingEv.id);
+                            // Check if this task overlaps with dragged task
+                            return Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e);
                         });
                         if (hasOverlappingTask) {
                             occupiedCols.add(colIdx);
                         }
                     }
                     
-                    // Calculate total columns: use columns.length (number of columns created)
-                    const totalCols = columns.length;
+                    // Calculate total columns: consider all tasks that have been placed
+                    // First, find the maximum column index from all placed tasks
+                    let maxColFromLayout = -1;
+                    for (const otherTask of cluster) {
+                        if (otherTask.id === ev.id) continue;
+                        const otherLayout = layout[otherTask.id];
+                        if (otherLayout) {
+                            const otherEndCol = otherLayout.col + (otherLayout.span || 1) - 1;
+                            maxColFromLayout = Math.max(maxColFromLayout, otherEndCol);
+                        }
+                    }
+                    // Also check columns array for tasks that might be placed but layout not updated
+                    // Check beyond columns.length to catch all placed tasks
+                    const maxColToCheckForTotal = Math.max(columns.length, maxColFromLayout + 1);
+                    for (let colIdx = 0; colIdx < maxColToCheckForTotal; colIdx++) {
+                        if (colIdx < columns.length && columns[colIdx].length > 0) {
+                            maxColFromLayout = Math.max(maxColFromLayout, colIdx);
+                        }
+                    }
+                    // Also consider occupied columns from the calculation above
+                    const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
+                    maxColFromLayout = Math.max(maxColFromLayout, maxOccupiedCol);
+                    // Total columns should be at least the number of overlapping tasks + 1 (for the dragged task)
+                    // But also consider existing columns
+                    const totalCols = Math.max(columns.length, maxColFromLayout + 1, tasksInDSpace + 1);
                     
                     // Calculate span: totalCols - tasksInDSpace
                     // Example: if totalCols = 4 and tasksInDSpace = 2, then span = 2
@@ -1288,35 +1315,140 @@ export default function OggiScreen() {
                     
                     // Place D in the first free columns (gaps)
                     // If there are free columns, find consecutive free columns that can fit the span
+                    // IMPORTANT: If task is already positioned, try to expand left to increase span
                     // Otherwise, place D after the last occupied column
                     let dStartCol: number;
                     let actualSpan = dSpan;
                     
                     if (freeCols.length > 0) {
-                        // Find the first sequence of consecutive free columns that can fit the span
-                        // Example: if freeCols = [1, 2] and dSpan = 2, D goes in cols 1 and 2
-                        dStartCol = freeCols[0];
-                        let consecutiveCount = 1;
+                        // Check if task is already positioned
+                        const currentLayout = layout[ev.id];
+                        const isAlreadyPositioned = currentLayout !== undefined;
                         
-                        for (let i = 1; i < freeCols.length; i++) {
-                            if (freeCols[i] === freeCols[i-1] + 1) {
-                                consecutiveCount++;
-                                if (consecutiveCount >= dSpan) {
-                                    break;
+                        if (isAlreadyPositioned && currentLayout) {
+                            // Task is already positioned - but if there are free columns, 
+                            // task must go to the first free column on the left
+                            const currentCol = currentLayout.col;
+                            const currentSpan = currentLayout.span || 1;
+                            
+                            // Find the first (leftmost) free column
+                            const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
+                            
+                            if (firstFreeCol !== null) {
+                                // Try to form a consecutive sequence starting from the first free column
+                                let canFormSequence = true;
+                                let sequenceSpan = 0;
+                                
+                                // Start from firstFreeCol and try to form a sequence of dSpan columns
+                                for (let col = firstFreeCol; col < firstFreeCol + dSpan; col++) {
+                                    // Check if this column is free or part of current position
+                                    if (freeCols.includes(col)) {
+                                        // Column is free
+                                        sequenceSpan++;
+                                    } else if (col >= currentCol && col < currentCol + currentSpan) {
+                                        // Column is part of current position (available for the task)
+                                        sequenceSpan++;
+                                    } else {
+                                        // Column is occupied by another task, cannot form sequence
+                                        canFormSequence = false;
+                                        break;
+                                    }
+                                }
+                                
+                                if (canFormSequence && sequenceSpan >= dSpan) {
+                                    // We can form the required span starting from firstFreeCol
+                                    dStartCol = firstFreeCol;
+                                    actualSpan = dSpan;
+                                } else {
+                                    // Cannot form full span from first free column, but still use first free column
+                                    // Start from the first free column and count consecutive free columns
+                                    dStartCol = firstFreeCol;
+                                    let consecutiveCount = 1;
+                                    
+                                    // Count consecutive free columns starting from firstFreeCol
+                                    for (let i = 1; i < freeCols.length; i++) {
+                                        if (freeCols[i] === firstFreeCol + consecutiveCount) {
+                                            consecutiveCount++;
+                                            if (consecutiveCount >= dSpan) {
+                                                break;
+                                            }
+                                        } else if (freeCols[i] > firstFreeCol + consecutiveCount) {
+                                            // Gap in sequence, stop counting
+                                            break;
+                                        }
+                                    }
+                                    
+                                    actualSpan = Math.min(consecutiveCount, dSpan);
                                 }
                             } else {
-                                // Not consecutive, check if we have enough from previous sequence
-                                if (consecutiveCount >= dSpan) {
-                                    break;
+                                // No free columns, use normal logic
+                                dStartCol = freeCols[0];
+                                let consecutiveCount = 1;
+                                
+                                for (let i = 1; i < freeCols.length; i++) {
+                                    if (freeCols[i] === freeCols[i-1] + 1) {
+                                        consecutiveCount++;
+                                        if (consecutiveCount >= dSpan) {
+                                            break;
+                                        }
+                                    } else {
+                                        if (consecutiveCount >= dSpan) {
+                                            break;
+                                        }
+                                        dStartCol = freeCols[i];
+                                        consecutiveCount = 1;
+                                    }
                                 }
-                                // Start a new sequence
-                                dStartCol = freeCols[i];
-                                consecutiveCount = 1;
+                                
+                                actualSpan = Math.min(consecutiveCount, dSpan);
+                            }
+                        } else {
+                            // Task not yet positioned - must go to the first free column on the left
+                            // Find the first (leftmost) free column
+                            const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
+                            
+                            if (firstFreeCol !== null) {
+                                // Start from the first free column and count consecutive free columns
+                                dStartCol = firstFreeCol;
+                                let consecutiveCount = 1;
+                                
+                                // Count consecutive free columns starting from firstFreeCol
+                                for (let i = 1; i < freeCols.length; i++) {
+                                    if (freeCols[i] === firstFreeCol + consecutiveCount) {
+                                        consecutiveCount++;
+                                        if (consecutiveCount >= dSpan) {
+                                            break;
+                                        }
+                                    } else if (freeCols[i] > firstFreeCol + consecutiveCount) {
+                                        // Gap in sequence, stop counting
+                                        break;
+                                    }
+                                }
+                                
+                                actualSpan = Math.min(consecutiveCount, dSpan);
+                            } else {
+                                // No free columns, use normal logic
+                                dStartCol = freeCols[0];
+                                let consecutiveCount = 1;
+                                
+                                for (let i = 1; i < freeCols.length; i++) {
+                                    if (freeCols[i] === freeCols[i-1] + 1) {
+                                        consecutiveCount++;
+                                        if (consecutiveCount >= dSpan) {
+                                            break;
+                                        }
+                                    } else {
+                                        if (consecutiveCount >= dSpan) {
+                                            break;
+                                        }
+                                        dStartCol = freeCols[i];
+                                        consecutiveCount = 1;
+                                    }
+                                }
+                                
+                                actualSpan = Math.min(consecutiveCount, dSpan);
                             }
                         }
-                        
-                        // Use the minimum of available consecutive free columns and required span
-                        actualSpan = Math.min(consecutiveCount, dSpan);
                     } else {
                         // No free columns, place D after the last occupied column
                         const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
@@ -1356,20 +1488,47 @@ export default function OggiScreen() {
                             }
                         }
                         
-                        // Also check columns array directly for tasks that might be placed but layout not updated
+                        // Also check columns array directly for ALL tasks that might be placed but layout not updated
+                        // IMPORTANT: Check ALL tasks in columns, not just those in overlappingTasks,
+                        // because tasks might be placed but their layout not yet updated
                         for (let colIdx = 0; colIdx < columns.length; colIdx++) {
                             const col = columns[colIdx];
+                            // Check if ANY task in this column overlaps with the dragged task
                             const hasOverlappingTask = col.some(existingEv => {
                                 if (existingEv.id === ev.id) return false;
-                                return overlappingTasks.some(ot => ot.id === existingEv.id);
+                                // Check if this task overlaps with dragged task
+                                return Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e);
                             });
                             if (hasOverlappingTask) {
                                 occupiedCols.add(colIdx);
                             }
                         }
                         
-                        // Calculate total columns: use columns.length (number of columns created)
-                        const totalCols = columns.length;
+                        // Calculate total columns: consider all tasks that have been placed
+                        // First, find the maximum column index from all placed tasks
+                        let maxColFromLayout = -1;
+                        for (const otherTask of cluster) {
+                            if (otherTask.id === ev.id) continue;
+                            const otherLayout = layout[otherTask.id];
+                            if (otherLayout) {
+                                const otherEndCol = otherLayout.col + (otherLayout.span || 1) - 1;
+                                maxColFromLayout = Math.max(maxColFromLayout, otherEndCol);
+                            }
+                        }
+                        // Also check columns array for tasks that might be placed but layout not updated
+                        // Check beyond columns.length to catch all placed tasks
+                        const maxColToCheckForTotal = Math.max(columns.length, maxColFromLayout + 1);
+                        for (let colIdx = 0; colIdx < maxColToCheckForTotal; colIdx++) {
+                            if (colIdx < columns.length && columns[colIdx].length > 0) {
+                                maxColFromLayout = Math.max(maxColFromLayout, colIdx);
+                            }
+                        }
+                        // Also consider occupied columns from the calculation above
+                        const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
+                        maxColFromLayout = Math.max(maxColFromLayout, maxOccupiedCol);
+                        // Total columns should be at least the number of overlapping tasks + 1 (for the dragged task)
+                        // But also consider existing columns
+                        const totalCols = Math.max(columns.length, maxColFromLayout + 1, tasksInDSpace + 1);
                         
                         // Calculate span: totalCols - tasksInDSpace
                         const dSpan = Math.max(1, totalCols - tasksInDSpace);
@@ -1383,30 +1542,139 @@ export default function OggiScreen() {
                         }
                         
                         // Place D in the first free columns (gaps)
+                        // IMPORTANT: If task is already positioned, try to expand left to increase span
                         let dStartCol: number;
                         let actualSpan = dSpan;
                         
                         if (freeCols.length > 0) {
-                            // Find the first sequence of consecutive free columns that can fit the span
-                            dStartCol = freeCols[0];
-                            let consecutiveCount = 1;
+                            // Check if task is already positioned
+                            const currentLayout = layout[ev.id];
+                            const isAlreadyPositioned = currentLayout !== undefined;
                             
-                            for (let i = 1; i < freeCols.length; i++) {
-                                if (freeCols[i] === freeCols[i-1] + 1) {
-                                    consecutiveCount++;
-                                    if (consecutiveCount >= dSpan) {
-                                        break;
+                            if (isAlreadyPositioned && currentLayout) {
+                                // Task is already positioned - but if there are free columns, 
+                                // task must go to the first free column on the left
+                                const currentCol = currentLayout.col;
+                                const currentSpan = currentLayout.span || 1;
+                                
+                                // Find the first (leftmost) free column
+                                const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
+                                
+                                if (firstFreeCol !== null) {
+                                    // Try to form a consecutive sequence starting from the first free column
+                                    let canFormSequence = true;
+                                    let sequenceSpan = 0;
+                                    
+                                    // Start from firstFreeCol and try to form a sequence of dSpan columns
+                                    for (let col = firstFreeCol; col < firstFreeCol + dSpan; col++) {
+                                        // Check if this column is free or part of current position
+                                        if (freeCols.includes(col)) {
+                                            // Column is free
+                                            sequenceSpan++;
+                                        } else if (col >= currentCol && col < currentCol + currentSpan) {
+                                            // Column is part of current position (available for the task)
+                                            sequenceSpan++;
+                                        } else {
+                                            // Column is occupied by another task, cannot form sequence
+                                            canFormSequence = false;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if (canFormSequence && sequenceSpan >= dSpan) {
+                                        // We can form the required span starting from firstFreeCol
+                                        dStartCol = firstFreeCol;
+                                        actualSpan = dSpan;
+                                    } else {
+                                        // Cannot form full span from first free column, but still use first free column
+                                        // Start from the first free column and count consecutive free columns
+                                        dStartCol = firstFreeCol;
+                                        let consecutiveCount = 1;
+                                        
+                                        // Count consecutive free columns starting from firstFreeCol
+                                        for (let i = 1; i < freeCols.length; i++) {
+                                            if (freeCols[i] === firstFreeCol + consecutiveCount) {
+                                                consecutiveCount++;
+                                                if (consecutiveCount >= dSpan) {
+                                                    break;
+                                                }
+                                            } else if (freeCols[i] > firstFreeCol + consecutiveCount) {
+                                                // Gap in sequence, stop counting
+                                                break;
+                                            }
+                                        }
+                                        
+                                        actualSpan = Math.min(consecutiveCount, dSpan);
                                     }
                                 } else {
-                                    if (consecutiveCount >= dSpan) {
-                                        break;
+                                    // No free columns, use normal logic
+                                    dStartCol = freeCols[0];
+                                    let consecutiveCount = 1;
+                                    
+                                    for (let i = 1; i < freeCols.length; i++) {
+                                        if (freeCols[i] === freeCols[i-1] + 1) {
+                                            consecutiveCount++;
+                                            if (consecutiveCount >= dSpan) {
+                                                break;
+                                            }
+                                        } else {
+                                            if (consecutiveCount >= dSpan) {
+                                                break;
+                                            }
+                                            dStartCol = freeCols[i];
+                                            consecutiveCount = 1;
+                                        }
                                     }
-                                    dStartCol = freeCols[i];
-                                    consecutiveCount = 1;
+                                    
+                                    actualSpan = Math.min(consecutiveCount, dSpan);
+                                }
+                            } else {
+                                // Task not yet positioned - must go to the first free column on the left
+                                // Find the first (leftmost) free column
+                                const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
+                                
+                                if (firstFreeCol !== null) {
+                                    // Start from the first free column and count consecutive free columns
+                                    dStartCol = firstFreeCol;
+                                    let consecutiveCount = 1;
+                                    
+                                    // Count consecutive free columns starting from firstFreeCol
+                                    for (let i = 1; i < freeCols.length; i++) {
+                                        if (freeCols[i] === firstFreeCol + consecutiveCount) {
+                                            consecutiveCount++;
+                                            if (consecutiveCount >= dSpan) {
+                                                break;
+                                            }
+                                        } else if (freeCols[i] > firstFreeCol + consecutiveCount) {
+                                            // Gap in sequence, stop counting
+                                            break;
+                                        }
+                                    }
+                                    
+                                    actualSpan = Math.min(consecutiveCount, dSpan);
+                                } else {
+                                    // No free columns, use normal logic
+                                    dStartCol = freeCols[0];
+                                    let consecutiveCount = 1;
+                                    
+                                    for (let i = 1; i < freeCols.length; i++) {
+                                        if (freeCols[i] === freeCols[i-1] + 1) {
+                                            consecutiveCount++;
+                                            if (consecutiveCount >= dSpan) {
+                                                break;
+                                            }
+                                        } else {
+                                            if (consecutiveCount >= dSpan) {
+                                                break;
+                                            }
+                                            dStartCol = freeCols[i];
+                                            consecutiveCount = 1;
+                                        }
+                                    }
+                                    
+                                    actualSpan = Math.min(consecutiveCount, dSpan);
                                 }
                             }
-                            
-                            actualSpan = Math.min(consecutiveCount, dSpan);
                         } else {
                             const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
                             dStartCol = maxOccupiedCol + 1;
@@ -1512,6 +1780,12 @@ export default function OggiScreen() {
         for (let i = 0; i < columns.length; i++) {
             const colEvents = columns[i];
             for (const ev of colEvents) {
+                // If this is the dragged task and it already has a span calculated by special logic,
+                // preserve that span but still allow expansion if there are free columns to the right
+                const isDraggedTask = draggedEventId ? (ev.id === draggedEventId) : false;
+                const currentLayout = layout[ev.id];
+                const existingSpan = currentLayout?.span || 1;
+                
                 let span = 1;
                 for (let nextCol = i + 1; nextCol < totalCols; nextCol++) {
                     const nextColEvents = columns[nextCol];
@@ -1524,6 +1798,13 @@ export default function OggiScreen() {
                         break;
                     }
                 }
+                
+                // For dragged task, use the maximum of existing span (from special logic) and expansion span
+                // This ensures the span calculated by special logic is preserved, but can still expand if possible
+                if (isDraggedTask && existingSpan > 1) {
+                    span = Math.max(existingSpan, span);
+                }
+                
                 layout[ev.id].columns = totalCols;
                 layout[ev.id].span = span;
             }
@@ -1737,7 +2018,9 @@ export default function OggiScreen() {
     });
 
     // Always recalculate layout to get the correct span, especially when D enters overlap
-    const tempLayout = calculateLayout(events, draggedEventId, stableLayoutRef.current);
+    // Use the same logic as layoutById: if hasClearedOverlap is true, don't use lock snapshot
+    const lockSnapshot = hasClearedOverlap ? undefined : stableLayoutRef.current;
+    const tempLayout = calculateLayout(events, draggedEventId, lockSnapshot);
     
     const draggedLayout = tempLayout[draggedEventId] || { col: 0, columns: 1, span: 1 };
     const screenWidth = Dimensions.get('window').width;
