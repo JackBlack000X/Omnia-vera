@@ -2,11 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { useAppTheme } from '@/lib/theme-context';
 
 export default function ShopScreen() {
   const router = useRouter();
   const { activeTheme, setActiveTheme } = useAppTheme();
+  const [brightness, setBrightness] = React.useState(50);
 
   return (
     <View style={styles.background}>
@@ -38,6 +40,24 @@ export default function ShopScreen() {
             >
               <Text style={styles.optionText}>Futuristic Computer</Text>
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.brightnessContainer}>
+            <View style={styles.brightnessHeader}>
+              <Text style={styles.brightnessLabel}>Luminosità</Text>
+              <Text style={styles.brightnessValue}>{brightness}</Text>
+            </View>
+            <Slider
+              style={styles.brightnessSlider}
+              minimumValue={1}
+              maximumValue={100}
+              step={1}
+              value={brightness}
+              onValueChange={setBrightness}
+              minimumTrackTintColor="#ffffff"
+              maximumTrackTintColor="rgba(255,255,255,0.2)"
+              thumbTintColor="#ffffff"
+            />
           </View>
         </View>
       </SafeAreaView>
@@ -97,6 +117,35 @@ const styles = StyleSheet.create({
   optionsContainer: {
     gap: 16,
     width: '100%',
+  },
+  brightnessContainer: {
+    marginTop: 32,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15, 15, 15, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  brightnessHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  brightnessLabel: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  brightnessValue: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  brightnessSlider: {
+    width: '100%',
+    height: 32,
   },
   optionButton: {
     backgroundColor: 'rgba(30, 30, 30, 0.8)',
