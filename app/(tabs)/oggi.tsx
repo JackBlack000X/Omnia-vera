@@ -103,6 +103,7 @@ type DraggableEventProps = {
   setRecentlyMovedEventId: (id: string | null) => void;
   setLastMovedEventId: (id: string) => void;
   setCurrentDragPosition: (minutes: number | null) => void;
+  currentDragPosition: number | null;
   timedEvents: OggiEvent[];
   layoutById: Record<string, LayoutInfo>;
   calculateDragLayout: (draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean) => { width: number; left: number };
@@ -110,6 +111,8 @@ type DraggableEventProps = {
   finalDragColumnRef: React.MutableRefObject<Record<string, number>>;
   adjTaskIdsRef: React.MutableRefObject<Set<string>>;
   nearTaskIdsRef: React.MutableRefObject<Set<string>>;
+  brokenAdjTasksRef: React.MutableRefObject<Set<string>>;
+  initialAdjTasksRef: React.MutableRefObject<Set<string>>;
   taskPositionTypeRef: React.MutableRefObject<Record<string, 'top' | 'bottom' | 'middle'>>;
   taskPositionTypeState: Record<string, 'top' | 'bottom' | 'middle'>;
   onDragStart: (id: string) => void;
@@ -137,6 +140,7 @@ function DraggableEvent({
   setRecentlyMovedEventId,
   setLastMovedEventId,
   setCurrentDragPosition,
+  currentDragPosition,
   timedEvents,
   layoutById,
   calculateDragLayout,
@@ -144,6 +148,8 @@ function DraggableEvent({
   finalDragColumnRef,
   adjTaskIdsRef,
   nearTaskIdsRef,
+  brokenAdjTasksRef,
+  initialAdjTasksRef,
   taskPositionTypeRef,
   taskPositionTypeState,
   onDragStart,
@@ -473,115 +479,76 @@ function DraggableEvent({
   if (isDragging) {
     debugLabel += ' DRAG';
   } else if (draggingEventId) {
-    // Check if this task is near the dragged task (recursively: if it touches a task with NEAR, it also has NEAR)
+    // ADJ/NEAR logic - simplified:
+    // ADJ = overlaps in time with dragged task AND directly touches (adjacent column)
+    // Max 2 ADJ: one to the left, one to the right
+    // Once a task loses overlap during drag, it becomes NEAR and stays NEAR
     const draggedEvent = timedEvents.find(e => e.id === draggingEventId);
     if (draggedEvent) {
-      const currentStart = toMinutes(event.startTime);
-      const currentEnd = toMinutes(event.endTime);
-      const draggedStart = toMinutes(draggedEvent.startTime);
-      const draggedEnd = toMinutes(draggedEvent.endTime);
+      const taskStart = toMinutes(event.startTime);
+      const taskEnd = toMinutes(event.endTime);
       
-      // Build sets of tasks that have ADJ (adjacent to dragged) or NEAR
-      const adjTaskIds = new Set<string>();
-      const nearTaskIds = new Set<string>();
-      const checkedTaskIds = new Set<string>();
+      // Use currentDragPosition for the dragged task's actual position during drag
+      const originalDraggedStart = toMinutes(draggedEvent.startTime);
+      const originalDraggedEnd = toMinutes(draggedEvent.endTime);
+      const draggedDuration = originalDraggedEnd - originalDraggedStart;
+      
+      // If currentDragPosition is available, use it; otherwise use original times
+      const draggedStart = currentDragPosition !== null ? currentDragPosition : originalDraggedStart;
+      const draggedEnd = currentDragPosition !== null ? currentDragPosition + draggedDuration : originalDraggedEnd;
+      
+      const taskLayout = layoutById[event.id] || { col: 0, columns: 1, span: 1 };
       const draggedLayout = layoutById[draggingEventId] || { col: 0, columns: 1, span: 1 };
       
-      // Helper function to check if a task should have ADJ or NEAR
-      const shouldHaveNear = (taskId: string): 'adj' | 'near' | false => {
-        if (checkedTaskIds.has(taskId)) {
-          if (adjTaskIds.has(taskId)) return 'adj';
-          if (nearTaskIds.has(taskId)) return 'near';
-          return false;
-        }
-        checkedTaskIds.add(taskId);
-        
-        const task = timedEvents.find(e => e.id === taskId);
-        if (!task) return false;
-        
-        const taskStart = toMinutes(task.startTime);
-        const taskEnd = toMinutes(task.endTime);
-        const taskLayout = layoutById[taskId] || { col: 0, columns: 1, span: 1 };
-        
-        // Check if overlaps directly with dragged task AND is in adjacent column
-        // Must be adjacent to ALL columns occupied by dragged task
-        const overlapsDragged = Math.max(taskStart, draggedStart) < Math.min(taskEnd, draggedEnd);
-        if (overlapsDragged) {
-          // Get all columns occupied by dragged task
-          const draggedCols: number[] = [];
-          for (let i = 0; i < draggedLayout.span; i++) {
-            draggedCols.push(draggedLayout.col + i);
-          }
-          
-          // For task to be ADJ, it must be adjacent to at least one dragged column
-          // and not be inside any dragged column
-          const isAdjacentToAny = draggedCols.some(draggedCol => 
-            Math.abs(taskLayout.col - draggedCol) === 1
-          );
-          const isNotInside = !draggedCols.includes(taskLayout.col);
-          
-          if (isAdjacentToAny && isNotInside) {
-            adjTaskIds.add(taskId);
-            return 'adj';
-          } else {
-            nearTaskIds.add(taskId);
-            return 'near';
-          }
-        }
-        
-        // Check if overlaps with any task that has NEAR/ADJ
-        const overlapsWithNear = timedEvents.some(other => {
-          if (other.id === taskId || other.id === draggingEventId) return false;
-          const otherStart = toMinutes(other.startTime);
-          const otherEnd = toMinutes(other.endTime);
-          const overlaps = Math.max(taskStart, otherStart) < Math.min(taskEnd, otherEnd);
-          if (!overlaps) return false;
-          // Recursively check if other task has NEAR/ADJ
-          return shouldHaveNear(other.id) !== false;
-        });
-        
-        if (overlapsWithNear) {
-          nearTaskIds.add(taskId);
-          return 'near';
-        }
-        
-        // Check if to the right of a task that has NEAR/ADJ
-        const rightOfNear = timedEvents.some(other => {
-          if (other.id === taskId || other.id === draggingEventId) return false;
-          const otherLayout = layoutById[other.id] || { col: 0, columns: 1, span: 1 };
-          if (otherLayout.col !== taskLayout.col - 1) return false;
-          const otherStart = toMinutes(other.startTime);
-          const otherEnd = toMinutes(other.endTime);
-          const overlaps = Math.max(taskStart, otherStart) < Math.min(taskEnd, otherEnd);
-          if (!overlaps) return false;
-          return shouldHaveNear(other.id) !== false;
-        });
-        
-        if (rightOfNear) {
-          nearTaskIds.add(taskId);
-          return 'near';
-        }
-        
-        return false;
-      };
+      // Check if this task currently overlaps in time with dragged task (using current drag position)
+      const overlapsInTime = Math.max(taskStart, draggedStart) < Math.min(taskEnd, draggedEnd);
       
-      const result = shouldHaveNear(event.id);
+      // Check if this task was marked as "broken" (lost overlap during this drag)
+      const wasBroken = brokenAdjTasksRef.current.has(event.id);
       
-      if (result === 'adj') {
-        // Save task as having ADJ
-        adjTaskIdsRef.current.add(event.id);
-        debugLabel += ' ADJ';
-      } else if (result === 'near') {
-        // Save task as having NEAR
+      // Check if this task was ADJ at the INITIAL drag position
+      // Only tasks that were ADJ at the start can ever be ADJ during this drag
+      const wasInitiallyAdj = initialAdjTasksRef.current.has(event.id);
+      
+      if (overlapsInTime && !wasBroken) {
+        // Task overlaps and hasn't been broken - check if it can be ADJ
+        
+        // A task can only be ADJ if:
+        // 1. It was ADJ at the initial drag position (wasInitiallyAdj)
+        // 2. It currently overlaps in time (overlapsInTime) - already checked
+        // If not initially ADJ, it's always NEAR (never becomes ADJ during drag)
+        
+        if (wasInitiallyAdj) {
+          // Task was ADJ at start and still overlaps - mark as ADJ
+          adjTaskIdsRef.current.add(event.id);
+          debugLabel += ' ADJ';
+        } else {
+          // Task overlaps but wasn't ADJ at start - mark as NEAR
+          nearTaskIdsRef.current.add(event.id);
+          debugLabel += ' NEAR';
+        }
+      } else if (wasBroken) {
+        // Task was ADJ but lost overlap during drag - mark as OLD
         nearTaskIdsRef.current.add(event.id);
-        debugLabel += ' NEAR';
+        debugLabel += ' OLD';
+      } else {
+        // Task doesn't overlap - check if it was ADJ before and now lost overlap
+        if (adjTaskIdsRef.current.has(event.id)) {
+          // Was ADJ, now lost overlap - mark as broken and show OLD
+          brokenAdjTasksRef.current.add(event.id);
+          adjTaskIdsRef.current.delete(event.id);
+          nearTaskIdsRef.current.add(event.id);
+          debugLabel += ' OLD';
+        } else if (nearTaskIdsRef.current.has(event.id)) {
+          // Was already NEAR - keep it
+          debugLabel += ' NEAR';
+        }
+        // If not in either set, no label (not connected to dragged task)
       }
     }
   } else {
-    // Not in drag, but check if this task had ADJ during previous drag
-    if (adjTaskIdsRef.current.has(event.id)) {
-      debugLabel += ' ADJ';
-    }
+    // Not in drag - clear broken adj tracking (will be repopulated on next drag)
+    // Don't show ADJ label when not dragging
   }
   
   const eventStyle = isDragging
@@ -657,6 +624,10 @@ export default function OggiScreen() {
   const adjTaskIdsRef = useRef<Set<string>>(new Set());
   // Stores tasks that have NEAR during drag (for compaction after drag ends)
   const nearTaskIdsRef = useRef<Set<string>>(new Set());
+  // Stores tasks that lost overlap (broken adj) during drag - they become OLD and stay OLD
+  const brokenAdjTasksRef = useRef<Set<string>>(new Set());
+  // Stores tasks that were ADJ at the INITIAL drag position - only these can ever be ADJ
+  const initialAdjTasksRef = useRef<Set<string>>(new Set());
   // Stores position type (Top/Bottom/Middle) for tasks during drag
   const taskPositionTypeRef = useRef<Record<string, 'top' | 'bottom' | 'middle'>>({});
   // State to force re-render when position type changes
@@ -900,6 +871,38 @@ export default function OggiScreen() {
 
     // 2. Process clusters
     for (const cluster of clusters) {
+        // Calculate the maximum concurrent overlap for the ENTIRE cluster
+        // This determines totalCols for ALL tasks in this cluster
+        const getClusterMaxConcurrent = (): number => {
+            if (cluster.length <= 1) return cluster.length;
+            
+            // Collect all boundary times in the cluster
+            const boundaries = new Set<number>();
+            for (const task of cluster) {
+                boundaries.add(task.s);
+                boundaries.add(task.e);
+            }
+            
+            const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
+            let maxConcurrent = 1;
+            
+            // For each time slice, count how many tasks are active
+            for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+                const sliceMid = (sortedBoundaries[i] + sortedBoundaries[i + 1]) / 2;
+                let concurrent = 0;
+                for (const task of cluster) {
+                    if (task.s < sliceMid && task.e > sliceMid) {
+                        concurrent++;
+                    }
+                }
+                maxConcurrent = Math.max(maxConcurrent, concurrent);
+            }
+            
+            return maxConcurrent;
+        };
+        
+        const clusterMaxConcurrent = getClusterMaxConcurrent();
+        
         // Sort order: Stable first, Mover last
         const insertionOrder = [...cluster].sort((a, b) => {
             const aIsMover = draggedEventId ? (a.id === draggedEventId) : (a.id === lastMovedEventId);
@@ -1237,14 +1240,57 @@ export default function OggiScreen() {
                 // If tasks touch exactly (same time), they don't affect span calculation
                 const allRelevantTasks = [...overlappingTasks];
                 
+                // Helper function: calculate maximum concurrent overlap at any instant
+                // This counts how many tasks (including ev) are overlapping at the same time
+                const getMaxConcurrentOverlap = (mainTask: typeof ev, otherTasks: typeof overlappingTasks): number => {
+                    if (otherTasks.length === 0) return 1; // Just the main task
+                    
+                    // Collect all boundary times within mainTask's duration
+                    const boundaries = new Set<number>();
+                    boundaries.add(mainTask.s);
+                    boundaries.add(mainTask.e);
+                    
+                    for (const task of otherTasks) {
+                        // Only add boundaries that are within mainTask's duration
+                        if (task.s > mainTask.s && task.s < mainTask.e) boundaries.add(task.s);
+                        if (task.e > mainTask.s && task.e < mainTask.e) boundaries.add(task.e);
+                    }
+                    
+                    const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
+                    let maxConcurrent = 1; // At least the main task
+                    
+                    // For each time slice between boundaries, count overlapping tasks
+                    for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+                        const sliceStart = sortedBoundaries[i];
+                        const sliceEnd = sortedBoundaries[i + 1];
+                        const sliceMid = (sliceStart + sliceEnd) / 2; // Check middle of slice
+                        
+                        // Count tasks active at sliceMid (main task is always active within its duration)
+                        let concurrent = 1; // Main task
+                        for (const task of otherTasks) {
+                            if (task.s < sliceMid && task.e > sliceMid) {
+                                concurrent++;
+                            }
+                        }
+                        maxConcurrent = Math.max(maxConcurrent, concurrent);
+                    }
+                    
+                    return maxConcurrent;
+                };
+                
                 if (allRelevantTasks.length > 0) {
                     // CHECKER: If task has Top/Bottom/Middle, render immediately
                     const hasPositionType = taskPositionTypeRef.current[ev.id] !== undefined;
                     
                     if (hasPositionType) {
                         // Task has Top/Bottom/Middle, calculate span immediately
-                        // Count how many tasks are in D's space (those that overlap or touch D)
-                        const tasksInDSpace = allRelevantTasks.length;
+                        // IMPORTANT: For span calculation, use ALL events that overlap, not just cluster
+                        // This ensures we count all concurrent overlaps correctly
+                        const allOverlappingForSpan = events.filter(other => {
+                            if (other.id === ev.id) return false;
+                            return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
+                        });
+                        const tasksInDSpace = getMaxConcurrentOverlap(ev, allOverlappingForSpan);
                         
                         // Find which columns are occupied by overlapping/touching tasks
                         const occupiedCols = new Set<number>();
@@ -1297,13 +1343,13 @@ export default function OggiScreen() {
                     // Also consider occupied columns from the calculation above
                     const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
                     maxColFromLayout = Math.max(maxColFromLayout, maxOccupiedCol);
-                    // Total columns should be at least the number of overlapping tasks + 1 (for the dragged task)
-                    // But also consider existing columns
-                    const totalCols = Math.max(columns.length, maxColFromLayout + 1, tasksInDSpace + 1);
+                    // Total columns = max concurrent overlap in the ENTIRE cluster
+                    // This ensures all tasks in the same block use the same column count
+                    const totalCols = Math.max(columns.length, maxColFromLayout + 1, clusterMaxConcurrent);
                     
-                    // Calculate span: totalCols - tasksInDSpace
-                    // Example: if totalCols = 4 and tasksInDSpace = 2, then span = 2
-                    const dSpan = Math.max(1, totalCols - tasksInDSpace);
+                    // Calculate span based on how many tasks overlap with THIS task at its peak
+                    // span = totalCols / tasksInDSpace (concurrent overlap for this specific task)
+                    const dSpan = Math.max(1, Math.floor(totalCols / tasksInDSpace));
                     
                     // Find free columns (gaps) between occupied columns
                     const freeCols: number[] = [];
@@ -1494,8 +1540,12 @@ export default function OggiScreen() {
                         placed = true;
                     } else {
                         // No Top/Bottom/Middle, use normal overlap logic
-                        // Count how many tasks are in D's space (those that overlap with D)
-                        const tasksInDSpace = overlappingTasks.length;
+                        // IMPORTANT: For span calculation, use ALL events that overlap, not just cluster
+                        const allOverlappingForSpan = events.filter(other => {
+                            if (other.id === ev.id) return false;
+                            return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
+                        });
+                        const tasksInDSpace = getMaxConcurrentOverlap(ev, allOverlappingForSpan);
                         
                         // Find which columns are occupied by overlapping tasks
                         const occupiedCols = new Set<number>();
@@ -1548,12 +1598,12 @@ export default function OggiScreen() {
                         // Also consider occupied columns from the calculation above
                         const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
                         maxColFromLayout = Math.max(maxColFromLayout, maxOccupiedCol);
-                        // Total columns should be at least the number of overlapping tasks + 1 (for the dragged task)
-                        // But also consider existing columns
-                        const totalCols = Math.max(columns.length, maxColFromLayout + 1, tasksInDSpace + 1);
+                        // Total columns = max concurrent overlap in the ENTIRE cluster
+                        // This ensures all tasks in the same block use the same column count
+                        const totalCols = Math.max(columns.length, maxColFromLayout + 1, clusterMaxConcurrent);
                         
-                        // Calculate span: totalCols - tasksInDSpace
-                        const dSpan = Math.max(1, totalCols - tasksInDSpace);
+                        // Calculate span based on concurrent overlap for this specific task
+                        const dSpan = Math.max(1, Math.floor(totalCols / tasksInDSpace));
                         
                         // Find free columns (gaps) between occupied columns
                         const freeCols: number[] = [];
@@ -1969,6 +2019,10 @@ export default function OggiScreen() {
       // Clear previous ADJ and NEAR tasks when starting a new drag
       adjTaskIdsRef.current = new Set();
       nearTaskIdsRef.current = new Set();
+      // Clear broken adj tracking (tasks that lost overlap during previous drag)
+      brokenAdjTasksRef.current = new Set();
+      // Clear initial ADJ tracking
+      initialAdjTasksRef.current = new Set();
       // Clear position types when starting a new drag
       taskPositionTypeRef.current = {};
       setTaskPositionTypeState({});
@@ -1978,6 +2032,46 @@ export default function OggiScreen() {
       if (draggedEvent) {
           const draggedStartM = toMinutes(draggedEvent.startTime);
           const draggedEndM = toMinutes(draggedEvent.endTime);
+          const draggedLayout = layoutById[id] || { col: 0, columns: 1, span: 1 };
+          
+          // Calculate which tasks are ADJ at the INITIAL position
+          // These are the only tasks that can ever be ADJ during this drag
+          const draggedCols: number[] = [];
+          for (let i = 0; i < draggedLayout.span; i++) {
+              draggedCols.push(draggedLayout.col + i);
+          }
+          const draggedLeftmostCol = Math.min(...draggedCols);
+          const draggedRightmostCol = Math.max(...draggedCols);
+          
+          for (const other of timedEvents) {
+              if (other.id === id) continue;
+              
+              const otherStartM = toMinutes(other.startTime);
+              const otherEndM = toMinutes(other.endTime);
+              const otherLayout = layoutById[other.id] || { col: 0, columns: 1, span: 1 };
+              
+              // Check if overlaps in time
+              const overlapsInTime = Math.max(draggedStartM, otherStartM) < Math.min(draggedEndM, otherEndM);
+              
+              if (overlapsInTime) {
+                  // Get all columns occupied by this task
+                  const otherCols: number[] = [];
+                  for (let i = 0; i < otherLayout.span; i++) {
+                      otherCols.push(otherLayout.col + i);
+                  }
+                  const otherLeftmostCol = Math.min(...otherCols);
+                  const otherRightmostCol = Math.max(...otherCols);
+                  
+                  // Check if task directly touches dragged task (adjacent columns)
+                  const isAdjLeft = otherRightmostCol === draggedLeftmostCol - 1;
+                  const isAdjRight = otherLeftmostCol === draggedRightmostCol + 1;
+                  
+                  if (isAdjLeft || isAdjRight) {
+                      // This task is ADJ at the initial position
+                      initialAdjTasksRef.current.add(other.id);
+                  }
+              }
+          }
           
           const newPositionTypes: Record<string, 'top' | 'bottom' | 'middle'> = {};
           const tasksAbove: typeof timedEvents = [];
@@ -2223,6 +2317,7 @@ export default function OggiScreen() {
                    setRecentlyMovedEventId={setRecentlyMovedEventId}
                    setLastMovedEventId={setLastMovedEventId}
                    setCurrentDragPosition={setCurrentDragPosition}
+                   currentDragPosition={currentDragPosition}
                    timedEvents={timedEvents}
                    layoutById={layoutById}
                    calculateDragLayout={calculateDragLayout}
@@ -2230,6 +2325,8 @@ export default function OggiScreen() {
                    finalDragColumnRef={finalDragColumnRef}
                    adjTaskIdsRef={adjTaskIdsRef}
                    nearTaskIdsRef={nearTaskIdsRef}
+                   brokenAdjTasksRef={brokenAdjTasksRef}
+                   initialAdjTasksRef={initialAdjTasksRef}
                    taskPositionTypeRef={taskPositionTypeRef}
                    taskPositionTypeState={taskPositionTypeState}
                  />
