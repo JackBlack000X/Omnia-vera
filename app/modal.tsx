@@ -1060,9 +1060,9 @@ export default function ModalScreen() {
 
   return (
     <>
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={{ flex: 1 }}>
-        <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+        <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}>
           <View style={styles.box}>
           <Text style={styles.title}>
             {type === 'new' ? 'Nuova Task' : type === 'rename' ? 'Rinomina Task' : type === 'schedule' ? 'Programma Abitudine' : type === 'edit' ? 'Modifica Task' : 'Scegli Colore'}
@@ -1392,7 +1392,7 @@ export default function ModalScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0b1220', paddingHorizontal: 14 },
-  box: { marginTop: 16, paddingBottom: 100 },
+  box: { marginTop: 16, paddingBottom: 20 },
   title: { color: 'white', fontSize: 22, fontWeight: '700', marginBottom: 12 },
   input: { color: 'white', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 12, backgroundColor: '#0f172a' },
   placeholder: { padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#334155', backgroundColor: '#0f172a' },
@@ -1431,13 +1431,14 @@ const styles = StyleSheet.create({
   // Fixed position buttons
   fixedButtonsContainer: {
     position: 'absolute',
-    bottom: 5,
+    bottom: 30,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 10,
-    zIndex: 1000
+    zIndex: 1000,
+    backgroundColor: 'transparent'
   },
 
   sectionHeader: { marginTop: 8 },
