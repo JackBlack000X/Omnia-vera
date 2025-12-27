@@ -15,9 +15,15 @@ export default function ShopScreen() {
   const thumbVerticalOffset = -3;
   const thumbHorizontalOffset = 16;
   const [isSliding, setIsSliding] = React.useState(false);
-  const [sliderValue, setSliderValue] = React.useState(2);
+  // rawSliderValue: 1:1 con il dito (slider reale, invisibile)
+  const [rawSliderValue, setRawSliderValue] = React.useState(2);
+  // displayValue: valore visuale del controller (può essere più veloce del dito)
+  const [displayValue, setDisplayValue] = React.useState(2);
   const [sliderWidth, setSliderWidth] = React.useState(0);
   const [showPositionPanel, setShowPositionPanel] = React.useState(false);
+  const [speedMultiplier, setSpeedMultiplier] = React.useState(1.3);
+  const dragStartRawValue = React.useRef(2);
+  const dragStartDisplayValue = React.useRef(2);
   // Offset laterali per ogni punto (1, 2, 3, 4)
   const [pointHorizontalOffsets, setPointHorizontalOffsets] = React.useState({
     1: 33,
@@ -26,44 +32,27 @@ export default function ShopScreen() {
     4: -65,
   });
   
-  // Calcola l'offset orizzontale per allineare il controller al punto selezionato
-  const calculateHorizontalOffset = () => {
-    if (sliderWidth === 0) return thumbHorizontalOffset;
-    
+  const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+  // Centro X del controller custom, allineato ai 4 punti + offset personalizzati (interpolati)
+  const getThumbCenterX = () => {
+    if (sliderWidth === 0) return 0;
+
     const padding = 18 + pointSpacing;
-    const availableWidth = sliderWidth - (padding * 2);
-    
-    // Usa sliderValue per il calcolo durante l'animazione
-    const currentValue = sliderValue;
-    
-    // Posizione del thumb nello slider (0 = sinistra, 1 = destra)
-    // Lo slider distribuisce uniformemente: 0%, 33.33%, 66.66%, 100%
-    const thumbPosition = (currentValue - 1) / 3;
-    const thumbPixelPosition = thumbPosition * sliderWidth;
-    
-    // Posizione del punto corrispondente (con space-between)
-    // I punti sono distribuiti uniformemente nello spazio disponibile
-    let pointPosition;
-    if (currentValue === 1) {
-      pointPosition = padding;
-    } else if (currentValue === 4) {
-      pointPosition = padding + availableWidth;
-    } else {
-      pointPosition = padding + ((currentValue - 1) * availableWidth / 3);
-    }
-    
-    // Differenza tra posizione punto e posizione thumb
-    const alignmentOffset = pointPosition - thumbPixelPosition;
-    
-    // Interpola l'offset tra i due punti più vicini per un movimento fluido
+    const availableWidth = sliderWidth - padding * 2;
+
+    const currentValue = displayValue;
+    const t = clamp((currentValue - 1) / 3, 0, 1);
+    const baseX = padding + t * availableWidth;
+
     const lowerPoint = Math.floor(currentValue);
     const upperPoint = Math.ceil(currentValue);
     const lowerOffset = pointHorizontalOffsets[lowerPoint as keyof typeof pointHorizontalOffsets] || 0;
     const upperOffset = pointHorizontalOffsets[upperPoint as keyof typeof pointHorizontalOffsets] || 0;
     const interpolation = currentValue - lowerPoint;
     const pointOffset = lowerOffset + (upperOffset - lowerOffset) * interpolation;
-    
-    return thumbHorizontalOffset + alignmentOffset + pointOffset;
+
+    return baseX + thumbHorizontalOffset + pointOffset;
   };
 
   return (
@@ -124,6 +113,26 @@ export default function ShopScreen() {
                 />
               </View>
             ))}
+
+            <View style={[styles.positionControlRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 12 }]}>
+              <Text style={styles.positionControlLabel}>Velocità</Text>
+              <View style={styles.positionControlValue}>
+                <Text style={styles.positionControlValueText}>
+                  {speedMultiplier.toFixed(1)}x
+                </Text>
+              </View>
+              <Slider
+                style={styles.positionSlider}
+                minimumValue={1}
+                maximumValue={2}
+                step={0.1}
+                value={speedMultiplier}
+                onValueChange={setSpeedMultiplier}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.2)"
+                thumbTintColor="#ffffff"
+              />
+            </View>
           </View>
         )}
         
@@ -154,72 +163,87 @@ export default function ShopScreen() {
             
             <View style={styles.sliderWrapper}>
               <View 
-                style={styles.brightnessSlider}
+                style={[styles.brightnessSlider, { position: 'relative' }]}
                 onLayout={(event) => {
                   const { width } = event.nativeEvent.layout;
                   setSliderWidth(width);
                 }}
               >
-                <View style={[
-                  {
-                    transform: [
-                      { scale: thumbSize / 20 },
-                      { translateY: thumbVerticalOffset },
-                      { translateX: calculateHorizontalOffset() }
-                    ]
-                  }
-                ]}>
-                  <Slider
-                    style={styles.brightnessSlider}
-                    minimumValue={1}
-                    maximumValue={4}
-                    step={0}
-                    tapToSeek={true}
-                    value={sliderValue}
-                    onValueChange={(value) => {
-                      setSliderValue(value);
-                      // Aggiorna anche brightness durante il movimento per feedback immediato
-                      const rounded = Math.round(value);
-                      if (rounded !== brightness) {
-                        setBrightness(rounded);
+                {/* Slider invisibile: solo per il touch (1:1 col dito) */}
+                <Slider
+                  style={styles.invisibleSlider}
+                  minimumValue={1}
+                  maximumValue={4}
+                  step={0}
+                  tapToSeek={true}
+                  value={rawSliderValue}
+                  onValueChange={(rawValue) => {
+                    setRawSliderValue(rawValue);
+
+                    // Applichiamo la velocità SOLO al controller visuale (displayValue),
+                    // così non si inverte mai la direzione durante il drag.
+                    const rawDelta = rawValue - dragStartRawValue.current;
+                    const acceleratedDelta = rawDelta * speedMultiplier;
+                    const nextDisplay = clamp(dragStartDisplayValue.current + acceleratedDelta, 1, 4);
+
+                    setDisplayValue(nextDisplay);
+                    const rounded = Math.round(nextDisplay);
+                    if (rounded !== brightness) setBrightness(rounded);
+                  }}
+                  onSlidingStart={() => {
+                    setIsSliding(true);
+                    dragStartRawValue.current = rawSliderValue;
+                    dragStartDisplayValue.current = displayValue;
+                  }}
+                  onSlidingComplete={() => {
+                    setIsSliding(false);
+                    const targetValue = Math.round(displayValue);
+
+                    // porta anche lo slider "touch" al target, così resta coerente
+                    setRawSliderValue(targetValue);
+
+                    // Animazione fluida del controller visuale verso il target
+                    const startValue = displayValue;
+                    const duration = 300; // ms
+                    const startTime = Date.now();
+                    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+                    const animate = () => {
+                      const elapsed = Date.now() - startTime;
+                      const progress = Math.min(elapsed / duration, 1);
+                      const eased = easeOutCubic(progress);
+                      const current = startValue + (targetValue - startValue) * eased;
+
+                      setDisplayValue(current);
+                      if (progress < 1) {
+                        requestAnimationFrame(animate);
+                      } else {
+                        setDisplayValue(targetValue);
+                        setBrightness(targetValue);
                       }
-                    }}
-                    onSlidingStart={() => {
-                      setIsSliding(true);
-                    }}
-                    onSlidingComplete={(value) => {
-                      const rounded = Math.round(value);
-                      setIsSliding(false);
-                      // Animazione fluida verso il valore arrotondato con easing
-                      const startValue = value;
-                      const targetValue = rounded;
-                      const duration = 300; // ms
-                      const startTime = Date.now();
-                      
-                      const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-                      
-                      const animate = () => {
-                        const elapsed = Date.now() - startTime;
-                        const progress = Math.min(elapsed / duration, 1);
-                        const eased = easeOutCubic(progress);
-                        const currentValue = startValue + (targetValue - startValue) * eased;
-                        
-                        setSliderValue(currentValue);
-                        
-                        if (progress < 1) {
-                          requestAnimationFrame(animate);
-                        } else {
-                          setSliderValue(targetValue);
-                          setBrightness(targetValue);
-                        }
-                      };
-                      requestAnimationFrame(animate);
-                    }}
-                    minimumTrackTintColor="transparent"
-                    maximumTrackTintColor="transparent"
-                    thumbTintColor="rgba(255, 255, 255, 0.5)"
-                  />
-                </View>
+                    };
+                    requestAnimationFrame(animate);
+                  }}
+                  minimumTrackTintColor="transparent"
+                  maximumTrackTintColor="transparent"
+                  thumbTintColor="transparent"
+                />
+
+                {/* Unico controller visibile */}
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.customThumb,
+                    {
+                      width: thumbSize,
+                      height: thumbSize,
+                      borderRadius: thumbSize / 2,
+                      left: clamp(getThumbCenterX() - thumbSize / 2, -thumbSize, sliderWidth),
+                      top: 56 / 2 - thumbSize / 2 + thumbVerticalOffset,
+                      opacity: isSliding ? 0.5 : 0.5,
+                    },
+                  ]}
+                />
               </View>
               <View style={[
                 styles.sliderPoints,
@@ -342,6 +366,18 @@ const styles = StyleSheet.create({
   brightnessSlider: {
     width: '100%',
     height: 56,
+  },
+  invisibleSlider: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    opacity: 0.01,
+  },
+  customThumb: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
   },
   sliderPoints: {
     flexDirection: 'row',
