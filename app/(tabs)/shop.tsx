@@ -9,6 +9,8 @@ export default function ShopScreen() {
   const router = useRouter();
   const { activeTheme, setActiveTheme } = useAppTheme();
   const [brightness, setBrightness] = React.useState(2);
+  const [testValue, setTestValue] = React.useState(2);
+  const testSnapAnimRef = React.useRef<number | null>(null);
   // Impostazioni salvate (non modificabili)
   const pointSpacing = 27;
   const thumbSize = 40;
@@ -261,6 +263,91 @@ export default function ShopScreen() {
               </View>
             </View>
           </View>
+
+          <View style={styles.testContainer}>
+            <View style={[styles.brightnessHeader, styles.testHeader]}>
+              <Text style={[styles.brightnessLabel, styles.testLabel]}>Test</Text>
+              <Text style={[styles.brightnessValue, styles.testValueText]}>{Math.round(testValue)}</Text>
+            </View>
+            
+            <View style={[styles.testSliderWrapper, { paddingHorizontal: 18 + pointSpacing - 17.5 }]}>
+              <Slider
+                style={styles.testSlider}
+                minimumValue={1}
+                maximumValue={4}
+                step={0}
+                value={testValue}
+                onValueChange={(val) => {
+                  // Se c'è uno snap in corso, fermalo appena l'utente riprende a trascinare
+                  if (testSnapAnimRef.current !== null) {
+                    cancelAnimationFrame(testSnapAnimRef.current);
+                    testSnapAnimRef.current = null;
+                  }
+
+                  const stops = [1, 2, 3, 4];
+                  const closest = stops.reduce((prev, curr) => 
+                    Math.abs(curr - val) < Math.abs(prev - val) ? curr : prev
+                  );
+                  
+                  const distance = Math.abs(val - closest);
+                  const gravityRadius = 0.35; // Raggio d'attrazione (in scala 1–4)
+                  
+                  if (distance < gravityRadius) {
+                    // Effetto gravità più forte: esponente 3
+                    const t = distance / gravityRadius;
+                    const pulledVal = closest + (val - closest) * (t * t * t);
+                    setTestValue(pulledVal);
+                  } else {
+                    setTestValue(val);
+                  }
+                }}
+                onSlidingComplete={(_value) => {
+                  // Ferma eventuale animazione precedente
+                  if (testSnapAnimRef.current !== null) {
+                    cancelAnimationFrame(testSnapAnimRef.current);
+                    testSnapAnimRef.current = null;
+                  }
+
+                  // Parti dal valore già visualizzato (continuità: niente micro-pausa)
+                  const startValue = clamp(testValue, 1, 4);
+                  const stops = [1, 2, 3, 4];
+                  const targetValue = stops.reduce((prev, curr) =>
+                    Math.abs(curr - startValue) < Math.abs(prev - startValue) ? curr : prev
+                  );
+
+                  if (Math.abs(targetValue - startValue) < 0.001) {
+                    setTestValue(targetValue);
+                    return;
+                  }
+
+                  // Snap più "diretto": parte subito (easing più aggressivo all'inizio)
+                  const duration = 160; // ms
+                  const startTime = Date.now() - 16; // bias: primo frame già in movimento
+                  const easeOutExpo = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -8 * t));
+
+                  const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const eased = easeOutExpo(progress);
+                    const current = startValue + (targetValue - startValue) * eased;
+
+                    setTestValue(current);
+
+                    if (progress < 1) {
+                      testSnapAnimRef.current = requestAnimationFrame(animate);
+                    } else {
+                      setTestValue(targetValue);
+                      testSnapAnimRef.current = null;
+                    }
+                  };
+                  testSnapAnimRef.current = requestAnimationFrame(animate);
+                }}
+                minimumTrackTintColor="rgba(255,255,255,0.1)"
+                maximumTrackTintColor="rgba(255,255,255,0.1)"
+                thumbTintColor="rgba(255,255,255,0.3)"
+              />
+            </View>
+          </View>
         </View>
       </SafeAreaView>
     </View>
@@ -343,6 +430,33 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 15, 15, 0.9)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  testContainer: {
+    marginTop: 21,
+    paddingVertical: 21,
+    paddingHorizontal: 23,
+    borderRadius: 21,
+    backgroundColor: 'rgba(15, 15, 15, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  testHeader: {
+    marginBottom: 10,
+  },
+  testLabel: {
+    fontSize: 21,
+  },
+  testValueText: {
+    fontSize: 21,
+  },
+  testSliderWrapper: {
+    paddingVertical: 6,
+  },
+  testSlider: {
+    width: '49.31%',
+    height: 40,
+    alignSelf: 'center',
+    transform: [{ scale: 2.028 }],
   },
   brightnessHeader: {
     flexDirection: 'row',
