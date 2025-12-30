@@ -3,58 +3,48 @@ import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+const TEST_SLIDER_SCALE = 2.028;
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+// Soglia "più vicino": cambia punto solo quando superi la metà verso il prossimo (no drop in mezzo)
+const TEST_HYSTERESIS_THRESHOLD = 0.5;
 
 export default function ShopScreen() {
   const router = useRouter();
   const { activeTheme, setActiveTheme } = useAppTheme();
-  const [brightness, setBrightness] = React.useState(2);
   const [testValue, setTestValue] = React.useState(2);
-  const testSnapAnimRef = React.useRef<number | null>(null);
+  const [test2Value, setTest2Value] = React.useState(5);
+  const [test3Value, setTest3Value] = React.useState(5);
+  const [test4Value, setTest4Value] = React.useState(5);
+  const [test5Value, setTest5Value] = React.useState(5);
+  const [test6Value, setTest6Value] = React.useState(5);
+  const testSliderRef = React.useRef<any>(null);
+  const testStepRef = React.useRef<number>(2); // valore "tac tac" corrente (1..4)
+  const testReleaseRafRef = React.useRef<number | null>(null);
   // Impostazioni salvate (non modificabili)
   const pointSpacing = 27;
-  const thumbSize = 40;
-  const thumbVerticalOffset = -3;
-  const thumbHorizontalOffset = 16;
-  const [isSliding, setIsSliding] = React.useState(false);
-  // rawSliderValue: 1:1 con il dito (slider reale, invisibile)
-  const [rawSliderValue, setRawSliderValue] = React.useState(2);
-  // displayValue: valore visuale del controller (può essere più veloce del dito)
-  const [displayValue, setDisplayValue] = React.useState(2);
-  const [sliderWidth, setSliderWidth] = React.useState(0);
-  const [showPositionPanel, setShowPositionPanel] = React.useState(false);
-  const [speedMultiplier, setSpeedMultiplier] = React.useState(1.3);
-  const dragStartRawValue = React.useRef(2);
-  const dragStartDisplayValue = React.useRef(2);
-  // Offset laterali per ogni punto (1, 2, 3, 4)
-  const [pointHorizontalOffsets, setPointHorizontalOffsets] = React.useState({
-    1: 33,
-    2: 0,
-    3: -33,
-    4: -65,
-  });
-  
-  const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-  // Centro X del controller custom, allineato ai 4 punti + offset personalizzati (interpolati)
-  const getThumbCenterX = () => {
-    if (sliderWidth === 0) return 0;
+  // Menu impostazioni Test 2
+  const [menuVisible, setMenuVisible] = React.useState(false);
+  const [slider1Width, setSlider1Width] = React.useState(10); // % per il primo slider
+  const [slider2Width, setSlider2Width] = React.useState(30); // px per il secondo slider
+  const [slider3Width, setSlider3Width] = React.useState(10); // px per il terzo slider
+  const [slider4Width, setSlider4Width] = React.useState(30); // px per il quarto slider
+  const [slidersGap, setSlidersGap] = React.useState(30); // gap tra i due slider
+  const [slider1Margin, setSlider1Margin] = React.useState(0); // distanza dal bordo sinistro
 
-    const padding = 18 + pointSpacing;
-    const availableWidth = sliderWidth - padding * 2;
+  // Menu impostazioni slider centrato
+  const [centeredSliderMenuVisible, setCenteredSliderMenuVisible] = React.useState(false);
+  const [centeredSliderWidth, setCenteredSliderWidth] = React.useState(100); // larghezza slider centrato
+  const [activeThumbSize, setActiveThumbSize] = React.useState(1); // scala del thumb attivo (1 = normale)
+  const [isCenteredSliderActive, setIsCenteredSliderActive] = React.useState(false);
 
-    const currentValue = displayValue;
-    const t = clamp((currentValue - 1) / 3, 0, 1);
-    const baseX = padding + t * availableWidth;
-
-    const lowerPoint = Math.floor(currentValue);
-    const upperPoint = Math.ceil(currentValue);
-    const lowerOffset = pointHorizontalOffsets[lowerPoint as keyof typeof pointHorizontalOffsets] || 0;
-    const upperOffset = pointHorizontalOffsets[upperPoint as keyof typeof pointHorizontalOffsets] || 0;
-    const interpolation = currentValue - lowerPoint;
-    const pointOffset = lowerOffset + (upperOffset - lowerOffset) * interpolation;
-
-    return baseX + thumbHorizontalOffset + pointOffset;
+  const applyTestStepToNative = (step: number) => {
+    const v = clamp(step, 1, 4);
+    // Web: updateValue, Native: setNativeProps
+    testSliderRef.current?.updateValue?.(v);
+    testSliderRef.current?.setNativeProps?.({ value: v });
   };
 
   return (
@@ -64,10 +54,10 @@ export default function ShopScreen() {
           {activeTheme !== 'futuristic' && <Text style={styles.title}>Shop</Text>}
           <View style={styles.headerRight}>
             <TouchableOpacity 
-              onPress={() => setShowPositionPanel(!showPositionPanel)}
-              style={styles.positionPanelToggle}
+              onPress={() => setMenuVisible(true)}
+              style={styles.profileBtn}
             >
-              <Ionicons name="move-outline" size={20} color="white" />
+              <Ionicons name="settings-outline" size={22} color="white" />
             </TouchableOpacity>
             <TouchableOpacity 
               onPress={() => router.push('/profile')}
@@ -77,66 +67,6 @@ export default function ShopScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        
-        {showPositionPanel && (
-          <View style={styles.positionPanel}>
-            <View style={styles.positionPanelHeader}>
-              <Text style={styles.positionPanelTitle}>Posizione Laterale</Text>
-              <TouchableOpacity
-                onPress={() => setShowPositionPanel(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={18} color="white" />
-              </TouchableOpacity>
-            </View>
-            {[1, 2, 3, 4].map((point) => (
-              <View key={point} style={styles.positionControlRow}>
-                <Text style={styles.positionControlLabel}>Punto {point}</Text>
-                <View style={styles.positionControlValue}>
-                  <Text style={styles.positionControlValueText}>
-                    {pointHorizontalOffsets[point as keyof typeof pointHorizontalOffsets]}
-                  </Text>
-                </View>
-                <Slider
-                  style={styles.positionSlider}
-                  minimumValue={-100}
-                  maximumValue={100}
-                  step={1}
-                  value={pointHorizontalOffsets[point as keyof typeof pointHorizontalOffsets]}
-                  onValueChange={(value) => {
-                    setPointHorizontalOffsets(prev => ({
-                      ...prev,
-                      [point]: value
-                    }));
-                  }}
-                  minimumTrackTintColor="#ffffff"
-                  maximumTrackTintColor="rgba(255,255,255,0.2)"
-                  thumbTintColor="#ffffff"
-                />
-              </View>
-            ))}
-
-            <View style={[styles.positionControlRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 12 }]}>
-              <Text style={styles.positionControlLabel}>Velocità</Text>
-              <View style={styles.positionControlValue}>
-                <Text style={styles.positionControlValueText}>
-                  {speedMultiplier.toFixed(1)}x
-                </Text>
-              </View>
-              <Slider
-                style={styles.positionSlider}
-                minimumValue={1}
-                maximumValue={2}
-                step={0.1}
-                value={speedMultiplier}
-                onValueChange={setSpeedMultiplier}
-                minimumTrackTintColor="#ffffff"
-                maximumTrackTintColor="rgba(255,255,255,0.2)"
-                thumbTintColor="#ffffff"
-              />
-            </View>
-          </View>
-        )}
         
         <View style={styles.content}>
           <View style={styles.optionsContainer}>
@@ -157,106 +87,79 @@ export default function ShopScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.brightnessContainer}>
-            <View style={styles.brightnessHeader}>
-              <Text style={styles.brightnessLabel}>Luminosità</Text>
-              <Text style={styles.brightnessValue}>{brightness}</Text>
+          <View style={styles.testContainer}>
+            <View style={[styles.brightnessHeader, styles.testHeader]}>
+              <Text style={[styles.brightnessLabel, styles.testLabel]}>Test</Text>
+              <Text style={[styles.brightnessValue, styles.testValueText]}>{testValue}</Text>
             </View>
             
-            <View style={styles.sliderWrapper}>
-              <View 
-                style={[styles.brightnessSlider, { position: 'relative' }]}
-                onLayout={(event) => {
-                  const { width } = event.nativeEvent.layout;
-                  setSliderWidth(width);
+            <View style={[styles.testSliderWrapper, { paddingHorizontal: 18 + pointSpacing - 17.5 }]}>
+              <Slider
+                ref={testSliderRef}
+                style={styles.testSlider}
+                minimumValue={1}
+                maximumValue={4}
+                step={0}
+                value={testValue}
+                onSlidingStart={() => {
+                  // Aggancia il controller al valore corrente (niente drop in mezzo)
+                  testStepRef.current = clamp(Math.round(testValue), 1, 4);
+                  if (testReleaseRafRef.current !== null) {
+                    cancelAnimationFrame(testReleaseRafRef.current);
+                    testReleaseRafRef.current = null;
+                  }
+                  applyTestStepToNative(testStepRef.current);
                 }}
-              >
-                {/* Slider invisibile: solo per il touch (1:1 col dito) */}
-                <Slider
-                  style={styles.invisibleSlider}
-                  minimumValue={1}
-                  maximumValue={4}
-                  step={0}
-                  tapToSeek={true}
-                  value={rawSliderValue}
-                  onValueChange={(rawValue) => {
-                    setRawSliderValue(rawValue);
+                onValueChange={(val) => {
+                  // Resta sul punto corrente finché non sei più vicino al prossimo (soglia 0.5)
+                  const raw = clamp(val, 1, 4);
+                  let current = testStepRef.current;
 
-                    // Applichiamo la velocità SOLO al controller visuale (displayValue),
-                    // così non si inverte mai la direzione durante il drag.
-                    const rawDelta = rawValue - dragStartRawValue.current;
-                    const acceleratedDelta = rawDelta * speedMultiplier;
-                    const nextDisplay = clamp(dragStartDisplayValue.current + acceleratedDelta, 1, 4);
+                  while (current < 4 && raw >= current + TEST_HYSTERESIS_THRESHOLD) current += 1;
+                  while (current > 1 && raw <= current - TEST_HYSTERESIS_THRESHOLD) current -= 1;
 
-                    setDisplayValue(nextDisplay);
-                    const rounded = Math.round(nextDisplay);
-                    if (rounded !== brightness) setBrightness(rounded);
-                  }}
-                  onSlidingStart={() => {
-                    setIsSliding(true);
-                    dragStartRawValue.current = rawSliderValue;
-                    dragStartDisplayValue.current = displayValue;
-                  }}
-                  onSlidingComplete={() => {
-                    setIsSliding(false);
-                    const targetValue = Math.round(displayValue);
+                  if (current !== testStepRef.current) {
+                    testStepRef.current = current;
+                    setTestValue(current);
+                  }
 
-                    // porta anche lo slider "touch" al target, così resta coerente
-                    setRawSliderValue(targetValue);
+                  // Mantieni SEMPRE il thumb sul punto corrente (tac tac, niente valori intermedi)
+                  applyTestStepToNative(testStepRef.current);
+                }}
+                onResponderRelease={() => {
+                  // Forza il valore nel momento ESATTO del rilascio (evita che resti in mezzo)
+                  const current = clamp(Math.round(testStepRef.current), 1, 4);
+                  testStepRef.current = current;
+                  applyTestStepToNative(current);
+                  setTestValue(current);
 
-                    // Animazione fluida del controller visuale verso il target
-                    const startValue = displayValue;
-                    const duration = 300; // ms
-                    const startTime = Date.now();
-                    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+                  // Re-applica al frame successivo per vincere eventuali "finalize" interni del native slider
+                  if (testReleaseRafRef.current !== null) {
+                    cancelAnimationFrame(testReleaseRafRef.current);
+                  }
+                  testReleaseRafRef.current = requestAnimationFrame(() => {
+                    applyTestStepToNative(current);
+                    testReleaseRafRef.current = null;
+                  });
+                }}
+                onSlidingComplete={() => {
+                  const current = clamp(Math.round(testStepRef.current), 1, 4);
+                  testStepRef.current = current;
+                  applyTestStepToNative(current);
+                  setTestValue(current);
+                }}
+                minimumTrackTintColor="rgba(255,255,255,0.1)"
+                maximumTrackTintColor="rgba(255,255,255,0.1)"
+                thumbTintColor="rgba(255,255,255,0.3)"
+              />
 
-                    const animate = () => {
-                      const elapsed = Date.now() - startTime;
-                      const progress = Math.min(elapsed / duration, 1);
-                      const eased = easeOutCubic(progress);
-                      const current = startValue + (targetValue - startValue) * eased;
-
-                      setDisplayValue(current);
-                      if (progress < 1) {
-                        requestAnimationFrame(animate);
-                      } else {
-                        setDisplayValue(targetValue);
-                        setBrightness(targetValue);
-                      }
-                    };
-                    requestAnimationFrame(animate);
-                  }}
-                  minimumTrackTintColor="transparent"
-                  maximumTrackTintColor="transparent"
-                  thumbTintColor="transparent"
-                />
-
-                {/* Unico controller visibile */}
-                <View
-                  pointerEvents="none"
-                  style={[
-                    styles.customThumb,
-                    {
-                      width: thumbSize,
-                      height: thumbSize,
-                      borderRadius: thumbSize / 2,
-                      left: clamp(getThumbCenterX() - thumbSize / 2, -thumbSize, sliderWidth),
-                      top: 56 / 2 - thumbSize / 2 + thumbVerticalOffset,
-                      opacity: isSliding ? 0.5 : 0.5,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={[
-                styles.sliderPoints,
-                { paddingHorizontal: 18 + pointSpacing }
-              ]}>
+              <View style={styles.testPoints}>
                 {[1, 2, 3, 4].map((point) => (
                   <View
                     key={point}
                     style={[
-                      styles.sliderPoint,
-                      brightness === point && styles.sliderPointActive,
+                      styles.testPoint,
+                      Math.round(testValue) === point && styles.testPointActive,
                     ]}
                   />
                 ))}
@@ -266,89 +169,262 @@ export default function ShopScreen() {
 
           <View style={styles.testContainer}>
             <View style={[styles.brightnessHeader, styles.testHeader]}>
-              <Text style={[styles.brightnessLabel, styles.testLabel]}>Test</Text>
-              <Text style={[styles.brightnessValue, styles.testValueText]}>{Math.round(testValue)}</Text>
+              <Text style={[styles.brightnessLabel, styles.testLabel]}>Test 2</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={[styles.brightnessValue, styles.testValueText]}>{Math.round(test2Value)}</Text>
+                <TouchableOpacity 
+                  onPress={() => setCenteredSliderMenuVisible(true)}
+                  style={styles.settingsIconBtn}
+                >
+                  <Ionicons name="settings-outline" size={18} color="rgba(255,255,255,0.7)" />
+                </TouchableOpacity>
+              </View>
             </View>
             
-            <View style={[styles.testSliderWrapper, { paddingHorizontal: 18 + pointSpacing - 17.5 }]}>
+            <View style={[styles.testSliderWrapper, { flexDirection: 'row', alignItems: 'center', gap: slidersGap, marginLeft: slider1Margin }]}>
               <Slider
-                style={styles.testSlider}
+                style={[styles.simpleSliderBase, { width: slider1Width / TEST_SLIDER_SCALE }]}
                 minimumValue={1}
-                maximumValue={4}
-                step={0}
-                value={testValue}
-                onValueChange={(val) => {
-                  // Se c'è uno snap in corso, fermalo appena l'utente riprende a trascinare
-                  if (testSnapAnimRef.current !== null) {
-                    cancelAnimationFrame(testSnapAnimRef.current);
-                    testSnapAnimRef.current = null;
-                  }
-
-                  const stops = [1, 2, 3, 4];
-                  const closest = stops.reduce((prev, curr) => 
-                    Math.abs(curr - val) < Math.abs(prev - val) ? curr : prev
-                  );
-                  
-                  const distance = Math.abs(val - closest);
-                  const gravityRadius = 0.35; // Raggio d'attrazione (in scala 1–4)
-                  
-                  if (distance < gravityRadius) {
-                    // Effetto gravità più forte: esponente 3
-                    const t = distance / gravityRadius;
-                    const pulledVal = closest + (val - closest) * (t * t * t);
-                    setTestValue(pulledVal);
-                  } else {
-                    setTestValue(val);
-                  }
-                }}
-                onSlidingComplete={(_value) => {
-                  // Ferma eventuale animazione precedente
-                  if (testSnapAnimRef.current !== null) {
-                    cancelAnimationFrame(testSnapAnimRef.current);
-                    testSnapAnimRef.current = null;
-                  }
-
-                  // Parti dal valore già visualizzato (continuità: niente micro-pausa)
-                  const startValue = clamp(testValue, 1, 4);
-                  const stops = [1, 2, 3, 4];
-                  const targetValue = stops.reduce((prev, curr) =>
-                    Math.abs(curr - startValue) < Math.abs(prev - startValue) ? curr : prev
-                  );
-
-                  if (Math.abs(targetValue - startValue) < 0.001) {
-                    setTestValue(targetValue);
-                    return;
-                  }
-
-                  // Snap più "diretto": parte subito (easing più aggressivo all'inizio)
-                  const duration = 160; // ms
-                  const startTime = Date.now() - 16; // bias: primo frame già in movimento
-                  const easeOutExpo = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -8 * t));
-
-                  const animate = () => {
-                    const elapsed = Date.now() - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
-                    const eased = easeOutExpo(progress);
-                    const current = startValue + (targetValue - startValue) * eased;
-
-                    setTestValue(current);
-
-                    if (progress < 1) {
-                      testSnapAnimRef.current = requestAnimationFrame(animate);
-                    } else {
-                      setTestValue(targetValue);
-                      testSnapAnimRef.current = null;
-                    }
-                  };
-                  testSnapAnimRef.current = requestAnimationFrame(animate);
-                }}
-                minimumTrackTintColor="rgba(255,255,255,0.1)"
+                maximumValue={10}
+                step={1}
+                value={test2Value}
+                onValueChange={setTest2Value}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.1)"
+                thumbTintColor="rgba(255,255,255,0.3)"
+              />
+              <Slider
+                style={[styles.simpleSliderBase, { width: slider2Width / TEST_SLIDER_SCALE }]}
+                minimumValue={1}
+                maximumValue={10}
+                step={1}
+                value={test3Value}
+                onValueChange={setTest3Value}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.1)"
+                thumbTintColor="rgba(255,255,255,0.3)"
+              />
+              <Slider
+                style={[styles.simpleSliderBase, { width: slider3Width / TEST_SLIDER_SCALE }]}
+                minimumValue={1}
+                maximumValue={10}
+                step={1}
+                value={test4Value}
+                onValueChange={setTest4Value}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.1)"
+                thumbTintColor="rgba(255,255,255,0.3)"
+              />
+              <Slider
+                style={[styles.simpleSliderBase, { width: slider4Width / TEST_SLIDER_SCALE }]}
+                minimumValue={1}
+                maximumValue={10}
+                step={1}
+                value={test5Value}
+                onValueChange={setTest5Value}
+                minimumTrackTintColor="#ffffff"
                 maximumTrackTintColor="rgba(255,255,255,0.1)"
                 thumbTintColor="rgba(255,255,255,0.3)"
               />
             </View>
+
+            <View style={[styles.testSliderWrapper, { alignItems: 'center', marginTop: 20 }]}>
+              <View style={isCenteredSliderActive && { transform: [{ scale: activeThumbSize }] }}>
+                <Slider
+                  style={[styles.simpleSliderBase, { width: centeredSliderWidth }]}
+                  minimumValue={1}
+                  maximumValue={10}
+                  step={1}
+                  value={test6Value}
+                  onSlidingStart={() => setIsCenteredSliderActive(true)}
+                  onSlidingComplete={() => setIsCenteredSliderActive(false)}
+                  onValueChange={setTest6Value}
+                  minimumTrackTintColor="#ffffff"
+                  maximumTrackTintColor="rgba(255,255,255,0.1)"
+                  thumbTintColor="rgba(255,255,255,0.3)"
+                />
+              </View>
+            </View>
           </View>
         </View>
+
+        {/* Menu impostazioni Test 2 */}
+        <Modal
+          visible={menuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMenuVisible(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1} 
+            onPress={() => setMenuVisible(false)}
+          >
+            <View style={styles.menuContainer} onStartShouldSetResponder={() => true}>
+              <Text style={styles.menuTitle}>Impostazioni Test 2</Text>
+              
+              <View style={styles.menuRow}>
+                <Text style={styles.menuLabel}>Larghezza Slider 1</Text>
+                <Text style={styles.menuValue}>{slider1Width}px</Text>
+              </View>
+              <Slider
+                style={styles.menuSlider}
+                minimumValue={10}
+                maximumValue={200}
+                step={1}
+                value={slider1Width}
+                onValueChange={setSlider1Width}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#ffffff"
+              />
+
+              <View style={styles.menuRow}>
+                <Text style={styles.menuLabel}>Distanza da bordo Slider 1</Text>
+                <Text style={styles.menuValue}>{slider1Margin}px</Text>
+              </View>
+              <Slider
+                style={styles.menuSlider}
+                minimumValue={0}
+                maximumValue={150}
+                step={1}
+                value={slider1Margin}
+                onValueChange={setSlider1Margin}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#ffffff"
+              />
+
+              <View style={styles.menuRow}>
+                <Text style={styles.menuLabel}>Larghezza Slider 2</Text>
+                <Text style={styles.menuValue}>{slider2Width}px</Text>
+              </View>
+              <Slider
+                style={styles.menuSlider}
+                minimumValue={10}
+                maximumValue={200}
+                step={1}
+                value={slider2Width}
+                onValueChange={setSlider2Width}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#ffffff"
+              />
+
+              <View style={styles.menuRow}>
+                <Text style={styles.menuLabel}>Larghezza Slider 3</Text>
+                <Text style={styles.menuValue}>{slider3Width}px</Text>
+              </View>
+              <Slider
+                style={styles.menuSlider}
+                minimumValue={10}
+                maximumValue={200}
+                step={1}
+                value={slider3Width}
+                onValueChange={setSlider3Width}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#ffffff"
+              />
+
+              <View style={styles.menuRow}>
+                <Text style={styles.menuLabel}>Larghezza Slider 4</Text>
+                <Text style={styles.menuValue}>{slider4Width}px</Text>
+              </View>
+              <Slider
+                style={styles.menuSlider}
+                minimumValue={10}
+                maximumValue={200}
+                step={1}
+                value={slider4Width}
+                onValueChange={setSlider4Width}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#ffffff"
+              />
+
+              <View style={styles.menuRow}>
+                <Text style={styles.menuLabel}>Distanza tra slider</Text>
+                <Text style={styles.menuValue}>{slidersGap}px</Text>
+              </View>
+              <Slider
+                style={styles.menuSlider}
+                minimumValue={0}
+                maximumValue={100}
+                step={1}
+                value={slidersGap}
+                onValueChange={setSlidersGap}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#ffffff"
+              />
+
+              <TouchableOpacity 
+                style={styles.menuCloseBtn}
+                onPress={() => setMenuVisible(false)}
+              >
+                <Text style={styles.menuCloseBtnText}>Chiudi</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Menu impostazioni slider centrato */}
+        <Modal
+          visible={centeredSliderMenuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCenteredSliderMenuVisible(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1} 
+            onPress={() => setCenteredSliderMenuVisible(false)}
+          >
+            <View style={styles.menuContainer} onStartShouldSetResponder={() => true}>
+              <Text style={styles.menuTitle}>Impostazioni Slider Centrato</Text>
+              
+              <View style={styles.menuRow}>
+                <Text style={styles.menuLabel}>Larghezza Slider</Text>
+                <Text style={styles.menuValue}>{centeredSliderWidth}px</Text>
+              </View>
+              <Slider
+                style={styles.menuSlider}
+                minimumValue={50}
+                maximumValue={300}
+                step={1}
+                value={centeredSliderWidth}
+                onValueChange={setCenteredSliderWidth}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#ffffff"
+              />
+
+              <View style={styles.menuRow}>
+                <Text style={styles.menuLabel}>Dimensione Thumb Attivo</Text>
+                <Text style={styles.menuValue}>{activeThumbSize.toFixed(1)}x</Text>
+              </View>
+              <Slider
+                style={styles.menuSlider}
+                minimumValue={0.5}
+                maximumValue={2.5}
+                step={0.1}
+                value={activeThumbSize}
+                onValueChange={setActiveThumbSize}
+                minimumTrackTintColor="#ffffff"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#ffffff"
+              />
+
+              <TouchableOpacity 
+                style={styles.menuCloseBtn}
+                onPress={() => setCenteredSliderMenuVisible(false)}
+              >
+                <Text style={styles.menuCloseBtnText}>Chiudi</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </SafeAreaView>
     </View>
   );
@@ -388,20 +464,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  positionPanelToggle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: 'white',
+    color: '#ff0000',
   },
   profileBtn: {
     width: 40,
@@ -421,15 +487,6 @@ const styles = StyleSheet.create({
   optionsContainer: {
     gap: 16,
     width: '100%',
-  },
-  brightnessContainer: {
-    marginTop: 32,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    backgroundColor: 'rgba(15, 15, 15, 0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   testContainer: {
     marginTop: 21,
@@ -456,16 +513,39 @@ const styles = StyleSheet.create({
     width: '49.31%',
     height: 40,
     alignSelf: 'center',
-    transform: [{ scale: 2.028 }],
+    transform: [{ scale: TEST_SLIDER_SCALE }],
+  },
+  simpleSliderBase: {
+    height: 40,
+    transform: [{ scale: TEST_SLIDER_SCALE }],
+  },
+  testSliderShort: {
+    width: '24%',
+  },
+  testPoints: {
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 14,
+  },
+  testPoint: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  testPointActive: {
+    backgroundColor: '#ffffff',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   brightnessHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
-  },
-  sliderWrapper: {
-    position: 'relative',
   },
   brightnessLabel: {
     color: 'white',
@@ -476,41 +556,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '500',
-  },
-  brightnessSlider: {
-    width: '100%',
-    height: 56,
-  },
-  invisibleSlider: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    opacity: 0.01,
-  },
-  customThumb: {
-    position: 'absolute',
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  sliderPoints: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: -40,
-    position: 'relative',
-  },
-  sliderPoint: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  sliderPointActive: {
-    backgroundColor: '#ffffff',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
   },
   optionButton: {
     backgroundColor: 'rgba(30, 30, 30, 0.8)',
@@ -536,57 +581,60 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 18,
   },
-  positionPanel: {
-    position: 'absolute',
-    top: 60,
-    right: 20,
-    width: 200,
-    backgroundColor: 'rgba(15, 15, 15, 0.95)',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    zIndex: 1000,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+  settingsIconBtn: {
+    padding: 4,
   },
-  positionPanelHeader: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuContainer: {
+    width: '85%',
+    backgroundColor: 'rgba(25, 25, 25, 0.98)',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  menuTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  menuRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 16,
   },
-  positionPanelTitle: {
+  menuLabel: {
     color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  positionControlRow: {
-    marginBottom: 12,
-  },
-  positionControlLabel: {
-    color: 'white',
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '500',
-    marginBottom: 4,
   },
-  positionControlValue: {
-    alignItems: 'flex-end',
-    marginBottom: 4,
+  menuValue: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 15,
   },
-  positionControlValueText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  positionSlider: {
+  menuSlider: {
     width: '100%',
-    height: 24,
+    height: 40,
+    marginTop: 4,
+  },
+  menuCloseBtn: {
+    marginTop: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  menuCloseBtnText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

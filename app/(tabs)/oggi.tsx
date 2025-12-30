@@ -917,11 +917,53 @@ export default function OggiScreen() {
 
         const columns: typeof insertionOrder[] = [];
         
+        // PRE-PASS: Identify OLD tasks before processing any task
+        // This allows the dragged task to know about OLD tasks when it's processed
+        const oldTaskIds = new Set<string>();
+        if (draggedEventId && lockedLayout && lockedLayout[draggedEventId]) {
+            const draggedEv = cluster.find(e => e.id === draggedEventId);
+            if (draggedEv) {
+                for (const ev of cluster) {
+                    if (ev.id === draggedEventId || !lockedLayout[ev.id]) continue;
+                    
+                    const pairKey1 = `${draggedEventId}-${ev.id}`;
+                    const pairKey2 = `${ev.id}-${draggedEventId}`;
+                    const brokeOverlap = brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
+                    
+                    const currentlyOverlaps = Math.max(draggedEv.s, ev.s) < Math.min(draggedEv.e, ev.e);
+                    const hasOtherOverlap = cluster.some(thirdEv => {
+                        if (thirdEv.id === ev.id || thirdEv.id === draggedEventId) return false;
+                        return Math.max(ev.s, thirdEv.s) < Math.min(ev.e, thirdEv.e);
+                    });
+                    
+                    // Check if task is already in col 0 from previous calculation
+                    const wasOriginallyRight = lockedLayout[ev.id].col > 0;
+                    const isTwoTaskBlock = cluster.length === 2;
+                    
+                    // Task is OLD if:
+                    // 1. It broke overlap in current drag AND doesn't currently overlap AND has no other overlap
+                    // OR
+                    // 2. For 2-task blocks: it was originally on right, broke overlap or is in col 0, and currently overlaps (returning case)
+                    const becameOldInCurrentDrag = brokeOverlap && !currentlyOverlaps && !hasOtherOverlap;
+                    const isOldReturningCase = isTwoTaskBlock && wasOriginallyRight && brokeOverlap && currentlyOverlaps;
+                    
+                    if (becameOldInCurrentDrag || isOldReturningCase) {
+                        oldTaskIds.add(ev.id);
+                        // Clear memory for OLD task
+                        delete finalDragColumnRef.current[ev.id];
+                        adjTaskIdsRef.current.delete(ev.id);
+                        brokenAdjTasksRef.current.add(ev.id);
+                    }
+                }
+            }
+        }
+        
         for (const ev of insertionOrder) {
             const isMover = draggedEventId ? (ev.id === draggedEventId) : (ev.id === lastMovedEventId);
             let startSearchCol = 0;
 
-            // During drag: if task has no overlap with any other task, put it in column 0 (highest priority)
+            // During drag: if task has no overlap with any other task, put it on the right
+            // (if it exited the block, it should always go to the right, not column 0)
             if (isMover && draggedEventId) {
                 const hasOverlap = cluster.some(other => {
                     if (other.id === ev.id) return false;
@@ -929,27 +971,121 @@ export default function OggiScreen() {
                 });
                 
                 if (!hasOverlap) {
-                    // No overlap - put in column 0 and clear saved column
+                    // No overlap - task exited the block, always put it on the right
                     delete finalDragColumnRef.current[ev.id];
-                    while (columns.length <= 0) columns.push([]);
-                    columns[0].push(ev);
-                    layout[ev.id] = { col: 0, columns: 1, span: 1 };
+                    columns.push([ev]);
+                    layout[ev.id] = { col: columns.length - 1, columns: 1, span: 1 };
                     continue;
+                }
+            }
+            
+            // During drag: if static task lost overlap with dragged task and has no other overlap, put it in column 0
+            // SPECIAL RULE: For 2-task blocks, if task is OLD (in col 0) and dragged task returns to overlap,
+            // keep OLD task in col 0
+            if (!isMover && draggedEventId && lockedLayout && lockedLayout[ev.id] && lockedLayout[draggedEventId]) {
+                const dCurrent = cluster.find(x => x.id === draggedEventId);
+                if (dCurrent) {
+                    // Check if they currently overlap
+                    const currentlyOverlaps = Math.max(ev.s, dCurrent.s) < Math.min(ev.e, dCurrent.e);
+                    
+                    // Check if overlap was broken (they originally overlapped but don't anymore)
+                    const pairKey1 = `${ev.id}-${draggedEventId}`;
+                    const pairKey2 = `${draggedEventId}-${ev.id}`;
+                    const brokeOverlap = brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
+                    
+                    // If this task is OLD (identified in pre-pass), handle it specially
+                    if (oldTaskIds.has(ev.id)) {
+                        const isTwoTaskBlock = cluster.length === 2;
+                        const originalStaticCol = lockedLayout[ev.id].col;
+                        const wasOriginallyRight = originalStaticCol > 0;
+                        
+                        // For 2-task blocks: if task was originally on right and dragged task returned to overlap,
+                        // keep task in col 0 (it's OLD)
+                        if (isTwoTaskBlock && wasOriginallyRight && currentlyOverlaps) {
+                            while (columns.length <= 0) columns.push([]);
+                            const col0 = columns[0];
+                            const hasCollision = col0.some(existingEv => 
+                                existingEv.id !== ev.id && Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                            );
+                            if (!hasCollision) {
+                                // Remove from current column if it's already placed elsewhere
+                                for (let i = 0; i < columns.length; i++) {
+                                    const colIndex = columns[i].findIndex(e => e.id === ev.id);
+                                    if (colIndex >= 0) {
+                                        columns[i].splice(colIndex, 1);
+                                        break;
+                                    }
+                                }
+                                col0.push(ev);
+                                layout[ev.id] = { col: 0, columns: 2, span: 1 };
+                                continue; // Skip rest of logic - stays in col 0
+                            }
+                        } else if (!currentlyOverlaps) {
+                            // Task is OLD and not overlapping - put in column 0
+                            while (columns.length <= 0) columns.push([]);
+                            const col0 = columns[0];
+                            const hasCollision = col0.some(existingEv => 
+                                existingEv.id !== ev.id && Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                            );
+                            if (!hasCollision) {
+                                col0.push(ev);
+                                layout[ev.id] = { col: 0, columns: 1, span: 1 };
+                                continue; // Skip rest of logic
+                            }
+                        }
+                    }
+                    
+                    // If overlap was broken and task has no other overlap, put it in column 0
+                    if (brokeOverlap && !currentlyOverlaps) {
+                        // Check if task has any other overlap
+                        const hasOtherOverlap = cluster.some(other => {
+                            if (other.id === ev.id || other.id === draggedEventId) return false;
+                            return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
+                        });
+                        
+                        if (!hasOtherOverlap) {
+                            // Task became OLD - clear memory of column and ADJ status
+                            delete finalDragColumnRef.current[ev.id];
+                            adjTaskIdsRef.current.delete(ev.id);
+                            brokenAdjTasksRef.current.add(ev.id);
+                            
+                            // No overlap with any task - put in column 0
+                            while (columns.length <= 0) columns.push([]);
+                            const col0 = columns[0];
+                            const hasCollision = col0.some(existingEv => 
+                                existingEv.id !== ev.id && Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                            );
+                            if (!hasCollision) {
+                                col0.push(ev);
+                                layout[ev.id] = { col: 0, columns: 1, span: 1 };
+                                continue; // Skip rest of logic
+                            }
+                        }
+                    }
                 }
             }
 
             // TEST: Priority - if task has a final drag column saved, use it and ignore all other locks
+            // BUT: Don't use saved column if there's an OLD task in the cluster (clear memory instead)
             const savedColumn = finalDragColumnRef.current[ev.id];
             if (savedColumn !== undefined) {
-                while (columns.length <= savedColumn) columns.push([]);
-                const targetColumn = columns[savedColumn];
-                const hasCollision = targetColumn.some(existingEv =>
-                    Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
-                );
-                if (!hasCollision) {
-                    targetColumn.push(ev);
-                    layout[ev.id] = { col: savedColumn, columns: 1, span: 1 };
-                    continue;
+                // Check if there's an OLD task in the cluster (use pre-pass identification)
+                if (oldTaskIds.size > 0) {
+                    // There's an OLD task - clear saved column memory for dragged task
+                    delete finalDragColumnRef.current[ev.id];
+                    // Don't use saved column, let normal logic handle it
+                } else {
+                    // No OLD task - use saved column
+                    while (columns.length <= savedColumn) columns.push([]);
+                    const targetColumn = columns[savedColumn];
+                    const hasCollision = targetColumn.some(existingEv =>
+                        Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                    );
+                    if (!hasCollision) {
+                        targetColumn.push(ev);
+                        layout[ev.id] = { col: savedColumn, columns: 1, span: 1 };
+                        continue;
+                    }
                 }
             }
 
@@ -1035,7 +1171,38 @@ export default function OggiScreen() {
                         const overlap = Math.max(ev.s, dCurrent.s) < Math.min(ev.e, dCurrent.e);
                         // If they still overlap, Static task CANNOT move to the left columns occupied by Dragged
                         if (overlap) {
-                            startSearchCol = sCol; 
+                            // Check if dragged task is already positioned in the current layout calculation
+                            // If dragged task moved to different columns, static task can use the freed space
+                            const draggedLayout = layout[draggedEventId];
+                            if (draggedLayout) {
+                                const draggedCurrentCol = draggedLayout.col;
+                                // If dragged task is no longer in the original left columns (moved right),
+                                // static task can use the freed space on the left
+                                if (draggedCurrentCol >= sCol) {
+                                    // Dragged task moved right, static task can use freed space
+                                    startSearchCol = 0;
+                                } else {
+                                    // Dragged task still in left columns, respect its space
+                                    startSearchCol = sCol;
+                                }
+                            } else {
+                                // Dragged task not yet positioned, check columns array to see where it might be
+                                // Look for dragged task in columns to determine its current position
+                                let draggedCurrentCol = -1;
+                                for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+                                    if (columns[colIdx].some(e => e.id === draggedEventId)) {
+                                        draggedCurrentCol = colIdx;
+                                        break;
+                                    }
+                                }
+                                if (draggedCurrentCol >= 0 && draggedCurrentCol >= sCol) {
+                                    // Dragged task moved right, static task can use freed space
+                                    startSearchCol = 0;
+                                } else {
+                                    // Dragged task still in left columns or not found, respect original space
+                                    startSearchCol = sCol;
+                                }
+                            }
                         }
                         // If NO overlap, startSearchCol stays 0 -> Static task can move Left (Fill Gap)
                     }
@@ -1045,57 +1212,99 @@ export default function OggiScreen() {
             // SPECIAL CASE: If dragged task was on LEFT and still overlapping, keep it on LEFT
             // BUT skip this if we broke overlap with any of these tasks during drag
             // OR if the dragged task now starts BEFORE the right task (natural order should apply)
+            // OR if a static task became OLD (lost overlap and is now in col 0)
             if (isMover && draggedEventId && lockedLayout && lockedLayout[ev.id]) {
                 const originalDraggedCol = lockedLayout[ev.id].col;
                 
                 // Check if dragged task was originally on LEFT (col 0)
                 if (originalDraggedCol === 0) {
-                    // Find tasks that were originally on the right (col > 0) and overlapping
-                    const originallyOverlappingTasks = cluster.filter(otherEv => {
-                        if (otherEv.id === ev.id || !lockedLayout[otherEv.id]) return false;
-                        const otherCol = lockedLayout[otherEv.id].col;
-                        return otherCol > 0 && otherCol !== originalDraggedCol;
-                    });
+                    // Check if any static task is OLD (use pre-pass identification)
+                    const hasOldTask = oldTaskIds.size > 0;
                     
-                    // Check if we broke overlap with any of these tasks - if so, skip this block
-                    const brokeOverlapWithAny = originallyOverlappingTasks.some(otherEv => {
-                        const pairKey1 = `${ev.id}-${otherEv.id}`;
-                        const pairKey2 = `${otherEv.id}-${ev.id}`;
-                        return brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
-                    });
-                    
-                    // Check if dragged task now starts BEFORE any of the originally right tasks
-                    // If so, natural order should apply (dragged task should be on left naturally)
-                    const draggedStartsBeforeAny = originallyOverlappingTasks.some(otherEv => {
-                        const overlapStart = Math.max(ev.s, otherEv.s);
-                        const overlapEnd = Math.min(ev.e, otherEv.e);
-                        const isOverlapping = overlapStart < overlapEnd;
-                        // If overlapping and dragged starts before, natural order applies
-                        return isOverlapping && ev.s < otherEv.s;
-                    });
-                    
-                    if (brokeOverlapWithAny || draggedStartsBeforeAny) {
-                        // We broke overlap OR dragged task now starts before - skip this special case
-                        // Let the natural order or forceRight logic handle it
+                    if (hasOldTask) {
+                        // Clear saved column memory for dragged task when there's an OLD task
+                        delete finalDragColumnRef.current[ev.id];
+                        
+                        // SPECIAL RULE: For exactly 2 tasks in overlap block
+                        // If one task became OLD and is in col 0, and the dragged task is returning to overlap,
+                        // the dragged task should go to col 1 (not col 0), and OLD task stays in col 0
+                        const isTwoTaskBlock = cluster.length === 2;
+                        if (isTwoTaskBlock && oldTaskIds.size > 0) {
+                            // Find the OLD task (use pre-pass identification)
+                            const oldTask = cluster.find(otherEv => oldTaskIds.has(otherEv.id));
+                            
+                            if (oldTask) {
+                                // Check if dragged task is currently overlapping with OLD task (returning to overlap)
+                                const currentlyOverlapsWithOld = Math.max(ev.s, oldTask.s) < Math.min(ev.e, oldTask.e);
+                                
+                                if (currentlyOverlapsWithOld) {
+                                    // Dragged task is returning to overlap - put it in col 1, OLD task stays in col 0
+                                    while (columns.length <= 1) columns.push([]);
+                                    const col1 = columns[1];
+                                    const hasCollision = col1.some(existingEv => 
+                                        existingEv.id !== ev.id && Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                                    );
+                                    if (!hasCollision) {
+                                        col1.push(ev);
+                                        layout[ev.id] = { col: 1, columns: 2, span: 1 };
+                                        continue; // Skip rest of logic
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // For other cases, dragged task should go to the right
+                        columns.push([ev]);
+                        layout[ev.id] = { col: columns.length - 1, columns: 1, span: 1 };
+                        continue; // Skip rest of logic
                     } else {
-                        // Check if still overlapping with ANY of those tasks
-                        const stillOverlappingWithAny = originallyOverlappingTasks.some(otherEv => {
-                            const overlapStart = Math.max(ev.s, otherEv.s);
-                            const overlapEnd = Math.min(ev.e, otherEv.e);
-                            return overlapStart < overlapEnd;
+                        // Find tasks that were originally on the right (col > 0) and overlapping
+                        const originallyOverlappingTasks = cluster.filter(otherEv => {
+                            if (otherEv.id === ev.id || !lockedLayout[otherEv.id]) return false;
+                            const otherCol = lockedLayout[otherEv.id].col;
+                            return otherCol > 0 && otherCol !== originalDraggedCol;
                         });
                         
-                        if (stillOverlappingWithAny && originallyOverlappingTasks.length > 0) {
-                            // Still overlapping: keep dragged task on LEFT (col 0)
-                            while (columns.length <= 0) columns.push([]);
-                            const col0 = columns[0];
-                            const hasCollision = col0.some(existingEv => 
-                                existingEv.id !== ev.id && Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
-                            );
-                            if (!hasCollision) {
-                                col0.push(ev);
-                                layout[ev.id] = { col: 0, columns: 1, span: 1 };
-                                continue; // Skip First Fit - stays on LEFT
+                        // Check if we broke overlap with any of these tasks - if so, skip this block
+                        const brokeOverlapWithAny = originallyOverlappingTasks.some(otherEv => {
+                            const pairKey1 = `${ev.id}-${otherEv.id}`;
+                            const pairKey2 = `${otherEv.id}-${ev.id}`;
+                            return brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
+                        });
+                        
+                        // Check if dragged task now starts BEFORE any of the originally right tasks
+                        // If so, natural order should apply (dragged task should be on left naturally)
+                        const draggedStartsBeforeAny = originallyOverlappingTasks.some(otherEv => {
+                            const overlapStart = Math.max(ev.s, otherEv.s);
+                            const overlapEnd = Math.min(ev.e, otherEv.e);
+                            const isOverlapping = overlapStart < overlapEnd;
+                            // If overlapping and dragged starts before, natural order applies
+                            return isOverlapping && ev.s < otherEv.s;
+                        });
+                        
+                        if (brokeOverlapWithAny || draggedStartsBeforeAny) {
+                            // We broke overlap OR dragged task now starts before - skip this special case
+                            // Let the natural order or forceRight logic handle it
+                        } else {
+                            // Check if still overlapping with ANY of those tasks
+                            const stillOverlappingWithAny = originallyOverlappingTasks.some(otherEv => {
+                                const overlapStart = Math.max(ev.s, otherEv.s);
+                                const overlapEnd = Math.min(ev.e, otherEv.e);
+                                return overlapStart < overlapEnd;
+                            });
+                            
+                            if (stillOverlappingWithAny && originallyOverlappingTasks.length > 0) {
+                                // Still overlapping: keep dragged task on LEFT (col 0)
+                                while (columns.length <= 0) columns.push([]);
+                                const col0 = columns[0];
+                                const hasCollision = col0.some(existingEv => 
+                                    existingEv.id !== ev.id && Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                                );
+                                if (!hasCollision) {
+                                    col0.push(ev);
+                                    layout[ev.id] = { col: 0, columns: 1, span: 1 };
+                                    continue; // Skip First Fit - stays on LEFT
+                                }
                             }
                         }
                     }
@@ -1792,17 +2001,45 @@ export default function OggiScreen() {
             }
             
             if (!placed) {
-                // Standard First Fit logic
-                for (let i = startSearchCol; i < columns.length; i++) {
-                    const col = columns[i];
-                    const hasCollision = col.some(existingEv => 
-                        Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
-                    );
-                    if (!hasCollision) {
-                        col.push(ev);
-                        layout[ev.id] = { col: i, columns: 1, span: 1 };
-                        placed = true;
-                        break;
+                // Standard First Fit logic - but prioritize empty columns first
+                // During drag, if there are empty columns, use them to fill gaps
+                if (draggedEventId && !isMover) {
+                    // For static tasks during drag, first check for empty columns
+                    // This allows tasks to move left to fill gaps created by dragged task
+                    for (let i = 0; i < columns.length; i++) {
+                        if (i < startSearchCol) continue; // Respect startSearchCol constraint
+                        const col = columns[i];
+                        // If column is empty, we can use it
+                        if (col.length === 0) {
+                            col.push(ev);
+                            layout[ev.id] = { col: i, columns: 1, span: 1 };
+                            placed = true;
+                            break;
+                        }
+                        // Otherwise check for collision
+                        const hasCollision = col.some(existingEv => 
+                            Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                        );
+                        if (!hasCollision) {
+                            col.push(ev);
+                            layout[ev.id] = { col: i, columns: 1, span: 1 };
+                            placed = true;
+                            break;
+                        }
+                    }
+                } else {
+                    // Normal First Fit logic
+                    for (let i = startSearchCol; i < columns.length; i++) {
+                        const col = columns[i];
+                        const hasCollision = col.some(existingEv => 
+                            Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
+                        );
+                        if (!hasCollision) {
+                            col.push(ev);
+                            layout[ev.id] = { col: i, columns: 1, span: 1 };
+                            placed = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -1818,57 +2055,131 @@ export default function OggiScreen() {
             }
         }
         
-        // 3. Compact columns for NEAR and ADJ tasks (fill gaps left by D)
-        // After drag ends, tasks that were NEAR or ADJ should compact to fill gaps
-        if (!draggedEventId && (adjTaskIdsRef.current.size > 0 || nearTaskIdsRef.current.size > 0)) {
-            // Find tasks that were NEAR or ADJ (adjacent or near to dragged task)
-            const tasksToCompact = cluster.filter(ev => 
-                adjTaskIdsRef.current.has(ev.id) || nearTaskIdsRef.current.has(ev.id)
-            );
+        // 3. Compact columns to fill gaps left by dragged task
+        // After drag ends or during drag, compact tasks to fill empty columns
+        // Process tasks in order from left to right to ensure proper compaction
+        const sortedTasksForCompaction = [...cluster].sort((a, b) => {
+            const aCol = layout[a.id]?.col ?? 0;
+            const bCol = layout[b.id]?.col ?? 0;
+            if (aCol !== bCol) return aCol - bCol;
+            return a.s - b.s;
+        });
+        
+        for (const taskToCompact of sortedTasksForCompaction) {
+            // Skip the dragged task itself
+            if (draggedEventId && taskToCompact.id === draggedEventId) continue;
             
-            // For each task to compact (ADJ or NEAR), check how many tasks are adjacent and compact
-            for (const taskToCompact of tasksToCompact) {
-                const currentCol = layout[taskToCompact.id]?.col ?? 0;
-                
-                // Count tasks in adjacent columns (left and right)
-                const leftCol = currentCol - 1;
-                const rightCol = currentCol + 1;
-                
-                const leftColTasks = leftCol >= 0 ? columns[leftCol]?.filter(other => {
-                    if (other.id === taskToCompact.id) return false;
-                    return Math.max(taskToCompact.s, other.s) < Math.min(taskToCompact.e, other.e);
-                }) : [];
-                
-                const rightColTasks = rightCol < columns.length ? columns[rightCol]?.filter(other => {
-                    if (other.id === taskToCompact.id) return false;
-                    return Math.max(taskToCompact.s, other.s) < Math.min(taskToCompact.e, other.e);
-                }) : [];
-                
-                // If there are gaps (empty columns) to the left, try to move left
-                if (leftCol >= 0 && columns[leftCol]?.length === 0) {
-                    // Empty column to the left, check if we can move
-                    const canMoveLeft = !cluster.some(other => {
+            const currentCol = layout[taskToCompact.id]?.col ?? 0;
+            if (currentCol <= 0) continue; // Already at leftmost position
+            
+            // Check if this task has a pair lock that prevents movement
+            const lockInfo = lockLookup[taskToCompact.id];
+            if (lockInfo) {
+                // If task has a lock, check if moving would violate it
+                // Only allow movement if it doesn't violate the lock (i.e., moving left is ok if we're on the right side of the lock)
+                const lockedCol = lockInfo.col;
+                if (currentCol === lockedCol) {
+                    // Task is in its locked position, check if we can move left
+                    // Only move if target is still to the right of the locked position (shouldn't happen) or if lock is broken
+                    const pairKey1 = `${taskToCompact.id}-${lockInfo.partnerId}`;
+                    const pairKey2 = `${lockInfo.partnerId}-${taskToCompact.id}`;
+                    const isBrokenPair = brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
+                    if (!isBrokenPair) {
+                        // Lock is still active, don't move if it would violate the lock
+                        // For now, skip compaction for locked tasks to avoid breaking locks
+                        continue;
+                    }
+                }
+            }
+            
+            // Check if there are empty columns to the left
+            // Find the leftmost empty column that this task can move to
+            let targetCol = -1;
+            for (let colIdx = 0; colIdx < currentCol; colIdx++) {
+                const col = columns[colIdx];
+                // Check if column is empty or has no overlapping tasks
+                if (!col || col.length === 0) {
+                    // Column is empty, can move here
+                    targetCol = colIdx;
+                    break; // Use the leftmost available column
+                } else {
+                    // Column has tasks, check if this task overlaps with any of them
+                    const hasOverlap = col.some(other => {
                         if (other.id === taskToCompact.id) return false;
-                        const otherCol = layout[other.id]?.col ?? 0;
-                        if (otherCol !== leftCol) return false;
                         return Math.max(taskToCompact.s, other.s) < Math.min(taskToCompact.e, other.e);
                     });
-                    
-                    if (canMoveLeft) {
-                        // Move to left column
-                        const currentColIndex = columns[currentCol].findIndex(e => e.id === taskToCompact.id);
-                        if (currentColIndex !== -1) {
-                            columns[currentCol].splice(currentColIndex, 1);
-                            if (!columns[leftCol]) columns[leftCol] = [];
-                            columns[leftCol].push(taskToCompact);
-                            layout[taskToCompact.id].col = leftCol;
+                    if (!hasOverlap) {
+                        // No overlap, can potentially move here, but continue to find leftmost
+                        if (targetCol === -1) {
+                            targetCol = colIdx;
                         }
+                    } else {
+                        // Has overlap, cannot move past this column
+                        break;
                     }
+                }
+            }
+            
+            // If we found a target column to the left, move the task
+            if (targetCol >= 0 && targetCol < currentCol) {
+                // Remove from current column
+                const currentColIndex = columns[currentCol]?.findIndex(e => e.id === taskToCompact.id);
+                if (currentColIndex !== undefined && currentColIndex >= 0) {
+                    columns[currentCol].splice(currentColIndex, 1);
+                    // Add to target column
+                    if (!columns[targetCol]) columns[targetCol] = [];
+                    columns[targetCol].push(taskToCompact);
+                    layout[taskToCompact.id].col = targetCol;
                 }
             }
         }
         
-        const totalCols = columns.length;
+        // Recalculate clusterMaxConcurrent after all tasks have been positioned
+        // This ensures totalCols reflects the actual concurrent overlap, not just columns.length
+        const getActualMaxConcurrent = (): number => {
+            if (cluster.length <= 1) return cluster.length;
+            
+            // Collect all boundary times in the cluster
+            const boundaries = new Set<number>();
+            for (const task of cluster) {
+                boundaries.add(task.s);
+                boundaries.add(task.e);
+            }
+            
+            const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
+            let maxConcurrent = 1;
+            
+            // For each time slice, count how many tasks are active
+            for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+                const sliceMid = (sortedBoundaries[i] + sortedBoundaries[i + 1]) / 2;
+                let concurrent = 0;
+                for (const task of cluster) {
+                    if (task.s < sliceMid && task.e > sliceMid) {
+                        concurrent++;
+                    }
+                }
+                maxConcurrent = Math.max(maxConcurrent, concurrent);
+            }
+            
+            return maxConcurrent;
+        };
+        
+        const actualMaxConcurrent = getActualMaxConcurrent();
+        
+        // Find the maximum column index actually used by tasks
+        let maxUsedCol = -1;
+        for (const task of cluster) {
+            const taskLayout = layout[task.id];
+            if (taskLayout) {
+                const taskEndCol = taskLayout.col + (taskLayout.span || 1) - 1;
+                maxUsedCol = Math.max(maxUsedCol, taskEndCol);
+            }
+        }
+        
+        // totalCols should be based on actual concurrent overlap, not empty columns
+        // If all tasks lost overlap (actualMaxConcurrent = 1), totalCols should be 1
+        // Otherwise, use the maximum of actualMaxConcurrent and maxUsedCol + 1
+        const totalCols = actualMaxConcurrent === 1 ? 1 : Math.max(actualMaxConcurrent, maxUsedCol + 1, 1);
 
         // 4. Expansion
         for (let i = 0; i < columns.length; i++) {
@@ -1880,16 +2191,79 @@ export default function OggiScreen() {
                 const currentLayout = layout[ev.id];
                 const existingSpan = currentLayout?.span || 1;
                 
-                let span = 1;
+                // Check if task has any overlap with other tasks in the cluster
+                const hasAnyOverlap = cluster.some(other => {
+                    if (other.id === ev.id) return false;
+                    return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
+                });
+                
+                // If task has no overlap, it should remain with span 1 (no expansion)
+                if (!hasAnyOverlap) {
+                    layout[ev.id].columns = totalCols;
+                    layout[ev.id].span = 1;
+                    continue;
+                }
+                
+                // Expansion to the right
+                let spanRight = 0;
                 for (let nextCol = i + 1; nextCol < totalCols; nextCol++) {
                     const nextColEvents = columns[nextCol];
                     const hasOverlap = nextColEvents.some(otherEv => 
                         Math.max(ev.s, otherEv.s) < Math.min(ev.e, otherEv.e)
                     );
                     if (!hasOverlap) {
-                        span++;
+                        spanRight++;
                     } else {
                         break;
+                    }
+                }
+                
+                // Expansion to the left
+                let spanLeft = 0;
+                for (let prevCol = i - 1; prevCol >= 0; prevCol--) {
+                    const prevColEvents = columns[prevCol];
+                    const hasOverlap = prevColEvents.some(otherEv => 
+                        Math.max(ev.s, otherEv.s) < Math.min(ev.e, otherEv.e)
+                    );
+                    if (!hasOverlap) {
+                        spanLeft++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Total span = 1 (current column) + expansion to right + expansion to left
+                let span = 1 + spanRight + spanLeft;
+                
+                // If expanding to the left, we need to adjust the column position
+                if (spanLeft > 0) {
+                    const newCol = i - spanLeft;
+                    // Update column position if it changed
+                    if (newCol !== i) {
+                        // Check if the target column is available (empty or no overlapping tasks)
+                        const targetColEvents = columns[newCol] || [];
+                        const hasConflict = targetColEvents.some(otherEv => {
+                            if (otherEv.id === ev.id) return false;
+                            // Check if there's temporal overlap
+                            return Math.max(ev.s, otherEv.s) < Math.min(ev.e, otherEv.e);
+                        });
+                        
+                        // Only move if there's no conflict
+                        if (!hasConflict) {
+                            // Remove from current column
+                            const currentColIndex = columns[i]?.findIndex(e => e.id === ev.id);
+                            if (currentColIndex !== undefined && currentColIndex >= 0) {
+                                columns[i].splice(currentColIndex, 1);
+                                // Add to new leftmost column
+                                if (!columns[newCol]) columns[newCol] = [];
+                                columns[newCol].push(ev);
+                                layout[ev.id].col = newCol;
+                            }
+                        } else {
+                            // Can't move to left due to conflict, so can't expand left
+                            spanLeft = 0;
+                            span = 1 + spanRight;
+                        }
                     }
                 }
                 
@@ -2021,6 +2395,8 @@ export default function OggiScreen() {
       nearTaskIdsRef.current = new Set();
       // Clear broken adj tracking (tasks that lost overlap during previous drag)
       brokenAdjTasksRef.current = new Set();
+      // Clear broken overlap pairs tracking
+      brokenOverlapPairsRef.current = new Set();
       // Clear initial ADJ tracking
       initialAdjTasksRef.current = new Set();
       // Clear position types when starting a new drag
