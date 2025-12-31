@@ -114,6 +114,7 @@ type DraggableEventProps = {
   brokenAdjTasksRef: React.MutableRefObject<Set<string>>;
   initialAdjTasksRef: React.MutableRefObject<Set<string>>;
   adjFinalColsRef: React.MutableRefObject<Record<string, number>>;
+  shouldRepositionRemainingTasksRef: React.MutableRefObject<boolean>;
   taskPositionTypeRef: React.MutableRefObject<Record<string, 'top' | 'bottom' | 'middle'>>;
   taskPositionTypeState: Record<string, 'top' | 'bottom' | 'middle'>;
   onDragStart: (id: string) => void;
@@ -152,6 +153,7 @@ function DraggableEvent({
   brokenAdjTasksRef,
   initialAdjTasksRef,
   adjFinalColsRef,
+  shouldRepositionRemainingTasksRef,
   taskPositionTypeRef,
   taskPositionTypeState,
   onDragStart,
@@ -402,8 +404,8 @@ function DraggableEvent({
         }
         
         // Save final columns for ADJ tasks and dragged task to maintain positions after drag
-        // BUT: Don't save if dragged task was in col 0 and exited overlap (remaining tasks should be repositioned)
-        // Check if dragged task was originally in col 0 by checking layoutById (original layout)
+        // BUT: Don't save if the dragged task was in col 0 and has exited overlap
+        // Check if dragged task was originally in col 0 and has exited overlap
         const originalLayout = layoutById[event.id];
         const wasInCol0 = originalLayout?.col === 0;
         // Check if dragged task has exited overlap (no overlap with any other task)
@@ -420,7 +422,7 @@ function DraggableEvent({
         if (currentLayout) {
           adjFinalColsRef.current[event.id] = currentLayout.col;
         }
-        // Save all ADJ tasks' final columns ONLY if dragged task didn't exit overlap
+        // Save all ADJ tasks' final columns ONLY if dragged task didn't exit overlap from col 0
         // (if it exited, remaining tasks should be repositioned, not use saved columns)
         if (!hasExitedOverlap) {
           for (const adjId of initialAdjTasksRef.current) {
@@ -683,6 +685,8 @@ export default function OggiScreen() {
   // Stores the final columns of ADJ tasks and dragged task at end of drag
   // This is used to maintain positions after drag ends
   const adjFinalColsRef = useRef<Record<string, number>>({});
+  // Flag to indicate that remaining tasks should be repositioned (when task in col 0 exited)
+  const shouldRepositionRemainingTasksRef = useRef<boolean>(false);
   // Stores position type (Top/Bottom/Middle) for tasks during drag
   const taskPositionTypeRef = useRef<Record<string, 'top' | 'bottom' | 'middle'>>({});
   // State to force re-render when position type changes
@@ -1046,15 +1050,7 @@ export default function OggiScreen() {
                     delete finalDragColumnRef.current[ev.id];
                     // Clear adjFinalColsRef for dragged task when it exits overlap
                     delete adjFinalColsRef.current[ev.id];
-                    // If dragged task was in col 0, clear adjFinalColsRef for ALL remaining tasks
-                    // so they get repositioned instead of using saved columns
-                    if (lockedLayout && lockedLayout[ev.id] && lockedLayout[ev.id].col === 0) {
-                        for (const otherTask of cluster) {
-                            if (otherTask.id !== ev.id) {
-                                delete adjFinalColsRef.current[otherTask.id];
-                            }
-                        }
-                    }
+                    // No need to set flag - we'll check directly in the layout calculation
                     // Remove from any existing column first
                     for (let colIdx = 0; colIdx < columns.length; colIdx++) {
                         const colIndex = columns[colIdx]?.findIndex(e => e.id === ev.id);
@@ -1522,12 +1518,30 @@ export default function OggiScreen() {
             
             // MAINTAIN RELATIVE POSITION FOR ADJ TASKS AND DRAGGED TASK AFTER DRAG ENDS
             // Use the final columns saved at end of drag to maintain exact positions
-            // BUT: Only use saved columns if they exist (if cleared, tasks will be repositioned)
+            // BUT: Don't use saved columns if a task in col 0 exited overlap (check directly)
             if (!draggedEventId) {
-                // Check if this task has a saved final column (either dragged task or ADJ task)
+                // Check if any task was originally in col 0 and has exited overlap
+                // by checking if adjFinalColsRef was cleared for this task (meaning it should be repositioned)
                 const savedFinalCol = adjFinalColsRef.current[ev.id];
                 
-                if (savedFinalCol !== undefined) {
+                if (savedFinalCol === undefined && initialAdjTasksRef.current.has(ev.id)) {
+                    // This task was ADJ but adjFinalColsRef was cleared, meaning task in col 0 exited
+                    // Don't use saved columns, let tasks be repositioned normally
+                    // Clear finalDragColumnRef to ensure complete repositioning
+                    delete finalDragColumnRef.current[ev.id];
+                    // Force start from col 0 to ensure proper repositioning
+                    startSearchCol = 0;
+                    // Clear existing layout for this task so it gets completely repositioned
+                    delete layout[ev.id];
+                    // Remove from any existing column
+                    for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+                        const colIndex = columns[colIdx]?.findIndex(e => e.id === ev.id);
+                        if (colIndex !== undefined && colIndex >= 0) {
+                            columns[colIdx].splice(colIndex, 1);
+                        }
+                    }
+                } else if (savedFinalCol !== undefined) {
+                    // Check if this task has a saved final column (either dragged task or ADJ task)
                     // Use the saved final column from end of drag
                     while (columns.length <= savedFinalCol) columns.push([]);
                     const targetColumn = columns[savedFinalCol];
@@ -1789,6 +1803,8 @@ export default function OggiScreen() {
                     
                     // SPECIAL CASE: If dragged task has exited overlap, recalculate totalCols based only on remaining tasks
                     let effectiveClusterMaxConcurrent = clusterMaxConcurrent;
+                    
+                    // During drag: check if dragged task has exited overlap
                     if (draggedEventId && ev.id !== draggedEventId) {
                         const draggedEv = cluster.find(x => x.id === draggedEventId);
                         if (draggedEv) {
@@ -1825,6 +1841,32 @@ export default function OggiScreen() {
                                     effectiveClusterMaxConcurrent = maxConcurrent;
                                 }
                             }
+                        }
+                    }
+                    
+                    // After drag: if shouldRepositionRemainingTasksRef is true, recalculate for all tasks in cluster
+                    // (the task that exited is no longer in the cluster, so we recalculate for remaining tasks)
+                    if (!draggedEventId && shouldRepositionRemainingTasksRef.current) {
+                        // Recalculate max concurrent for all tasks in cluster (which are the remaining tasks)
+                        if (cluster.length > 0) {
+                            const boundaries = new Set<number>();
+                            for (const task of cluster) {
+                                boundaries.add(task.s);
+                                boundaries.add(task.e);
+                            }
+                            const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
+                            let maxConcurrent = 1;
+                            for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+                                const sliceMid = (sortedBoundaries[i] + sortedBoundaries[i + 1]) / 2;
+                                let concurrent = 0;
+                                for (const task of cluster) {
+                                    if (task.s < sliceMid && task.e > sliceMid) {
+                                        concurrent++;
+                                    }
+                                }
+                                maxConcurrent = Math.max(maxConcurrent, concurrent);
+                            }
+                            effectiveClusterMaxConcurrent = maxConcurrent;
                         }
                     }
                     
@@ -2110,6 +2152,8 @@ export default function OggiScreen() {
                         
                         // SPECIAL CASE: If dragged task has exited overlap, recalculate totalCols based only on remaining tasks
                         let effectiveClusterMaxConcurrent = clusterMaxConcurrent;
+                        
+                        // During drag: check if dragged task has exited overlap
                         if (draggedEventId && ev.id !== draggedEventId) {
                             const draggedEv = cluster.find(x => x.id === draggedEventId);
                             if (draggedEv) {
@@ -2149,6 +2193,41 @@ export default function OggiScreen() {
                             }
                         }
                         
+                        // After drag: if task in col 0 exited, recalculate for all tasks in cluster
+                        // (the task that exited is no longer in the cluster, so we recalculate for remaining tasks)
+                        // Check if dragged task was in col 0 and has exited overlap
+                        if (draggedEventId && lockedLayout && lockedLayout[draggedEventId] && lockedLayout[draggedEventId].col === 0) {
+                            const draggedEv = cluster.find(x => x.id === draggedEventId);
+                            const draggedHasNoOverlap = draggedEv && !cluster.some(other => {
+                                if (other.id === draggedEventId) return false;
+                                return Math.max(draggedEv.s, other.s) < Math.min(draggedEv.e, other.e);
+                            });
+                            
+                            if (draggedHasNoOverlap) {
+                                // Recalculate max concurrent for all tasks in cluster (which are the remaining tasks)
+                                if (cluster.length > 0) {
+                                    const boundaries = new Set<number>();
+                                    for (const task of cluster) {
+                                        boundaries.add(task.s);
+                                        boundaries.add(task.e);
+                                    }
+                                    const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
+                                    let maxConcurrent = 1;
+                                    for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+                                        const sliceMid = (sortedBoundaries[i] + sortedBoundaries[i + 1]) / 2;
+                                        let concurrent = 0;
+                                        for (const task of cluster) {
+                                            if (task.s < sliceMid && task.e > sliceMid) {
+                                                concurrent++;
+                                            }
+                                        }
+                                        maxConcurrent = Math.max(maxConcurrent, concurrent);
+                                    }
+                                    effectiveClusterMaxConcurrent = maxConcurrent;
+                                }
+                            }
+                        }
+                        
                         // Total columns = max concurrent overlap in the ENTIRE cluster (or remaining tasks if dragged exited)
                         // This ensures all tasks in the same block use the same column count
                         const totalCols = Math.max(columns.length, maxColFromLayout + 1, effectiveClusterMaxConcurrent);
@@ -2156,6 +2235,7 @@ export default function OggiScreen() {
                         // Calculate span based on concurrent overlap for this specific task
                         // BUT: If dragged task exited overlap, force span = 1 for remaining tasks
                         let dSpan = Math.max(1, Math.floor(totalCols / tasksInDSpace));
+                        // During drag: if dragged task exited overlap, force span = 1
                         if (draggedEventId && ev.id !== draggedEventId) {
                             const draggedEv = cluster.find(x => x.id === draggedEventId);
                             if (draggedEv) {
@@ -2165,6 +2245,10 @@ export default function OggiScreen() {
                                     dSpan = 1;
                                 }
                             }
+                        }
+                        // After drag: if shouldRepositionRemainingTasksRef is true, force span = 1
+                        if (!draggedEventId && shouldRepositionRemainingTasksRef.current) {
+                            dSpan = 1;
                         }
                         
                         // Find free columns (gaps) between occupied columns
@@ -2778,6 +2862,10 @@ export default function OggiScreen() {
       adjPositionRef.current = {};
       // Clear ADJ original columns tracking
       adjOriginalColsRef.current = {};
+      // Clear ADJ final columns tracking (will be repopulated at end of drag)
+      adjFinalColsRef.current = {};
+      // Clear final drag column tracking (prevents using saved columns from previous drag)
+      finalDragColumnRef.current = {};
       // Clear position types when starting a new drag
       taskPositionTypeRef.current = {};
       setTaskPositionTypeState({});
@@ -3099,6 +3187,7 @@ export default function OggiScreen() {
                    brokenAdjTasksRef={brokenAdjTasksRef}
                    initialAdjTasksRef={initialAdjTasksRef}
                    adjFinalColsRef={adjFinalColsRef}
+                   shouldRepositionRemainingTasksRef={shouldRepositionRemainingTasksRef}
                    taskPositionTypeRef={taskPositionTypeRef}
                    taskPositionTypeState={taskPositionTypeState}
                  />
