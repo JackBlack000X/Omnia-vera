@@ -663,6 +663,8 @@ export default function OggiScreen() {
   
   // Stores the stable layout (snapshot) to use as a lock during drag
   const stableLayoutRef = useRef<Record<string, LayoutInfo>>({});
+  // Stores the previous layout to preserve span for untouched tasks
+  const previousLayoutRef = useRef<Record<string, LayoutInfo>>({});
   const pairLockRef = useRef<Record<string, PairLock>>({});
   // Tracks pairs that broke overlap during current drag (format: "id1-id2" or "id2-id1")
   const brokenOverlapPairsRef = useRef<Set<string>>(new Set());
@@ -865,7 +867,8 @@ export default function OggiScreen() {
   const calculateLayout = useCallback((
     events: (OggiEvent & { s: number; e: number; duration: number; isLastMoved: boolean })[],
     draggedEventId: string | null,
-    lockedLayout?: Record<string, LayoutInfo> // "Frozen" layout from snapshot
+    lockedLayout?: Record<string, LayoutInfo>, // "Frozen" layout from snapshot
+    previousLayout?: Record<string, LayoutInfo> // Previous layout to preserve span for untouched tasks
   ) => {
     const layout: Record<string, LayoutInfo> = {};
     const eventMap = events.reduce<Record<string, (typeof events)[number]>>((acc, ev) => {
@@ -1709,9 +1712,9 @@ export default function OggiScreen() {
                     
                     if (hasPositionType) {
                         // Task has Top/Bottom/Middle, calculate span immediately
-                        // IMPORTANT: For span calculation, use ALL events that overlap, not just cluster
-                        // This ensures we count all concurrent overlaps correctly
-                        let allOverlappingForSpan = events.filter(other => {
+                        // IMPORTANT: For span calculation, use ONLY tasks in the SAME cluster
+                        // This prevents tasks in different clusters from affecting span calculation
+                        let allOverlappingForSpan = cluster.filter(other => {
                             if (other.id === ev.id) return false;
                             return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
                         });
@@ -1743,9 +1746,9 @@ export default function OggiScreen() {
                         }
                     }
                     
-                    // Also check columns array directly for ALL tasks that might be placed but layout not updated
-                    // IMPORTANT: Check ALL tasks in columns, not just those in allRelevantTasks,
-                    // because tasks might be placed but their layout not yet updated
+                    // Also check columns array directly for tasks that might be placed but layout not updated
+                    // IMPORTANT: Only check tasks that ACTUALLY overlap with this task, not all tasks in columns
+                    // This prevents tasks that don't overlap (like a task to the right) from affecting span calculation
                     // BUT: Exclude dragged task if it has exited overlap
                     const draggedEvForOccupied = draggedEventId ? cluster.find(x => x.id === draggedEventId) : null;
                     const draggedHasNoOverlapForOccupied = draggedEvForOccupied && !cluster.some(other => {
@@ -1755,13 +1758,14 @@ export default function OggiScreen() {
                     
                     for (let colIdx = 0; colIdx < columns.length; colIdx++) {
                         const col = columns[colIdx];
-                        // Check if ANY task in this column overlaps with the dragged task
+                        // Check if ANY task in this column overlaps with THIS task (not dragged task)
+                        // IMPORTANT: Only count tasks that actually overlap, not all tasks in the column
                         // BUT: Skip dragged task if it has exited overlap
                         const hasOverlappingTask = col.some(existingEv => {
                             if (existingEv.id === ev.id) return false;
                             // Skip dragged task if it has exited overlap
                             if (draggedHasNoOverlapForOccupied && existingEv.id === draggedEventId) return false;
-                            // Check if this task overlaps with dragged task
+                            // Check if this task overlaps with THIS task (ev), not dragged task
                             return Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e);
                         });
                         if (hasOverlappingTask) {
@@ -1769,9 +1773,9 @@ export default function OggiScreen() {
                         }
                     }
                     
-                    // Calculate total columns: consider all tasks that have been placed
-                    // First, find the maximum column index from all placed tasks
-                    // BUT: Exclude dragged task if it has exited overlap
+                    // Calculate total columns: consider only tasks that ACTUALLY overlap with this task
+                    // IMPORTANT: Don't consider all tasks in cluster, only those that overlap
+                    // This prevents tasks that don't overlap (like a task to the right) from affecting span calculation
                     let maxColFromLayout = -1;
                     const draggedEv = draggedEventId ? cluster.find(x => x.id === draggedEventId) : null;
                     const draggedHasNoOverlap = draggedEv && !cluster.some(other => {
@@ -1779,7 +1783,8 @@ export default function OggiScreen() {
                         return Math.max(draggedEv.s, other.s) < Math.min(draggedEv.e, other.e);
                     });
                     
-                    for (const otherTask of cluster) {
+                    // Only consider overlapping tasks, not all tasks in cluster
+                    for (const otherTask of allOverlappingForSpan) {
                         if (otherTask.id === ev.id) continue;
                         // Skip dragged task if it has exited overlap
                         if (draggedHasNoOverlap && otherTask.id === draggedEventId) continue;
@@ -1789,15 +1794,7 @@ export default function OggiScreen() {
                             maxColFromLayout = Math.max(maxColFromLayout, otherEndCol);
                         }
                     }
-                    // Also check columns array for tasks that might be placed but layout not updated
-                    // Check beyond columns.length to catch all placed tasks
-                    const maxColToCheckForTotal = Math.max(columns.length, maxColFromLayout + 1);
-                    for (let colIdx = 0; colIdx < maxColToCheckForTotal; colIdx++) {
-                        if (colIdx < columns.length && columns[colIdx].length > 0) {
-                            maxColFromLayout = Math.max(maxColFromLayout, colIdx);
-                        }
-                    }
-                    // Also consider occupied columns from the calculation above
+                    // Also consider occupied columns from the calculation above (which only includes overlapping tasks)
                     const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
                     maxColFromLayout = Math.max(maxColFromLayout, maxOccupiedCol);
                     
@@ -1870,21 +1867,64 @@ export default function OggiScreen() {
                         }
                     }
                     
-                    // Total columns = max concurrent overlap in the ENTIRE cluster (or remaining tasks if dragged exited)
-                    // This ensures all tasks in the same block use the same column count
-                    const totalCols = Math.max(columns.length, maxColFromLayout + 1, effectiveClusterMaxConcurrent);
+                    // Total columns = max concurrent overlap for tasks that ACTUALLY overlap with this task
+                    // IMPORTANT: For span calculation, use ONLY the max concurrent overlap for this specific task
+                    // When tasks overlap, totalCols MUST equal tasksInDSpace (number of overlapping tasks)
+                    // This ensures span = 1 for each overlapping task
+                    const totalCols = tasksInDSpace; // Always use tasksInDSpace when tasks overlap
                     
                     // Calculate span based on how many tasks overlap with THIS task at its peak
                     // span = totalCols / tasksInDSpace (concurrent overlap for this specific task)
-                    // BUT: If dragged task exited overlap, force span = 1 for remaining tasks
+                    // When tasks overlap, totalCols = tasksInDSpace, so span = 1 for each task
+                    // IMPORTANT: When tasks overlap, span MUST be recalculated, not preserved
+                    // Only preserve span when tasks DON'T overlap (to prevent unnecessary recalculation)
                     let dSpan = Math.max(1, Math.floor(totalCols / tasksInDSpace));
+                    
+                    // Check if task is already positioned and should preserve its span
+                    // IMPORTANT: Only preserve span if tasks DON'T overlap (allOverlappingForSpan.length === 0)
+                    // When tasks overlap, span MUST be recalculated to ensure correct distribution
+                    const isNotDragged = !draggedEventId || ev.id !== draggedEventId;
+                    const hasOverlappingTasks = allOverlappingForSpan.length > 0;
+                    
+                    // Only preserve span if task has no overlapping tasks (to prevent unnecessary recalculation)
+                    // When tasks overlap, span must be recalculated to ensure correct distribution
+                    if (isNotDragged && !hasOverlappingTasks) {
+                        // First try lockedLayout (during drag)
+                        if (lockedLayout && lockedLayout[ev.id]) {
+                            const lockedSpan = lockedLayout[ev.id].span || 1;
+                            if (lockedSpan > 0) {
+                                dSpan = lockedSpan;
+                            }
+                        } else if (previousLayout && previousLayout[ev.id]) {
+                            // If no lockedLayout, try to preserve from previousLayout
+                            // This handles the case when a task outside the cluster is touched
+                            const previousSpan = previousLayout[ev.id].span || 1;
+                            if (previousSpan > 0) {
+                                // Preserve span only if task has no overlapping tasks
+                                dSpan = previousSpan;
+                            }
+                        }
+                    }
+                    
                     if (draggedEventId && ev.id !== draggedEventId) {
-                        const draggedEv = cluster.find(x => x.id === draggedEventId);
-                        if (draggedEv) {
-                            const draggedHasNoOverlapWithThis = !(Math.max(ev.s, draggedEv.s) < Math.min(ev.e, draggedEv.e));
-                            if (draggedHasNoOverlapWithThis) {
-                                // Dragged task exited overlap with this task - force span = 1
-                                dSpan = 1;
+                        // Check if we should preserve span from lockedLayout (drag just started, no movement yet)
+                        // Use the flag we set earlier to ensure consistent behavior
+                        if (shouldPreserveSpan && lockedLayout && lockedLayout[ev.id]) {
+                            // Preserve span from lockedLayout for static tasks when drag just started
+                            // This prevents span from changing when user just clicks to start drag without moving
+                            const lockedSpan = lockedLayout[ev.id].span || 1;
+                            if (lockedSpan > 0) {
+                                dSpan = lockedSpan;
+                            }
+                        } else {
+                            // Normal logic: check if dragged task exited overlap
+                            const draggedEv = cluster.find(x => x.id === draggedEventId);
+                            if (draggedEv) {
+                                const draggedHasNoOverlapWithThis = !(Math.max(ev.s, draggedEv.s) < Math.min(ev.e, draggedEv.e));
+                                if (draggedHasNoOverlapWithThis) {
+                                    // Dragged task exited overlap with this task - force span = 1
+                                    dSpan = 1;
+                                }
                             }
                         }
                     }
@@ -2074,20 +2114,52 @@ export default function OggiScreen() {
                         columns[colIdx].push(ev);
                     }
                     
-                        layout[ev.id] = { col: dStartCol, columns: totalCols, span: actualSpan };
+                    // Preserve columns from existing layout if task is not being dragged and already positioned
+                    // This prevents columns from changing when task is not touched
+                    // IMPORTANT: For tasks with Top/Bottom/Middle, preserve columns even if tasksInDSpace changes
+                    // This is because the task itself hasn't changed, only other tasks might have moved
+                    // ALSO: Preserve columns for all tasks that are not being dragged to prevent cascading changes
+                    let finalColumns = totalCols;
+                    if (isNotDragged) {
+                        // First try lockedLayout (during drag)
+                        if (lockedLayout && lockedLayout[ev.id]) {
+                            // Preserve columns from lockedLayout to prevent unnecessary changes
+                            finalColumns = lockedLayout[ev.id].columns || totalCols;
+                        } else if (previousLayout && previousLayout[ev.id]) {
+                            // If no lockedLayout, try to preserve from previousLayout
+                            // This handles the case when a task outside the cluster is touched
+                            // IMPORTANT: Always preserve columns for tasks that are not being dragged
+                            // This prevents cascading changes when one task is moved or new tasks are added
+                            const previousColumns = previousLayout[ev.id].columns || totalCols;
+                            // Preserve columns to prevent the layout from expanding unnecessarily
+                            // This is especially important when new tasks are added that don't overlap with each other
+                            finalColumns = previousColumns;
+                        }
+                    }
+                    
+                        layout[ev.id] = { col: dStartCol, columns: finalColumns, span: actualSpan };
                         placed = true;
                     } else {
                         // No Top/Bottom/Middle, use normal overlap logic
-                        // IMPORTANT: For span calculation, use ALL events that overlap, not just cluster
-                        let allOverlappingForSpan = events.filter(other => {
+                        // IMPORTANT: For span calculation, use ONLY tasks in the SAME cluster
+                        // This prevents tasks in different clusters from affecting span calculation
+                        let allOverlappingForSpan = cluster.filter(other => {
                             if (other.id === ev.id) return false;
                             return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
                         });
                         
                         // SPECIAL CASE: If dragged task has exited overlap, exclude it from span calculation
+                        // IMPORTANT: Also check if we should preserve span from lockedLayout BEFORE calculating tasksInDSpace
+                        // This ensures that if drag just started (no movement), we preserve the span correctly
+                        let shouldPreserveSpan = false;
                         if (draggedEventId && ev.id !== draggedEventId) {
                             const draggedEv = cluster.find(x => x.id === draggedEventId);
                             if (draggedEv) {
+                                // Check if we should preserve span from lockedLayout (drag just started, no movement yet)
+                                if (lockedLayout && lockedLayout[ev.id] && lockedLayout[draggedEventId]) {
+                                    shouldPreserveSpan = true;
+                                }
+                                
                                 const draggedHasNoOverlapWithThis = !(Math.max(ev.s, draggedEv.s) < Math.min(ev.e, draggedEv.e));
                                 if (draggedHasNoOverlapWithThis) {
                                     // Remove dragged task from overlapping tasks for span calculation
@@ -2157,6 +2229,23 @@ export default function OggiScreen() {
                         if (draggedEventId && ev.id !== draggedEventId) {
                             const draggedEv = cluster.find(x => x.id === draggedEventId);
                             if (draggedEv) {
+                                // Check if we should preserve span from lockedLayout (drag just started, no movement yet)
+                                // If lockedLayout exists and dragged task is still at original position, preserve span
+                                if (lockedLayout && lockedLayout[ev.id] && lockedLayout[draggedEventId]) {
+                                    // Check if dragged task is still at original position (hasn't moved yet)
+                                    const originalDraggedStart = lockedLayout[draggedEventId].col === 0 ? 
+                                        (events.find(e => e.id === draggedEventId)?.s ?? draggedEv.s) : draggedEv.s;
+                                    // If dragged task is still at original position, preserve span for static tasks
+                                    const isAtOriginalPosition = Math.abs(draggedEv.s - originalDraggedStart) < 1; // Allow small floating point differences
+                                    if (isAtOriginalPosition) {
+                                        // Preserve span from lockedLayout
+                                        const lockedSpan = lockedLayout[ev.id].span || 1;
+                                        if (lockedSpan > 0) {
+                                            // Skip recalculation, will use lockedSpan later
+                                        }
+                                    }
+                                }
+                                
                                 // Check if dragged task has no overlap with this task
                                 const draggedHasNoOverlapWithThis = !(Math.max(ev.s, draggedEv.s) < Math.min(ev.e, draggedEv.e));
                                 // Check if dragged task has no overlap with ANY task in cluster
@@ -2228,21 +2317,66 @@ export default function OggiScreen() {
                             }
                         }
                         
-                        // Total columns = max concurrent overlap in the ENTIRE cluster (or remaining tasks if dragged exited)
-                        // This ensures all tasks in the same block use the same column count
-                        const totalCols = Math.max(columns.length, maxColFromLayout + 1, effectiveClusterMaxConcurrent);
+                        // Total columns = max concurrent overlap for tasks that ACTUALLY overlap with this task
+                        // IMPORTANT: For span calculation, use ONLY the max concurrent overlap for this specific task
+                        // Don't use columns.length or maxColFromLayout which might include non-overlapping tasks
+                        // This ensures span is calculated correctly based only on tasks that actually overlap
+                        const totalCols = tasksInDSpace; // Use tasksInDSpace directly as it's already the max concurrent overlap
                         
                         // Calculate span based on concurrent overlap for this specific task
-                        // BUT: If dragged task exited overlap, force span = 1 for remaining tasks
+                        // span = totalCols / tasksInDSpace (concurrent overlap for this specific task)
+                        // When tasks overlap, totalCols = tasksInDSpace, so span = 1 for each task
+                        // IMPORTANT: When tasks overlap, span MUST be recalculated, not preserved
+                        // Only preserve span when tasks DON'T overlap (to prevent unnecessary recalculation)
                         let dSpan = Math.max(1, Math.floor(totalCols / tasksInDSpace));
+                        
+                        // Check if task is already positioned and should preserve its span
+                        // IMPORTANT: Only preserve span if tasks DON'T overlap (allOverlappingForSpan.length === 0)
+                        // When tasks overlap, span MUST be recalculated to ensure correct distribution
+                        const isNotDragged = !draggedEventId || ev.id !== draggedEventId;
+                        const hasOverlappingTasks = allOverlappingForSpan.length > 0;
+                        
+                        // Only preserve span if task has no overlapping tasks (to prevent unnecessary recalculation)
+                        // When tasks overlap, span must be recalculated to ensure correct distribution
+                        if (isNotDragged && !hasOverlappingTasks) {
+                            // First try lockedLayout (during drag)
+                            if (lockedLayout && lockedLayout[ev.id]) {
+                                const lockedSpan = lockedLayout[ev.id].span || 1;
+                                if (lockedSpan > 0) {
+                                    dSpan = lockedSpan;
+                                }
+                            } else if (previousLayout && previousLayout[ev.id]) {
+                                // If no lockedLayout, try to preserve from previousLayout
+                                // This handles the case when a task outside the cluster is touched
+                                const previousSpan = previousLayout[ev.id].span || 1;
+                                if (previousSpan > 0) {
+                                    // Preserve span only if task has no overlapping tasks
+                                    dSpan = previousSpan;
+                                }
+                            }
+                        }
+                        
                         // During drag: if dragged task exited overlap, force span = 1
                         if (draggedEventId && ev.id !== draggedEventId) {
-                            const draggedEv = cluster.find(x => x.id === draggedEventId);
-                            if (draggedEv) {
-                                const draggedHasNoOverlapWithThis = !(Math.max(ev.s, draggedEv.s) < Math.min(ev.e, draggedEv.e));
-                                if (draggedHasNoOverlapWithThis) {
-                                    // Dragged task exited overlap with this task - force span = 1
-                                    dSpan = 1;
+                            // Check if we should preserve span from lockedLayout (drag just started, no movement yet)
+                            // Use the flag we set earlier to ensure consistent behavior
+                            // BUT: Only preserve if tasks DON'T overlap
+                            if (shouldPreserveSpan && !hasOverlappingTasks && lockedLayout && lockedLayout[ev.id]) {
+                                // Preserve span from lockedLayout for static tasks when drag just started
+                                // This prevents span from changing when user just clicks to start drag without moving
+                                const lockedSpan = lockedLayout[ev.id].span || 1;
+                                if (lockedSpan > 0) {
+                                    dSpan = lockedSpan;
+                                }
+                            } else {
+                                // Normal logic: check if dragged task exited overlap
+                                const draggedEv = cluster.find(x => x.id === draggedEventId);
+                                if (draggedEv) {
+                                    const draggedHasNoOverlapWithThis = !(Math.max(ev.s, draggedEv.s) < Math.min(ev.e, draggedEv.e));
+                                    if (draggedHasNoOverlapWithThis) {
+                                        // Dragged task exited overlap with this task - force span = 1
+                                        dSpan = 1;
+                                    }
                                 }
                             }
                         }
@@ -2841,10 +2975,14 @@ export default function OggiScreen() {
             }
         }
         const lockSnapshot = dragClearedOriginalOverlap ? undefined : stableLayoutRef.current;
-        return calculateLayout(events, draggingEventId, lockSnapshot);
+        const result = calculateLayout(events, draggingEventId, lockSnapshot, previousLayoutRef.current);
+        previousLayoutRef.current = result;
+        return result;
     } 
     
-    return calculateLayout(events, null);
+    const result = calculateLayout(events, null, undefined, previousLayoutRef.current);
+    previousLayoutRef.current = result;
+    return result;
   }, [timedEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayout]);
   
   const handleDragStart = useCallback((id: string) => {
@@ -3017,7 +3155,7 @@ export default function OggiScreen() {
     // Always recalculate layout to get the correct span, especially when D enters overlap
     // Use the same logic as layoutById: if hasClearedOverlap is true, don't use lock snapshot
     const lockSnapshot = hasClearedOverlap ? undefined : stableLayoutRef.current;
-    const tempLayout = calculateLayout(events, draggedEventId, lockSnapshot);
+    const tempLayout = calculateLayout(events, draggedEventId, lockSnapshot, previousLayoutRef.current);
     
     const draggedLayout = tempLayout[draggedEventId] || { col: 0, columns: 1, span: 1 };
     const screenWidth = Dimensions.get('window').width;
