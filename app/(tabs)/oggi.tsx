@@ -72,15 +72,10 @@ type OggiEvent = {
   endTime: string;
   isAllDay: boolean;
   color: string;
+  createdAt?: string;
 };
 
 type LayoutInfo = { col: number; columns: number; span: number };
-type PairLock = {
-  leftId: string;
-  rightId: string;
-  leftCol: number;
-  rightCol: number;
-};
 
 type DraggableEventProps = {
   event: OggiEvent;
@@ -108,13 +103,8 @@ type DraggableEventProps = {
   layoutById: Record<string, LayoutInfo>;
   calculateDragLayout: (draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean) => { width: number; left: number };
   brokenOverlapPairsRef: React.MutableRefObject<Set<string>>;
-  finalDragColumnRef: React.MutableRefObject<Record<string, number>>;
-  adjTaskIdsRef: React.MutableRefObject<Set<string>>;
-  nearTaskIdsRef: React.MutableRefObject<Set<string>>;
-  brokenAdjTasksRef: React.MutableRefObject<Set<string>>;
-  initialAdjTasksRef: React.MutableRefObject<Set<string>>;
-  taskPositionTypeRef: React.MutableRefObject<Record<string, 'top' | 'bottom' | 'middle'>>;
-  taskPositionTypeState: Record<string, 'top' | 'bottom' | 'middle'>;
+  columnRankRef: React.MutableRefObject<Record<string, number>>;
+  rankCounterRef: React.MutableRefObject<number>;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
 };
@@ -145,13 +135,8 @@ function DraggableEvent({
   layoutById,
   calculateDragLayout,
   brokenOverlapPairsRef,
-  finalDragColumnRef,
-  adjTaskIdsRef,
-  nearTaskIdsRef,
-  brokenAdjTasksRef,
-  initialAdjTasksRef,
-  taskPositionTypeRef,
-  taskPositionTypeState,
+  columnRankRef,
+  rankCounterRef,
   onDragStart,
   onDragEnd,
 }: DraggableEventProps) {
@@ -393,13 +378,28 @@ function DraggableEvent({
         setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
         updateScheduleTimes(event.id, newStartTime, newEndTime);
 
-        // TEST: Save the final column where task was dropped
-        const currentLayout = layoutByIdRef.current[event.id];
-        if (currentLayout) {
-          finalDragColumnRef.current[event.id] = currentLayout.col;
-        }
-
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+        if (hasMovedRef.current) {
+          // Snapshot every task's current column position as its new rank.
+          // After the first drag, visual column order (left=lowest rank) becomes
+          // the authoritative priority for future left/right placement — createdAt
+          // is no longer relevant once any task has been moved.
+          const currentLayout = layoutByIdRef.current;
+          const allIds = Object.keys(currentLayout);
+          // Sort by current column; break ties with existing rank so the order
+          // within each column (non-overlapping tasks sharing a slot) stays stable.
+          allIds.sort((a, b) => {
+            const ca = currentLayout[a]?.col ?? 0;
+            const cb = currentLayout[b]?.col ?? 0;
+            if (ca !== cb) return ca - cb;
+            return (columnRankRef.current[a] ?? 0) - (columnRankRef.current[b] ?? 0);
+          });
+          for (let i = 0; i < allIds.length; i++) {
+            columnRankRef.current[allIds[i]] = i + 1;
+          }
+          rankCounterRef.current = allIds.length;
+        }
         
         dragInitialTop.value = finalTop;
         dragY.value = 0;
@@ -443,139 +443,40 @@ function DraggableEvent({
     getDay
   ]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    top: dragInitialTop.value + dragY.value,
-    opacity: isDragging ? 0.8 : 1,
-    zIndex: isDragging ? 1000 : 1,
-    width: isDragging ? dragWidthValue.value : layoutStyle.width,
-    left: isDragging ? dragLeftValue.value : layoutStyle.left,
-  }));
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      top: isDragging ? dragInitialTop.value + dragY.value : baseTop,
+      opacity: isDragging ? 0.8 : 1,
+      zIndex: isDragging ? 1000 : 1,
+      width: isDragging ? dragWidthValue.value : layoutStyle.width,
+      left: isDragging ? dragLeftValue.value : layoutStyle.left,
+    };
+  }, [isDragging, baseTop, layoutStyle.width, layoutStyle.left]);
 
-  const EventComponent = isDragging ? Animated.View : View;
-  
-  // Debug: Show column number (0 = leftmost, +1 for each column to the right)
-  // If task spans multiple columns, show all columns (e.g., "COL:0+1" for span 2)
   const currentLayout = layoutById[event.id] || { col: 0, columns: 1, span: 1 };
   let debugLabel = `COL:${currentLayout.col}`;
   if (currentLayout.span > 1) {
-    const columns = [];
+    const cols = [];
     for (let i = 0; i < currentLayout.span; i++) {
-      columns.push(currentLayout.col + i);
+      cols.push(currentLayout.col + i);
     }
-    debugLabel = `COL:${columns.join('+')}`;
+    debugLabel = `COL:${cols.join('+')}`;
   }
-  
-  // Add number showing how many parts the total space is divided into (total columns)
   debugLabel += ` [${currentLayout.columns}]`;
+  if (isDragging) debugLabel += ' DRAG';
   
-  // Add position type (Top/Bottom/Middle) if available
-  // Use state to ensure re-render when it changes
-  const positionType = taskPositionTypeState[event.id] || taskPositionTypeRef.current[event.id];
-  if (positionType) {
-    debugLabel += ` ${positionType.toUpperCase()}`;
-  }
-  
-  // Add "DRAG" if this task is being dragged
-  if (isDragging) {
-    debugLabel += ' DRAG';
-  } else if (draggingEventId) {
-    // ADJ/NEAR logic - simplified:
-    // ADJ = overlaps in time with dragged task AND directly touches (adjacent column)
-    // Max 2 ADJ: one to the left, one to the right
-    // Once a task loses overlap during drag, it becomes NEAR and stays NEAR
-    const draggedEvent = timedEvents.find(e => e.id === draggingEventId);
-    if (draggedEvent) {
-      const taskStart = toMinutes(event.startTime);
-      const taskEnd = toMinutes(event.endTime);
-      
-      // Use currentDragPosition for the dragged task's actual position during drag
-      const originalDraggedStart = toMinutes(draggedEvent.startTime);
-      const originalDraggedEnd = toMinutes(draggedEvent.endTime);
-      const draggedDuration = originalDraggedEnd - originalDraggedStart;
-      
-      // If currentDragPosition is available, use it; otherwise use original times
-      const draggedStart = currentDragPosition !== null ? currentDragPosition : originalDraggedStart;
-      const draggedEnd = currentDragPosition !== null ? currentDragPosition + draggedDuration : originalDraggedEnd;
-      
-      const taskLayout = layoutById[event.id] || { col: 0, columns: 1, span: 1 };
-      const draggedLayout = layoutById[draggingEventId] || { col: 0, columns: 1, span: 1 };
-      
-      // Check if this task currently overlaps in time with dragged task (using current drag position)
-      const overlapsInTime = Math.max(taskStart, draggedStart) < Math.min(taskEnd, draggedEnd);
-      
-      // Check if this task was marked as "broken" (lost overlap during this drag)
-      const wasBroken = brokenAdjTasksRef.current.has(event.id);
-      
-      // Check if this task was ADJ at the INITIAL drag position
-      // Only tasks that were ADJ at the start can ever be ADJ during this drag
-      const wasInitiallyAdj = initialAdjTasksRef.current.has(event.id);
-      
-      if (overlapsInTime && !wasBroken) {
-        // Task overlaps and hasn't been broken - check if it can be ADJ
-        
-        // A task can only be ADJ if:
-        // 1. It was ADJ at the initial drag position (wasInitiallyAdj)
-        // 2. It currently overlaps in time (overlapsInTime) - already checked
-        // If not initially ADJ, it's always NEAR (never becomes ADJ during drag)
-        
-        if (wasInitiallyAdj) {
-          // Task was ADJ at start and still overlaps - mark as ADJ
-          adjTaskIdsRef.current.add(event.id);
-          debugLabel += ' ADJ';
-        } else {
-          // Task overlaps but wasn't ADJ at start - mark as NEAR
-          nearTaskIdsRef.current.add(event.id);
-          debugLabel += ' NEAR';
-        }
-      } else if (wasBroken) {
-        // Task was ADJ but lost overlap during drag - mark as OLD
-        nearTaskIdsRef.current.add(event.id);
-        debugLabel += ' OLD';
-      } else {
-        // Task doesn't overlap - check if it was ADJ before and now lost overlap
-        if (adjTaskIdsRef.current.has(event.id)) {
-          // Was ADJ, now lost overlap - mark as broken and show OLD
-          brokenAdjTasksRef.current.add(event.id);
-          adjTaskIdsRef.current.delete(event.id);
-          nearTaskIdsRef.current.add(event.id);
-          debugLabel += ' OLD';
-        } else if (nearTaskIdsRef.current.has(event.id)) {
-          // Was already NEAR - keep it
-          debugLabel += ' NEAR';
-        }
-        // If not in either set, no label (not connected to dragged task)
-      }
-    }
-  } else {
-    // Not in drag - clear broken adj tracking (will be repopulated on next drag)
-    // Don't show ADJ label when not dragging
-  }
-  
-  const eventStyle = isDragging
-    ? [
-        styles.eventItem,
-        {
-          height: layoutStyle.height,
-          backgroundColor: bg,
-        },
-        animatedStyle,
-      ]
-    : [
-        styles.eventItem,
-        {
-          top: baseTop,
-          height: layoutStyle.height,
-          left: layoutStyle.left,
-          width: layoutStyle.width,
-          backgroundColor: bg,
-          opacity: 1,
-          zIndex: 1,
-        },
-      ];
+  const eventStyle = [
+    styles.eventItem,
+    {
+      height: layoutStyle.height,
+      backgroundColor: bg,
+    },
+    animatedStyle,
+  ];
 
   return (
     <View {...panResponder.panHandlers}>
-        <EventComponent style={eventStyle}>
+        <Animated.View style={eventStyle}>
           <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF', fontSize: 10, fontWeight: 'bold' }]}>
             {debugLabel}
           </Text>
@@ -587,7 +488,7 @@ function DraggableEvent({
               {event.startTime} - {event.endTime}
             </Text>
           )}
-        </EventComponent>
+        </Animated.View>
     </View>
   );
 }
@@ -613,25 +514,13 @@ export default function OggiScreen() {
   const dragInitialTop = useSharedValue(0);
   const scrollViewRef = useRef<ScrollView>(null);
   
-  // Stores the stable layout (snapshot) to use as a lock during drag
   const stableLayoutRef = useRef<Record<string, LayoutInfo>>({});
-  const pairLockRef = useRef<Record<string, PairLock>>({});
-  // Tracks pairs that broke overlap during current drag (format: "id1-id2" or "id2-id1")
   const brokenOverlapPairsRef = useRef<Set<string>>(new Set());
-  // TEST: Stores the final column where task was dropped during drag
-  const finalDragColumnRef = useRef<Record<string, number>>({});
-  // Stores tasks that have ADJ during drag (persists after drag ends)
-  const adjTaskIdsRef = useRef<Set<string>>(new Set());
-  // Stores tasks that have NEAR during drag (for compaction after drag ends)
-  const nearTaskIdsRef = useRef<Set<string>>(new Set());
-  // Stores tasks that lost overlap (broken adj) during drag - they become OLD and stay OLD
-  const brokenAdjTasksRef = useRef<Set<string>>(new Set());
-  // Stores tasks that were ADJ at the INITIAL drag position - only these can ever be ADJ
-  const initialAdjTasksRef = useRef<Set<string>>(new Set());
-  // Stores position type (Top/Bottom/Middle) for tasks during drag
-  const taskPositionTypeRef = useRef<Record<string, 'top' | 'bottom' | 'middle'>>({});
-  // State to force re-render when position type changes
-  const [taskPositionTypeState, setTaskPositionTypeState] = useState<Record<string, 'top' | 'bottom' | 'middle'>>({});
+  // Rank determines left-to-right order within a cluster.
+  // Initialised from createdAt; bumped to a new high value each time a task is dragged,
+  // so the last-moved task is always rightmost. Never reset, so relative order is stable.
+  const columnRankRef = useRef<Record<string, number>>({});
+  let rankCounterRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -754,7 +643,7 @@ export default function OggiScreen() {
       const title = h.text;
 
       if (isAllDayMarker || (!start && !end)) {
-        allDay.push({ id: h.id, title, startTime: '00:00', endTime: '24:00', isAllDay: true, color });
+        allDay.push({ id: h.id, title, startTime: '00:00', endTime: '24:00', isAllDay: true, color, createdAt: h.createdAt });
       } else if (start) {
         let finalEnd = end;
         if (!end) {
@@ -764,15 +653,42 @@ export default function OggiScreen() {
         } else if (end === '23:59') {
           finalEnd = '24:00';
         }
-        items.push({ id: h.id, title, startTime: start, endTime: finalEnd!, isAllDay: false, color });
+        items.push({ id: h.id, title, startTime: start, endTime: finalEnd!, isAllDay: false, color, createdAt: h.createdAt });
       } else if (!start && end) {
         const [eh] = end.split(':').map(Number);
         const startHour = Math.max(0, eh - 1);
-        items.push({ id: h.id, title, startTime: `${String(startHour).padStart(2, '0')}:00`, endTime: end === '23:59' ? '24:00' : end, isAllDay: false, color });
+        items.push({ id: h.id, title, startTime: `${String(startHour).padStart(2, '0')}:00`, endTime: end === '23:59' ? '24:00' : end, isAllDay: false, color, createdAt: h.createdAt });
       }
     }
     return { timedEvents: items, allDayEvents: allDay };
   }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1]);
+
+  // Initialise column rank for any task that doesn't yet have one.
+  // Rank determines left-to-right order: lower rank = leftmost column.
+  // Initial rank comes from createdAt (older = lower rank).
+  // Tasks with the same createdAt are sorted by ID string for stability.
+  // On drag end the moved task gets a new rank higher than all existing ones,
+  // making it permanently rightmost until another task is moved after it.
+  useEffect(() => {
+    const ranks = columnRankRef.current;
+    const newTasks = timedEvents.filter(ev => ranks[ev.id] === undefined);
+    if (newTasks.length === 0) return;
+
+    // Sort new tasks by createdAt then id to assign ranks in creation order
+    newTasks.sort((a, b) => {
+      const da = a.createdAt ?? '';
+      const db = b.createdAt ?? '';
+      if (da !== db) return da < db ? -1 : 1;
+      return a.id < b.id ? -1 : 1;
+    });
+
+    // Assign ranks starting from 1, spaced so there is room between existing tasks
+    let next = rankCounterRef.current + 1;
+    for (const ev of newTasks) {
+      ranks[ev.id] = next++;
+    }
+    rankCounterRef.current = next - 1;
+  }, [timedEvents]);
 
   // Reset all-day section height when there are no all-day events so hourHeight is unaffected
   useEffect(() => {
@@ -818,1181 +734,180 @@ export default function OggiScreen() {
     return () => clearTimeout(timer);
   }, [recentlyMovedEventId, timedEvents]);
 
-  // Logic for layout calculation
   const calculateLayout = useCallback((
     events: (OggiEvent & { s: number; e: number; duration: number; isLastMoved: boolean })[],
     draggedEventId: string | null,
-    lockedLayout?: Record<string, LayoutInfo> // "Frozen" layout from snapshot
+    stableLayout?: Record<string, LayoutInfo>
   ) => {
     const layout: Record<string, LayoutInfo> = {};
-    const eventMap = events.reduce<Record<string, (typeof events)[number]>>((acc, ev) => {
-      acc[ev.id] = ev;
-      return acc;
-    }, {});
-
-    const prunePairLocks = () => {
-      const locks = pairLockRef.current;
-      for (const key of Object.keys(locks)) {
-        const lock = locks[key];
-        const left = eventMap[lock.leftId];
-        const right = eventMap[lock.rightId];
-        if (!left || !right) {
-          delete locks[key];
-          continue;
-        }
-        const stillOverlap = Math.max(left.s, right.s) < Math.min(left.e, right.e);
-        const sameStart = left.s === right.s;
-        const rightStartsEarlier = right.s < left.s;
-        if (!stillOverlap || (!sameStart && !rightStartsEarlier)) {
-          delete locks[key];
-        }
-      }
-    };
-
-    prunePairLocks();
-
-    const lockEntries = Object.entries(pairLockRef.current);
-    const lockLookup = lockEntries.reduce<Record<string, { col: number; pairKey: string; partnerId: string }>>((acc, [key, lock]) => {
-      acc[lock.leftId] = { col: lock.leftCol, pairKey: key, partnerId: lock.rightId };
-      acc[lock.rightId] = { col: lock.rightCol, pairKey: key, partnerId: lock.leftId };
-      return acc;
-    }, {});
+    const ranks = columnRankRef.current;
+    const ov = (a: { s: number; e: number }, b: { s: number; e: number }) =>
+      Math.max(a.s, b.s) < Math.min(a.e, b.e);
     
-    // 1. Cluster based on time
-    let clusters: typeof events[] = [];
-    let currentCluster: typeof events = [];
-    let clusterEnd = -1;
-
-    const sortedByTime = [...events].sort((a, b) => {
-        if (a.s !== b.s) return a.s - b.s;
-        return b.duration - a.duration;
+    // 1. Cluster events by time overlap
+    const sorted = [...events].sort((a, b) => {
+      if (a.s !== b.s) return a.s - b.s;
+      return b.duration - a.duration;
     });
 
-    for (const ev of sortedByTime) {
-      if (currentCluster.length === 0) {
-        currentCluster.push(ev);
-        clusterEnd = ev.e;
+    const clusters: typeof events[] = [];
+    let curCluster: typeof events = [];
+    let clEnd = -1;
+
+    for (const ev of sorted) {
+      if (curCluster.length === 0) {
+        curCluster.push(ev);
+        clEnd = ev.e;
+      } else if (ev.s < clEnd) {
+        curCluster.push(ev);
+        clEnd = Math.max(clEnd, ev.e);
       } else {
-        if (ev.s < clusterEnd) {
-          currentCluster.push(ev);
-          clusterEnd = Math.max(clusterEnd, ev.e);
-        } else {
-          clusters.push(currentCluster);
-          currentCluster = [ev];
-          clusterEnd = ev.e;
-        }
+        clusters.push(curCluster);
+        curCluster = [ev];
+        clEnd = ev.e;
       }
     }
-    if (currentCluster.length > 0) clusters.push(currentCluster);
+    if (curCluster.length > 0) clusters.push(curCluster);
 
-    // 2. Process clusters
+    // 2. Process each cluster
     for (const cluster of clusters) {
-        // Calculate the maximum concurrent overlap for the ENTIRE cluster
-        // This determines totalCols for ALL tasks in this cluster
-        const getClusterMaxConcurrent = (): number => {
-            if (cluster.length <= 1) return cluster.length;
-            
-            // Collect all boundary times in the cluster
-            const boundaries = new Set<number>();
-            for (const task of cluster) {
-                boundaries.add(task.s);
-                boundaries.add(task.e);
-            }
-            
-            const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
-            let maxConcurrent = 1;
-            
-            // For each time slice, count how many tasks are active
-            for (let i = 0; i < sortedBoundaries.length - 1; i++) {
-                const sliceMid = (sortedBoundaries[i] + sortedBoundaries[i + 1]) / 2;
-                let concurrent = 0;
-                for (const task of cluster) {
-                    if (task.s < sliceMid && task.e > sliceMid) {
-                        concurrent++;
-                    }
-                }
-                maxConcurrent = Math.max(maxConcurrent, concurrent);
-            }
-            
-            return maxConcurrent;
-        };
-        
-        const clusterMaxConcurrent = getClusterMaxConcurrent();
-        
-        // Sort order: Stable first, Mover last
-        const insertionOrder = [...cluster].sort((a, b) => {
-            const aIsMover = draggedEventId ? (a.id === draggedEventId) : (a.id === lastMovedEventId);
-            const bIsMover = draggedEventId ? (b.id === draggedEventId) : (b.id === lastMovedEventId);
-            
-            if (!aIsMover && bIsMover) return -1;
-            if (aIsMover && !bIsMover) return 1;
-            
-            if (a.s !== b.s) return a.s - b.s;
-            return b.duration - a.duration;
-        });
+      if (cluster.length === 1) {
+        layout[cluster[0].id] = { col: 0, columns: 1, span: 1 };
+        continue;
+      }
 
-        const columns: typeof insertionOrder[] = [];
-        
-        for (const ev of insertionOrder) {
-            const isMover = draggedEventId ? (ev.id === draggedEventId) : (ev.id === lastMovedEventId);
-            let startSearchCol = 0;
+      // During an active drag, we treat the dragged task specially to ensure it stays on top/right.
+      // Outside of a drag, we rely entirely on the saved ranks and first-fit to pack without holes.
+      const moverId = draggedEventId;
+      const mover = moverId ? cluster.find(e => e.id === moverId) : null;
 
-            // During drag: if task has no overlap with any other task, put it in column 0 (highest priority)
-            if (isMover && draggedEventId) {
-                const hasOverlap = cluster.some(other => {
-                    if (other.id === ev.id) return false;
-                    return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                });
-                
-                if (!hasOverlap) {
-                    // No overlap - put in column 0 and clear saved column
-                    delete finalDragColumnRef.current[ev.id];
-                    while (columns.length <= 0) columns.push([]);
-                    columns[0].push(ev);
-                    layout[ev.id] = { col: 0, columns: 1, span: 1 };
-                    continue;
-                }
-            }
+      const insertionOrder = [...cluster].sort((a, b) => {
+        const aM = mover && a.id === mover.id;
+        const bM = mover && b.id === mover.id;
+        if (aM && !bM) return 1;
+        if (!aM && bM) return -1;
+        const ra = ranks[a.id] ?? 0;
+        const rb = ranks[b.id] ?? 0;
+        if (ra !== rb) return ra - rb;
+        if (a.s !== b.s) return a.s - b.s;
+        return b.duration - a.duration;
+      });
 
-            // TEST: Priority - if task has a final drag column saved, use it and ignore all other locks
-            const savedColumn = finalDragColumnRef.current[ev.id];
-            if (savedColumn !== undefined) {
-                while (columns.length <= savedColumn) columns.push([]);
-                const targetColumn = columns[savedColumn];
-                const hasCollision = targetColumn.some(existingEv =>
-                    Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
-                );
-                if (!hasCollision) {
-                    targetColumn.push(ev);
-                    layout[ev.id] = { col: savedColumn, columns: 1, span: 1 };
-                    continue;
-                }
-            }
-
-            const lockInfo = lockLookup[ev.id];
-            if (lockInfo) {
-                const partnerStillInCluster = cluster.some(c => c.id === lockInfo.partnerId);
-                if (!partnerStillInCluster) {
-                    delete pairLockRef.current[lockInfo.pairKey];
-                    delete lockLookup[ev.id];
-                    delete lockLookup[lockInfo.partnerId];
-                } else {
-                    // Check if this pair broke overlap during drag - if so, ignore the lock
-                    const pairKey1 = `${ev.id}-${lockInfo.partnerId}`;
-                    const pairKey2 = `${lockInfo.partnerId}-${ev.id}`;
-                    const isBrokenPair = brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
-                    
-                    if (isBrokenPair) {
-                        // This pair broke overlap - delete the lock and let normal logic handle it
-                        delete pairLockRef.current[lockInfo.pairKey];
-                        delete lockLookup[ev.id];
-                        delete lockLookup[lockInfo.partnerId];
-                    } else {
-                        while (columns.length <= lockInfo.col) columns.push([]);
-                        const lockedColumn = columns[lockInfo.col];
-                        const hasCollision = lockedColumn.some(existingEv =>
-                            Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
-                        );
-                        if (!hasCollision) {
-                            lockedColumn.push(ev);
-                            layout[ev.id] = { col: lockInfo.col, columns: 1, span: 1 };
-                            continue;
-                        } else {
-                            delete pairLockRef.current[lockInfo.pairKey];
-                            delete lockLookup[ev.id];
-                            delete lockLookup[lockInfo.partnerId];
-                        }
-                    }
-                }
-            }
-
-            if (!lockInfo && isMover) {
-                const overlapsAny = cluster.some(other => {
-                    if (other.id === ev.id) return false;
-                    return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                });
-                const sameStartOverlap = cluster.some(other => {
-                    if (other.id === ev.id) return false;
-                    return other.s === ev.s && Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                });
-                
-                // Force right ONLY if we broke overlap with at least one of the currently overlapping tasks
-                // OR if same start overlap (existing logic)
-                let forceRight = sameStartOverlap;
-                if (draggedEventId && overlapsAny) {
-                    const brokeOverlapWithCurrent = cluster.some(other => {
-                        if (other.id === ev.id) return false;
-                        const overlap = Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                        if (!overlap) return false;
-                        const pairKey1 = `${ev.id}-${other.id}`;
-                        const pairKey2 = `${other.id}-${ev.id}`;
-                        return brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
-                    });
-                    forceRight = forceRight || brokeOverlapWithCurrent;
-                }
-                
-                if (forceRight && overlapsAny) {
-                    startSearchCol = columns.length;
-                }
-            }
-
-            // --- COLUMN LOCK LOGIC ---
-            // Ensure static tasks respect the dragged task's space if they were originally overlapping
-            // AND the dragged task was to the left.
-            if (lockedLayout && lockedLayout[ev.id] && !isMover && draggedEventId && lockedLayout[draggedEventId]) {
-                const sCol = lockedLayout[ev.id].col;
-                const dCol = lockedLayout[draggedEventId].col;
-                
-                // If Mover was strictly to the LEFT of Static task originally
-                if (dCol < sCol) {
-                    // Check if they CURRENTLY overlap
-                    const dCurrent = cluster.find(x => x.id === draggedEventId);
-                    if (dCurrent) {
-                        const overlap = Math.max(ev.s, dCurrent.s) < Math.min(ev.e, dCurrent.e);
-                        // If they still overlap, Static task CANNOT move to the left columns occupied by Dragged
-                        if (overlap) {
-                            startSearchCol = sCol; 
-                        }
-                        // If NO overlap, startSearchCol stays 0 -> Static task can move Left (Fill Gap)
-                    }
-                }
-            }
-
-            // SPECIAL CASE: If dragged task was on LEFT and still overlapping, keep it on LEFT
-            // BUT skip this if we broke overlap with any of these tasks during drag
-            // OR if the dragged task now starts BEFORE the right task (natural order should apply)
-            if (isMover && draggedEventId && lockedLayout && lockedLayout[ev.id]) {
-                const originalDraggedCol = lockedLayout[ev.id].col;
-                
-                // Check if dragged task was originally on LEFT (col 0)
-                if (originalDraggedCol === 0) {
-                    // Find tasks that were originally on the right (col > 0) and overlapping
-                    const originallyOverlappingTasks = cluster.filter(otherEv => {
-                        if (otherEv.id === ev.id || !lockedLayout[otherEv.id]) return false;
-                        const otherCol = lockedLayout[otherEv.id].col;
-                        return otherCol > 0 && otherCol !== originalDraggedCol;
-                    });
-                    
-                    // Check if we broke overlap with any of these tasks - if so, skip this block
-                    const brokeOverlapWithAny = originallyOverlappingTasks.some(otherEv => {
-                        const pairKey1 = `${ev.id}-${otherEv.id}`;
-                        const pairKey2 = `${otherEv.id}-${ev.id}`;
-                        return brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
-                    });
-                    
-                    // Check if dragged task now starts BEFORE any of the originally right tasks
-                    // If so, natural order should apply (dragged task should be on left naturally)
-                    const draggedStartsBeforeAny = originallyOverlappingTasks.some(otherEv => {
-                        const overlapStart = Math.max(ev.s, otherEv.s);
-                        const overlapEnd = Math.min(ev.e, otherEv.e);
-                        const isOverlapping = overlapStart < overlapEnd;
-                        // If overlapping and dragged starts before, natural order applies
-                        return isOverlapping && ev.s < otherEv.s;
-                    });
-                    
-                    if (brokeOverlapWithAny || draggedStartsBeforeAny) {
-                        // We broke overlap OR dragged task now starts before - skip this special case
-                        // Let the natural order or forceRight logic handle it
-                    } else {
-                        // Check if still overlapping with ANY of those tasks
-                        const stillOverlappingWithAny = originallyOverlappingTasks.some(otherEv => {
-                            const overlapStart = Math.max(ev.s, otherEv.s);
-                            const overlapEnd = Math.min(ev.e, otherEv.e);
-                            return overlapStart < overlapEnd;
-                        });
-                        
-                        if (stillOverlappingWithAny && originallyOverlappingTasks.length > 0) {
-                            // Still overlapping: keep dragged task on LEFT (col 0)
-                            while (columns.length <= 0) columns.push([]);
-                            const col0 = columns[0];
-                            const hasCollision = col0.some(existingEv => 
-                                existingEv.id !== ev.id && Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
-                            );
-                            if (!hasCollision) {
-                                col0.push(ev);
-                                layout[ev.id] = { col: 0, columns: 1, span: 1 };
-                                continue; // Skip First Fit - stays on LEFT
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Re-entering overlap for Mover (goes to right)
-            // BUT only if we actually broke overlap with that specific task during drag
-            if (isMover && draggedEventId && lockedLayout && lockedLayout[ev.id]) {
-                const originalDraggedCol = lockedLayout[ev.id].col;
-                
-                // Check if re-entering overlap with originally overlapping tasks
-                // AND we broke overlap with at least one of them
-                const isReEnteringOverlap = cluster.some(otherEv => {
-                    if (otherEv.id === ev.id || !lockedLayout[otherEv.id]) return false;
-                    const originalOtherCol = lockedLayout[otherEv.id].col;
-                    const wereOriginallyOverlapping = originalDraggedCol !== originalOtherCol;
-                    
-                    if (wereOriginallyOverlapping) {
-                        const overlapStart = Math.max(ev.s, otherEv.s);
-                        const overlapEnd = Math.min(ev.e, otherEv.e);
-                        const currentlyOverlapping = overlapStart < overlapEnd;
-                        
-                        if (currentlyOverlapping) {
-                            // Check if we broke overlap with this specific task
-                            const pairKey1 = `${ev.id}-${otherEv.id}`;
-                            const pairKey2 = `${otherEv.id}-${ev.id}`;
-                            const brokeOverlapWithThis = brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
-                            return brokeOverlapWithThis;
-                        }
-                    }
-                    return false;
-                });
-                
-                // Only go to right if it was originally on left and is re-entering
-                // AND we broke overlap with that task
-                // (if it was already handled above, this won't execute due to continue)
-                if (isReEnteringOverlap && originalDraggedCol === 0) {
-                    columns.push([ev]);
-                    layout[ev.id] = { col: columns.length - 1, columns: 1, span: 1 };
-                    continue;
-                }
-            }
-
-            // NEW LOGIC: If task is in overlap, always go to the right
-            // For new tasks (not in drag): if overlapping, go to right
-            // During drag: if overlapping, go to right
-            if (!isMover || !draggedEventId) {
-                // New task or not dragging: if in overlap, go to right
-                const hasOverlap = cluster.some(other => {
-                    if (other.id === ev.id) return false;
-                    return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                });
-                if (hasOverlap) {
-                    startSearchCol = columns.length; // Start from the rightmost
-                }
-            } else if (isMover && draggedEventId) {
-                // During drag: if overlapping, go to right (handled in placement logic below)
-                const hasOverlap = cluster.some(other => {
-                    if (other.id === ev.id) return false;
-                    return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                });
-                if (hasOverlap) {
-                    // The actual column calculation is done in the placement logic below
-                    startSearchCol = columns.length; // Fallback: start from the rightmost
-                }
-            }
-
-            // Standard First Fit
-            let placed = false;
-            
-            // Special handling for D during drag when overlapping
-            if (isMover && draggedEventId) {
-                // Check for exact time matches (touching at start/end)
-                const tasksAbove: typeof cluster = [];
-                const tasksBelow: typeof cluster = [];
-                const tasksTouching: typeof cluster = [];
-                
-                for (const other of cluster) {
-                    if (other.id === ev.id) continue;
-                    
-                    // Check if D ends exactly when task below starts
-                    if (ev.e === other.s) {
-                        tasksBelow.push(other);
-                        taskPositionTypeRef.current[ev.id] = 'top';
-                        taskPositionTypeRef.current[other.id] = 'bottom';
-                    }
-                    // Check if D starts exactly when task above ends
-                    else if (ev.s === other.e) {
-                        tasksAbove.push(other);
-                        taskPositionTypeRef.current[ev.id] = 'bottom';
-                        taskPositionTypeRef.current[other.id] = 'top';
-                    }
-                    // Check if D is sandwich (between two tasks)
-                    else if (ev.s > other.s && ev.e < other.e) {
-                        // D is completely inside other task
-                        tasksTouching.push(other);
-                    }
-                    else if (other.s > ev.s && other.e < ev.e) {
-                        // Other task is completely inside D
-                        tasksTouching.push(other);
-                    }
-                }
-                
-                // Check if D is sandwich (has tasks both above and below)
-                if (tasksAbove.length > 0 && tasksBelow.length > 0) {
-                    const newTypes: Record<string, 'top' | 'bottom' | 'middle'> = {};
-                    newTypes[ev.id] = 'middle';
-                    tasksAbove.forEach(t => newTypes[t.id] = 'top');
-                    tasksBelow.forEach(t => newTypes[t.id] = 'bottom');
-                    taskPositionTypeRef.current = { ...taskPositionTypeRef.current, ...newTypes };
-                    setTaskPositionTypeState(prev => ({ ...prev, ...newTypes }));
-                } else {
-                    // Update state for individual position types
-                    const newTypes: Record<string, 'top' | 'bottom' | 'middle'> = {};
-                    if (tasksAbove.length > 0) {
-                        newTypes[ev.id] = 'bottom';
-                        tasksAbove.forEach(t => newTypes[t.id] = 'top');
-                    }
-                    if (tasksBelow.length > 0) {
-                        newTypes[ev.id] = 'top';
-                        tasksBelow.forEach(t => newTypes[t.id] = 'bottom');
-                    }
-                    if (Object.keys(newTypes).length > 0) {
-                        taskPositionTypeRef.current = { ...taskPositionTypeRef.current, ...newTypes };
-                        setTaskPositionTypeState(prev => ({ ...prev, ...newTypes }));
-                    }
-                }
-                
-                const overlappingTasks = cluster.filter(other => {
-                    if (other.id === ev.id) return false;
-                    return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                });
-                
-                // Also include tasks that touch exactly (same start or end) - but NOT for span calculation
-                const touchingTasks = cluster.filter(other => {
-                    if (other.id === ev.id) return false;
-                    return (ev.e === other.s) || (ev.s === other.e);
-                });
-                
-                // For span calculation: only overlapping tasks count, NOT touching tasks
-                // If tasks touch exactly (same time), they don't affect span calculation
-                const allRelevantTasks = [...overlappingTasks];
-                
-                // Helper function: calculate maximum concurrent overlap at any instant
-                // This counts how many tasks (including ev) are overlapping at the same time
-                const getMaxConcurrentOverlap = (mainTask: typeof ev, otherTasks: typeof overlappingTasks): number => {
-                    if (otherTasks.length === 0) return 1; // Just the main task
-                    
-                    // Collect all boundary times within mainTask's duration
-                    const boundaries = new Set<number>();
-                    boundaries.add(mainTask.s);
-                    boundaries.add(mainTask.e);
-                    
-                    for (const task of otherTasks) {
-                        // Only add boundaries that are within mainTask's duration
-                        if (task.s > mainTask.s && task.s < mainTask.e) boundaries.add(task.s);
-                        if (task.e > mainTask.s && task.e < mainTask.e) boundaries.add(task.e);
-                    }
-                    
-                    const sortedBoundaries = Array.from(boundaries).sort((a, b) => a - b);
-                    let maxConcurrent = 1; // At least the main task
-                    
-                    // For each time slice between boundaries, count overlapping tasks
-                    for (let i = 0; i < sortedBoundaries.length - 1; i++) {
-                        const sliceStart = sortedBoundaries[i];
-                        const sliceEnd = sortedBoundaries[i + 1];
-                        const sliceMid = (sliceStart + sliceEnd) / 2; // Check middle of slice
-                        
-                        // Count tasks active at sliceMid (main task is always active within its duration)
-                        let concurrent = 1; // Main task
-                        for (const task of otherTasks) {
-                            if (task.s < sliceMid && task.e > sliceMid) {
-                                concurrent++;
-                            }
-                        }
-                        maxConcurrent = Math.max(maxConcurrent, concurrent);
-                    }
-                    
-                    return maxConcurrent;
-                };
-                
-                if (allRelevantTasks.length > 0) {
-                    // CHECKER: If task has Top/Bottom/Middle, render immediately
-                    const hasPositionType = taskPositionTypeRef.current[ev.id] !== undefined;
-                    
-                    if (hasPositionType) {
-                        // Task has Top/Bottom/Middle, calculate span immediately
-                        // IMPORTANT: For span calculation, use ALL events that overlap, not just cluster
-                        // This ensures we count all concurrent overlaps correctly
-                        const allOverlappingForSpan = events.filter(other => {
-                            if (other.id === ev.id) return false;
-                            return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                        });
-                        const tasksInDSpace = getMaxConcurrentOverlap(ev, allOverlappingForSpan);
-                        
-                        // Find which columns are occupied by overlapping/touching tasks
-                        const occupiedCols = new Set<number>();
-                    for (const otherTask of allRelevantTasks) {
-                        const otherLayout = layout[otherTask.id];
-                        if (otherLayout) {
-                            const otherCol = otherLayout.col;
-                            const otherSpan = otherLayout.span || 1;
-                            for (let i = 0; i < otherSpan; i++) {
-                                occupiedCols.add(otherCol + i);
-                            }
-                        }
-                    }
-                    
-                    // Also check columns array directly for ALL tasks that might be placed but layout not updated
-                    // IMPORTANT: Check ALL tasks in columns, not just those in allRelevantTasks,
-                    // because tasks might be placed but their layout not yet updated
-                    for (let colIdx = 0; colIdx < columns.length; colIdx++) {
-                        const col = columns[colIdx];
-                        // Check if ANY task in this column overlaps with the dragged task
-                        const hasOverlappingTask = col.some(existingEv => {
-                            if (existingEv.id === ev.id) return false;
-                            // Check if this task overlaps with dragged task
-                            return Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e);
-                        });
-                        if (hasOverlappingTask) {
-                            occupiedCols.add(colIdx);
-                        }
-                    }
-                    
-                    // Calculate total columns: consider all tasks that have been placed
-                    // First, find the maximum column index from all placed tasks
-                    let maxColFromLayout = -1;
-                    for (const otherTask of cluster) {
-                        if (otherTask.id === ev.id) continue;
-                        const otherLayout = layout[otherTask.id];
-                        if (otherLayout) {
-                            const otherEndCol = otherLayout.col + (otherLayout.span || 1) - 1;
-                            maxColFromLayout = Math.max(maxColFromLayout, otherEndCol);
-                        }
-                    }
-                    // Also check columns array for tasks that might be placed but layout not updated
-                    // Check beyond columns.length to catch all placed tasks
-                    const maxColToCheckForTotal = Math.max(columns.length, maxColFromLayout + 1);
-                    for (let colIdx = 0; colIdx < maxColToCheckForTotal; colIdx++) {
-                        if (colIdx < columns.length && columns[colIdx].length > 0) {
-                            maxColFromLayout = Math.max(maxColFromLayout, colIdx);
-                        }
-                    }
-                    // Also consider occupied columns from the calculation above
-                    const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
-                    maxColFromLayout = Math.max(maxColFromLayout, maxOccupiedCol);
-                    // Total columns = max concurrent overlap in the ENTIRE cluster
-                    // This ensures all tasks in the same block use the same column count
-                    const totalCols = Math.max(columns.length, maxColFromLayout + 1, clusterMaxConcurrent);
-                    
-                    // Calculate span based on how many tasks overlap with THIS task at its peak
-                    // span = totalCols / tasksInDSpace (concurrent overlap for this specific task)
-                    const dSpan = Math.max(1, Math.floor(totalCols / tasksInDSpace));
-                    
-                    // Find free columns (gaps) between occupied columns
-                    const freeCols: number[] = [];
-                    for (let colIdx = 0; colIdx < totalCols; colIdx++) {
-                        if (!occupiedCols.has(colIdx)) {
-                            freeCols.push(colIdx);
-                        }
-                    }
-                    
-                    // Place D in the first free columns (gaps)
-                    // If there are free columns, find consecutive free columns that can fit the span
-                    // IMPORTANT: If task is already positioned, try to expand left to increase span
-                    // Otherwise, place D after the last occupied column
-                    let dStartCol: number;
-                    let actualSpan = dSpan;
-                    
-                    if (freeCols.length > 0) {
-                        // Check if task is already positioned
-                        const currentLayout = layout[ev.id];
-                        const isAlreadyPositioned = currentLayout !== undefined;
-                        
-                        if (isAlreadyPositioned && currentLayout) {
-                            // Task is already positioned - but if there are free columns, 
-                            // task must go to the first free column on the left
-                            const currentCol = currentLayout.col;
-                            const currentSpan = currentLayout.span || 1;
-                            
-                            // Find the first (leftmost) free column
-                            const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
-                            
-                            if (firstFreeCol !== null) {
-                                // Try to form a consecutive sequence starting from the first free column
-                                let canFormSequence = true;
-                                let sequenceSpan = 0;
-                                
-                                // Start from firstFreeCol and try to form a sequence of dSpan columns
-                                for (let col = firstFreeCol; col < firstFreeCol + dSpan; col++) {
-                                    // Check if this column is free or part of current position
-                                    if (freeCols.includes(col)) {
-                                        // Column is free
-                                        sequenceSpan++;
-                                    } else if (col >= currentCol && col < currentCol + currentSpan) {
-                                        // Column is part of current position (available for the task)
-                                        sequenceSpan++;
-                                    } else {
-                                        // Column is occupied by another task, cannot form sequence
-                                        canFormSequence = false;
-                                        break;
-                                    }
-                                }
-                                
-                                if (canFormSequence && sequenceSpan >= dSpan) {
-                                    // We can form the required span starting from firstFreeCol
-                                    dStartCol = firstFreeCol;
-                                    actualSpan = dSpan;
-                                } else {
-                                    // Cannot form full span from first free column, but still use first free column
-                                    // Start from the first free column and count consecutive free columns
-                                    dStartCol = firstFreeCol;
-                                    let consecutiveCount = 1;
-                                    
-                                    // Count consecutive free columns starting from firstFreeCol
-                                    for (let i = 1; i < freeCols.length; i++) {
-                                        if (freeCols[i] === firstFreeCol + consecutiveCount) {
-                                            consecutiveCount++;
-                                            if (consecutiveCount >= dSpan) {
-                                                break;
-                                            }
-                                        } else if (freeCols[i] > firstFreeCol + consecutiveCount) {
-                                            // Gap in sequence, stop counting
-                                            break;
-                                        }
-                                    }
-                                    
-                                    actualSpan = Math.min(consecutiveCount, dSpan);
-                                }
-                            } else {
-                                // No free columns, use normal logic
-                                dStartCol = freeCols[0];
-                                let consecutiveCount = 1;
-                                
-                                for (let i = 1; i < freeCols.length; i++) {
-                                    if (freeCols[i] === freeCols[i-1] + 1) {
-                                        consecutiveCount++;
-                                        if (consecutiveCount >= dSpan) {
-                                            break;
-                                        }
-                                    } else {
-                                        if (consecutiveCount >= dSpan) {
-                                            break;
-                                        }
-                                        dStartCol = freeCols[i];
-                                        consecutiveCount = 1;
-                                    }
-                                }
-                                
-                                actualSpan = Math.min(consecutiveCount, dSpan);
-                            }
-                        } else {
-                            // Task not yet positioned - must go to the first free column on the left
-                            // Find the first (leftmost) free column
-                            const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
-                            
-                            if (firstFreeCol !== null) {
-                                // Check if we can form a consecutive sequence of dSpan columns starting from firstFreeCol
-                                // IMPORTANT: Check directly against occupiedCols for more reliable results
-                                let canFormFullSpan = true;
-                                let consecutiveCount = 0;
-                                
-                                // Check if all columns from firstFreeCol to firstFreeCol + dSpan - 1 are free
-                                // Verify directly against occupiedCols to ensure accuracy
-                                for (let col = firstFreeCol; col < firstFreeCol + dSpan && col < totalCols; col++) {
-                                    if (!occupiedCols.has(col)) {
-                                        consecutiveCount++;
-                                    } else {
-                                        // This column is occupied, cannot form full span
-                                        canFormFullSpan = false;
-                                        break;
-                                    }
-                                }
-                                
-                                if (canFormFullSpan && consecutiveCount >= dSpan) {
-                                    // We can form the full span starting from firstFreeCol
-                                    dStartCol = firstFreeCol;
-                                    actualSpan = dSpan;
-                                } else {
-                                    // Cannot form full span, count consecutive free columns starting from firstFreeCol
-                                    // Use a more reliable method: check directly against occupiedCols
-                                    dStartCol = firstFreeCol;
-                                    consecutiveCount = 1;
-                                    
-                                    // Count consecutive free columns starting from firstFreeCol
-                                    // Check up to totalCols to ensure we don't miss any columns
-                                    for (let col = firstFreeCol + 1; col < totalCols && consecutiveCount < dSpan; col++) {
-                                        if (!occupiedCols.has(col)) {
-                                            consecutiveCount++;
-                                        } else {
-                                            // Gap in sequence, stop counting
-                                            break;
-                                        }
-                                    }
-                                    
-                                    actualSpan = Math.min(consecutiveCount, dSpan);
-                                }
-                            } else {
-                                // No free columns, use normal logic
-                                dStartCol = freeCols[0];
-                                let consecutiveCount = 1;
-                                
-                                for (let i = 1; i < freeCols.length; i++) {
-                                    if (freeCols[i] === freeCols[i-1] + 1) {
-                                        consecutiveCount++;
-                                        if (consecutiveCount >= dSpan) {
-                                            break;
-                                        }
-                                    } else {
-                                        if (consecutiveCount >= dSpan) {
-                                            break;
-                                        }
-                                        dStartCol = freeCols[i];
-                                        consecutiveCount = 1;
-                                    }
-                                }
-                                
-                                actualSpan = Math.min(consecutiveCount, dSpan);
-                            }
-                        }
-                    } else {
-                        // No free columns, place D after the last occupied column
-                        const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
-                        dStartCol = maxOccupiedCol + 1;
-                        actualSpan = dSpan;
-                    }
-                    
-                    const dEndCol = dStartCol + actualSpan - 1;
-                    
-                    // Ensure columns exist
-                    while (columns.length <= dEndCol) {
-                        columns.push([]);
-                    }
-                    
-                    // Place D in all columns from dStartCol to dEndCol
-                    for (let colIdx = dStartCol; colIdx <= dEndCol; colIdx++) {
-                        columns[colIdx].push(ev);
-                    }
-                    
-                        layout[ev.id] = { col: dStartCol, columns: totalCols, span: actualSpan };
-                        placed = true;
-                    } else {
-                        // No Top/Bottom/Middle, use normal overlap logic
-                        // IMPORTANT: For span calculation, use ALL events that overlap, not just cluster
-                        const allOverlappingForSpan = events.filter(other => {
-                            if (other.id === ev.id) return false;
-                            return Math.max(ev.s, other.s) < Math.min(ev.e, other.e);
-                        });
-                        const tasksInDSpace = getMaxConcurrentOverlap(ev, allOverlappingForSpan);
-                        
-                        // Find which columns are occupied by overlapping tasks
-                        const occupiedCols = new Set<number>();
-                        for (const otherTask of overlappingTasks) {
-                            const otherLayout = layout[otherTask.id];
-                            if (otherLayout) {
-                                const otherCol = otherLayout.col;
-                                const otherSpan = otherLayout.span || 1;
-                                for (let i = 0; i < otherSpan; i++) {
-                                    occupiedCols.add(otherCol + i);
-                                }
-                            }
-                        }
-                        
-                        // Also check columns array directly for ALL tasks that might be placed but layout not updated
-                        // IMPORTANT: Check ALL tasks in columns, not just those in overlappingTasks,
-                        // because tasks might be placed but their layout not yet updated
-                        for (let colIdx = 0; colIdx < columns.length; colIdx++) {
-                            const col = columns[colIdx];
-                            // Check if ANY task in this column overlaps with the dragged task
-                            const hasOverlappingTask = col.some(existingEv => {
-                                if (existingEv.id === ev.id) return false;
-                                // Check if this task overlaps with dragged task
-                                return Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e);
-                            });
-                            if (hasOverlappingTask) {
-                                occupiedCols.add(colIdx);
-                            }
-                        }
-                        
-                        // Calculate total columns: consider all tasks that have been placed
-                        // First, find the maximum column index from all placed tasks
-                        let maxColFromLayout = -1;
-                        for (const otherTask of cluster) {
-                            if (otherTask.id === ev.id) continue;
-                            const otherLayout = layout[otherTask.id];
-                            if (otherLayout) {
-                                const otherEndCol = otherLayout.col + (otherLayout.span || 1) - 1;
-                                maxColFromLayout = Math.max(maxColFromLayout, otherEndCol);
-                            }
-                        }
-                        // Also check columns array for tasks that might be placed but layout not updated
-                        // Check beyond columns.length to catch all placed tasks
-                        const maxColToCheckForTotal = Math.max(columns.length, maxColFromLayout + 1);
-                        for (let colIdx = 0; colIdx < maxColToCheckForTotal; colIdx++) {
-                            if (colIdx < columns.length && columns[colIdx].length > 0) {
-                                maxColFromLayout = Math.max(maxColFromLayout, colIdx);
-                            }
-                        }
-                        // Also consider occupied columns from the calculation above
-                        const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
-                        maxColFromLayout = Math.max(maxColFromLayout, maxOccupiedCol);
-                        // Total columns = max concurrent overlap in the ENTIRE cluster
-                        // This ensures all tasks in the same block use the same column count
-                        const totalCols = Math.max(columns.length, maxColFromLayout + 1, clusterMaxConcurrent);
-                        
-                        // Calculate span based on concurrent overlap for this specific task
-                        const dSpan = Math.max(1, Math.floor(totalCols / tasksInDSpace));
-                        
-                        // Find free columns (gaps) between occupied columns
-                        const freeCols: number[] = [];
-                        for (let colIdx = 0; colIdx < totalCols; colIdx++) {
-                            if (!occupiedCols.has(colIdx)) {
-                                freeCols.push(colIdx);
-                            }
-                        }
-                        
-                        // Place D in the first free columns (gaps)
-                        // IMPORTANT: If task is already positioned, try to expand left to increase span
-                        let dStartCol: number;
-                        let actualSpan = dSpan;
-                        
-                        if (freeCols.length > 0) {
-                            // Check if task is already positioned
-                            const currentLayout = layout[ev.id];
-                            const isAlreadyPositioned = currentLayout !== undefined;
-                            
-                            if (isAlreadyPositioned && currentLayout) {
-                                // Task is already positioned - but if there are free columns, 
-                                // task must go to the first free column on the left
-                                const currentCol = currentLayout.col;
-                                const currentSpan = currentLayout.span || 1;
-                                
-                                // Find the first (leftmost) free column
-                                const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
-                                
-                                if (firstFreeCol !== null) {
-                                    // Try to form a consecutive sequence starting from the first free column
-                                    let canFormSequence = true;
-                                    let sequenceSpan = 0;
-                                    
-                                    // Start from firstFreeCol and try to form a sequence of dSpan columns
-                                    for (let col = firstFreeCol; col < firstFreeCol + dSpan; col++) {
-                                        // Check if this column is free or part of current position
-                                        if (freeCols.includes(col)) {
-                                            // Column is free
-                                            sequenceSpan++;
-                                        } else if (col >= currentCol && col < currentCol + currentSpan) {
-                                            // Column is part of current position (available for the task)
-                                            sequenceSpan++;
-                                        } else {
-                                            // Column is occupied by another task, cannot form sequence
-                                            canFormSequence = false;
-                                            break;
-                                        }
-                                    }
-                                    
-                                    if (canFormSequence && sequenceSpan >= dSpan) {
-                                        // We can form the required span starting from firstFreeCol
-                                        dStartCol = firstFreeCol;
-                                        actualSpan = dSpan;
-                                    } else {
-                                        // Cannot form full span from first free column, but still use first free column
-                                        // Start from the first free column and count consecutive free columns
-                                        dStartCol = firstFreeCol;
-                                        let consecutiveCount = 1;
-                                        
-                                        // Count consecutive free columns starting from firstFreeCol
-                                        for (let i = 1; i < freeCols.length; i++) {
-                                            if (freeCols[i] === firstFreeCol + consecutiveCount) {
-                                                consecutiveCount++;
-                                                if (consecutiveCount >= dSpan) {
-                                                    break;
-                                                }
-                                            } else if (freeCols[i] > firstFreeCol + consecutiveCount) {
-                                                // Gap in sequence, stop counting
-                                                break;
-                                            }
-                                        }
-                                        
-                                        actualSpan = Math.min(consecutiveCount, dSpan);
-                                    }
-                                } else {
-                                    // No free columns, use normal logic
-                                    dStartCol = freeCols[0];
-                                    let consecutiveCount = 1;
-                                    
-                                    for (let i = 1; i < freeCols.length; i++) {
-                                        if (freeCols[i] === freeCols[i-1] + 1) {
-                                            consecutiveCount++;
-                                            if (consecutiveCount >= dSpan) {
-                                                break;
-                                            }
-                                        } else {
-                                            if (consecutiveCount >= dSpan) {
-                                                break;
-                                            }
-                                            dStartCol = freeCols[i];
-                                            consecutiveCount = 1;
-                                        }
-                                    }
-                                    
-                                    actualSpan = Math.min(consecutiveCount, dSpan);
-                                }
-                            } else {
-                                // Task not yet positioned - must go to the first free column on the left
-                                // Find the first (leftmost) free column
-                                const firstFreeCol = freeCols.length > 0 ? Math.min(...freeCols) : null;
-                                
-                                if (firstFreeCol !== null) {
-                                    // Check if we can form a consecutive sequence of dSpan columns starting from firstFreeCol
-                                    // IMPORTANT: Check directly against occupiedCols for more reliable results
-                                    let canFormFullSpan = true;
-                                    let consecutiveCount = 0;
-                                    
-                                    // Check if all columns from firstFreeCol to firstFreeCol + dSpan - 1 are free
-                                    // Verify directly against occupiedCols to ensure accuracy
-                                    for (let col = firstFreeCol; col < firstFreeCol + dSpan && col < totalCols; col++) {
-                                        if (!occupiedCols.has(col)) {
-                                            consecutiveCount++;
-                                        } else {
-                                            // This column is occupied, cannot form full span
-                                            canFormFullSpan = false;
-                                            break;
-                                        }
-                                    }
-                                    
-                                    if (canFormFullSpan && consecutiveCount >= dSpan) {
-                                        // We can form the full span starting from firstFreeCol
-                                        dStartCol = firstFreeCol;
-                                        actualSpan = dSpan;
-                                    } else {
-                                        // Cannot form full span, count consecutive free columns starting from firstFreeCol
-                                        // Use a more reliable method: check directly against occupiedCols
-                                        dStartCol = firstFreeCol;
-                                        consecutiveCount = 1;
-                                        
-                                        // Count consecutive free columns starting from firstFreeCol
-                                        // Check up to totalCols to ensure we don't miss any columns
-                                        for (let col = firstFreeCol + 1; col < totalCols && consecutiveCount < dSpan; col++) {
-                                            if (!occupiedCols.has(col)) {
-                                                consecutiveCount++;
-                                            } else {
-                                                // Gap in sequence, stop counting
-                                                break;
-                                            }
-                                        }
-                                        
-                                        actualSpan = Math.min(consecutiveCount, dSpan);
-                                    }
-                                } else {
-                                    // No free columns, use normal logic
-                                    dStartCol = freeCols[0];
-                                    let consecutiveCount = 1;
-                                    
-                                    for (let i = 1; i < freeCols.length; i++) {
-                                        if (freeCols[i] === freeCols[i-1] + 1) {
-                                            consecutiveCount++;
-                                            if (consecutiveCount >= dSpan) {
-                                                break;
-                                            }
-                                        } else {
-                                            if (consecutiveCount >= dSpan) {
-                                                break;
-                                            }
-                                            dStartCol = freeCols[i];
-                                            consecutiveCount = 1;
-                                        }
-                                    }
-                                    
-                                    actualSpan = Math.min(consecutiveCount, dSpan);
-                                }
-                            }
-                        } else {
-                            const maxOccupiedCol = occupiedCols.size > 0 ? Math.max(...Array.from(occupiedCols)) : -1;
-                            dStartCol = maxOccupiedCol + 1;
-                            actualSpan = dSpan;
-                        }
-                        
-                        const dEndCol = dStartCol + actualSpan - 1;
-                        
-                        while (columns.length <= dEndCol) {
-                            columns.push([]);
-                        }
-                        
-                        for (let colIdx = dStartCol; colIdx <= dEndCol; colIdx++) {
-                            columns[colIdx].push(ev);
-                        }
-                        
-                        layout[ev.id] = { col: dStartCol, columns: totalCols, span: actualSpan };
-                        placed = true;
-                    }
-                }
-            }
-            
-            if (!placed) {
-                // Standard First Fit logic
-                for (let i = startSearchCol; i < columns.length; i++) {
-                    const col = columns[i];
-                    const hasCollision = col.some(existingEv => 
-                        Math.max(ev.s, existingEv.s) < Math.min(ev.e, existingEv.e)
-                    );
-                    if (!hasCollision) {
-                        col.push(ev);
-                        layout[ev.id] = { col: i, columns: 1, span: 1 };
-                        placed = true;
-                        break;
-                    }
-                }
-            }
-            
-            if (!placed) {
-                // Ensure we don't skip columns unnecessarily if creating new one
-                // but if startSearchCol > current len, we must pad with empty columns
-                while (columns.length < startSearchCol) {
-                    columns.push([]);
-                }
-                columns.push([ev]);
-                layout[ev.id] = { col: columns.length - 1, columns: 1, span: 1 };
-            }
+      // During drag: check if mover should preserve its column
+      let moverPreservesCol: number | null = null;
+      if (draggedEventId && mover && stableLayout?.[mover.id]) {
+        const origCol = stableLayout[mover.id].col;
+        const hasAny = cluster.some(o => o.id !== mover.id && ov(mover, o));
+        if (hasAny) {
+          const hasUnbroken = cluster.some(o => {
+            if (o.id === mover.id || !stableLayout[o.id]) return false;
+            if (stableLayout[o.id].col === origCol) return false;
+            const k1 = `${mover.id}-${o.id}`;
+            const k2 = `${o.id}-${mover.id}`;
+            return ov(mover, o) &&
+              !brokenOverlapPairsRef.current.has(k1) &&
+              !brokenOverlapPairsRef.current.has(k2);
+          });
+          if (hasUnbroken) moverPreservesCol = origCol;
         }
-        
-        // 3. Compact columns for NEAR and ADJ tasks (fill gaps left by D)
-        // After drag ends, tasks that were NEAR or ADJ should compact to fill gaps
-        if (!draggedEventId && (adjTaskIdsRef.current.size > 0 || nearTaskIdsRef.current.size > 0)) {
-            // Find tasks that were NEAR or ADJ (adjacent or near to dragged task)
-            const tasksToCompact = cluster.filter(ev => 
-                adjTaskIdsRef.current.has(ev.id) || nearTaskIdsRef.current.has(ev.id)
-            );
-            
-            // For each task to compact (ADJ or NEAR), check how many tasks are adjacent and compact
-            for (const taskToCompact of tasksToCompact) {
-                const currentCol = layout[taskToCompact.id]?.col ?? 0;
-                
-                // Count tasks in adjacent columns (left and right)
-                const leftCol = currentCol - 1;
-                const rightCol = currentCol + 1;
-                
-                const leftColTasks = leftCol >= 0 ? columns[leftCol]?.filter(other => {
-                    if (other.id === taskToCompact.id) return false;
-                    return Math.max(taskToCompact.s, other.s) < Math.min(taskToCompact.e, other.e);
-                }) : [];
-                
-                const rightColTasks = rightCol < columns.length ? columns[rightCol]?.filter(other => {
-                    if (other.id === taskToCompact.id) return false;
-                    return Math.max(taskToCompact.s, other.s) < Math.min(taskToCompact.e, other.e);
-                }) : [];
-                
-                // If there are gaps (empty columns) to the left, try to move left
-                if (leftCol >= 0 && columns[leftCol]?.length === 0) {
-                    // Empty column to the left, check if we can move
-                    const canMoveLeft = !cluster.some(other => {
-                        if (other.id === taskToCompact.id) return false;
-                        const otherCol = layout[other.id]?.col ?? 0;
-                        if (otherCol !== leftCol) return false;
-                        return Math.max(taskToCompact.s, other.s) < Math.min(taskToCompact.e, other.e);
-                    });
-                    
-                    if (canMoveLeft) {
-                        // Move to left column
-                        const currentColIndex = columns[currentCol].findIndex(e => e.id === taskToCompact.id);
-                        if (currentColIndex !== -1) {
-                            columns[currentCol].splice(currentColIndex, 1);
-                            if (!columns[leftCol]) columns[leftCol] = [];
-                            columns[leftCol].push(taskToCompact);
-                            layout[taskToCompact.id].col = leftCol;
-                        }
-                    }
-                }
-            }
-        }
-        
-        const totalCols = columns.length;
+      }
 
-        // 4. Expansion
-        for (let i = 0; i < columns.length; i++) {
-            const colEvents = columns[i];
-            for (const ev of colEvents) {
-                // If this is the dragged task and it already has a span calculated by special logic,
-                // preserve that span but still allow expansion if there are free columns to the right
-                const isDraggedTask = draggedEventId ? (ev.id === draggedEventId) : false;
-                const currentLayout = layout[ev.id];
-                const existingSpan = currentLayout?.span || 1;
-                
-                let span = 1;
-                for (let nextCol = i + 1; nextCol < totalCols; nextCol++) {
-                    const nextColEvents = columns[nextCol];
-                    const hasOverlap = nextColEvents.some(otherEv => 
-                        Math.max(ev.s, otherEv.s) < Math.min(ev.e, otherEv.e)
-                    );
-                    if (!hasOverlap) {
-                        span++;
-                    } else {
-                        break;
-                    }
-                }
-                
-                // For dragged task, use the maximum of existing span (from special logic) and expansion span
-                // This ensures the span calculated by special logic is preserved, but can still expand if possible
-                if (isDraggedTask && existingSpan > 1) {
-                    span = Math.max(existingSpan, span);
-                }
-                
-                layout[ev.id].columns = totalCols;
-                layout[ev.id].span = span;
-            }
+      const columns: typeof events[] = [];
+
+      // If mover preserves column, place it first so stable tasks route around it
+      if (mover && moverPreservesCol !== null) {
+        while (columns.length <= moverPreservesCol) columns.push([]);
+        columns[moverPreservesCol].push(mover);
+        layout[mover.id] = { col: moverPreservesCol, columns: 1, span: 1 };
+      }
+
+      for (const ev of insertionOrder) {
+        if (mover && ev.id === mover.id && moverPreservesCol !== null) continue;
+
+        const isMover = mover && ev.id === mover.id;
+        let startSearchCol = 0;
+
+        if (!isMover && draggedEventId && stableLayout?.[ev.id]) {
+          // Non-mover task during active drag
+          const mEv = cluster.find(e => e.id === draggedEventId);
+          if (mEv && !ov(ev, mEv)) {
+            // Not overlapping with the mover at all — lock to its stable column.
+            // Tasks that are never touched by the mover must never change column.
+            const stableCol = stableLayout[ev.id].col;
+            while (columns.length <= stableCol) columns.push([]);
+            // Place in stable column (tasks there won't conflict since they also have stable cols
+            // and we're not changing their time positions during drag)
+            columns[stableCol].push(ev);
+            layout[ev.id] = { col: stableCol, columns: 1, span: 1 };
+            continue;
+          } else if (mEv && moverPreservesCol !== null) {
+            // Overlaps mover AND mover is preserving its column.
+            // Keep this task's original relative position (don't drift left).
+            const thisOrigCol = stableLayout[ev.id].col;
+            if (moverPreservesCol < thisOrigCol) startSearchCol = thisOrigCol;
+          }
         }
 
-        const ensurePairLock = (leftId: string, rightId: string) => {
-            const leftLayout = layout[leftId];
-            const rightLayout = layout[rightId];
-            if (!leftLayout || !rightLayout) return;
-            const key = `${leftId}->${rightId}`;
-            pairLockRef.current[key] = {
-                leftId,
-                rightId,
-                leftCol: leftLayout.col,
-                rightCol: rightLayout.col,
-            };
-        };
-
-        const removePairLock = (leftId: string, rightId: string) => {
-            delete pairLockRef.current[`${leftId}->${rightId}`];
-        };
-
-        for (let i = 0; i < cluster.length; i++) {
-            for (let j = i + 1; j < cluster.length; j++) {
-                const a = cluster[i];
-                const b = cluster[j];
-                const overlap = Math.max(a.s, b.s) < Math.min(a.e, b.e);
-                if (!overlap) {
-                    removePairLock(a.id, b.id);
-                    removePairLock(b.id, a.id);
-                    continue;
-                }
-                const layoutA = layout[a.id];
-                const layoutB = layout[b.id];
-                if (!layoutA || !layoutB) continue;
-                if (layoutA.col === layoutB.col) {
-                    removePairLock(a.id, b.id);
-                    removePairLock(b.id, a.id);
-                    continue;
-                }
-                const left = layoutA.col < layoutB.col ? a : b;
-                const right = left.id === a.id ? b : a;
-                
-                // Check if one of the tasks is being dragged and still in original overlap
-                // If still in original overlap, create lock to maintain positions (left stays left, right stays right)
-                if (draggedEventId && (left.id === draggedEventId || right.id === draggedEventId)) {
-                    const pairKey1 = `${left.id}-${right.id}`;
-                    const pairKey2 = `${right.id}-${left.id}`;
-                    const brokeOverlap = brokenOverlapPairsRef.current.has(pairKey1) || brokenOverlapPairsRef.current.has(pairKey2);
-                    
-                    // If they broke overlap, remove lock and let normal logic handle it
-                    if (brokeOverlap) {
-                        removePairLock(left.id, right.id);
-                        removePairLock(right.id, left.id);
-                        continue;
-                    }
-                    
-                    // If still in original overlap, create lock regardless of which starts first
-                    // This maintains positions: left stays left, right stays right
-                    ensurePairLock(left.id, right.id);
-                    continue;
-                }
-                
-                if (a.s === b.s) {
-                    ensurePairLock(left.id, right.id);
-                    continue;
-                }
-                if (right.s < left.s) {
-                    ensurePairLock(left.id, right.id);
-                } else {
-                    removePairLock(left.id, right.id);
-                    removePairLock(right.id, left.id);
-                }
-            }
+        let placed = false;
+        for (let i = startSearchCol; i < columns.length; i++) {
+          if (!columns[i].some(existing => ov(ev, existing))) {
+            columns[i].push(ev);
+            layout[ev.id] = { col: i, columns: 1, span: 1 };
+            placed = true;
+            break;
+          }
         }
+        if (!placed) {
+          while (columns.length < startSearchCol) columns.push([]);
+          columns.push([ev]);
+          layout[ev.id] = { col: columns.length - 1, columns: 1, span: 1 };
+        }
+      }
+
+      // Calculate spans
+      const totalCols = columns.length;
+
+      const maxConcurrentFor = (ev: typeof events[0]): number => {
+        const others = cluster.filter(o => o.id !== ev.id && ov(ev, o));
+        if (others.length === 0) return 1;
+        const bounds = new Set<number>();
+        bounds.add(ev.s);
+        bounds.add(ev.e);
+        for (const t of others) {
+          if (t.s > ev.s && t.s < ev.e) bounds.add(t.s);
+          if (t.e > ev.s && t.e < ev.e) bounds.add(t.e);
+        }
+        const sb = Array.from(bounds).sort((a, b) => a - b);
+        let max = 1;
+        for (let i = 0; i < sb.length - 1; i++) {
+          const mid = (sb[i] + sb[i + 1]) / 2;
+          let c = 1;
+          for (const t of others) { if (t.s < mid && t.e > mid) c++; }
+          max = Math.max(max, c);
+        }
+        return max;
+      };
+
+      for (const ev of cluster) {
+        const el = layout[ev.id];
+        if (!el) continue;
+
+        const concurrent = maxConcurrentFor(ev);
+        const baseSpan = Math.max(1, Math.floor(totalCols / concurrent));
+
+        let expandSpan = 1;
+        for (let nc = el.col + 1; nc < totalCols; nc++) {
+          if (columns[nc].some(o => o.id !== ev.id && ov(ev, o))) break;
+          expandSpan++;
+        }
+
+        el.columns = totalCols;
+        el.span = Math.min(Math.max(baseSpan, expandSpan), totalCols - el.col);
+      }
     }
+
     return layout;
-  }, [lastMovedEventId, dragClearedOriginalOverlap]);
+  }, []);
 
   // --- LAYOUT MANAGEMENT ---
   
@@ -2031,102 +946,8 @@ export default function OggiScreen() {
   }, [timedEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayout]);
   
   const handleDragStart = useCallback((id: string) => {
-      stableLayoutRef.current = layoutById;
-      // Clear previous ADJ and NEAR tasks when starting a new drag
-      adjTaskIdsRef.current = new Set();
-      nearTaskIdsRef.current = new Set();
-      // Clear broken adj tracking (tasks that lost overlap during previous drag)
-      brokenAdjTasksRef.current = new Set();
-      // Clear initial ADJ tracking
-      initialAdjTasksRef.current = new Set();
-      // Clear position types when starting a new drag
-      taskPositionTypeRef.current = {};
-      setTaskPositionTypeState({});
-      
-      // Calculate Top/Bottom/Middle for dragged task at START position only
-      const draggedEvent = timedEvents.find(e => e.id === id);
-      if (draggedEvent) {
-          const draggedStartM = toMinutes(draggedEvent.startTime);
-          const draggedEndM = toMinutes(draggedEvent.endTime);
-          const draggedLayout = layoutById[id] || { col: 0, columns: 1, span: 1 };
-          
-          // Calculate which tasks are ADJ at the INITIAL position
-          // These are the only tasks that can ever be ADJ during this drag
-          const draggedCols: number[] = [];
-          for (let i = 0; i < draggedLayout.span; i++) {
-              draggedCols.push(draggedLayout.col + i);
-          }
-          const draggedLeftmostCol = Math.min(...draggedCols);
-          const draggedRightmostCol = Math.max(...draggedCols);
-          
-          for (const other of timedEvents) {
-              if (other.id === id) continue;
-              
-              const otherStartM = toMinutes(other.startTime);
-              const otherEndM = toMinutes(other.endTime);
-              const otherLayout = layoutById[other.id] || { col: 0, columns: 1, span: 1 };
-              
-              // Check if overlaps in time
-              const overlapsInTime = Math.max(draggedStartM, otherStartM) < Math.min(draggedEndM, otherEndM);
-              
-              if (overlapsInTime) {
-                  // Get all columns occupied by this task
-                  const otherCols: number[] = [];
-                  for (let i = 0; i < otherLayout.span; i++) {
-                      otherCols.push(otherLayout.col + i);
-                  }
-                  const otherLeftmostCol = Math.min(...otherCols);
-                  const otherRightmostCol = Math.max(...otherCols);
-                  
-                  // Check if task directly touches dragged task (adjacent columns)
-                  const isAdjLeft = otherRightmostCol === draggedLeftmostCol - 1;
-                  const isAdjRight = otherLeftmostCol === draggedRightmostCol + 1;
-                  
-                  if (isAdjLeft || isAdjRight) {
-                      // This task is ADJ at the initial position
-                      initialAdjTasksRef.current.add(other.id);
-                  }
-              }
-          }
-          
-          const newPositionTypes: Record<string, 'top' | 'bottom' | 'middle'> = {};
-          const tasksAbove: typeof timedEvents = [];
-          const tasksBelow: typeof timedEvents = [];
-          
-          for (const other of timedEvents) {
-              if (other.id === id) continue;
-              
-              const otherStartM = toMinutes(other.startTime);
-              const otherEndM = toMinutes(other.endTime);
-              
-              // Check if D ends exactly when task below starts
-              if (draggedEndM === otherStartM) {
-                  tasksBelow.push(other);
-                  newPositionTypes[id] = 'top';
-                  newPositionTypes[other.id] = 'bottom';
-              }
-              // Check if D starts exactly when task above ends
-              else if (draggedStartM === otherEndM) {
-                  tasksAbove.push(other);
-                  newPositionTypes[id] = 'bottom';
-                  newPositionTypes[other.id] = 'top';
-              }
-          }
-          
-          // Check if D is sandwich (has tasks both above and below)
-          if (tasksAbove.length > 0 && tasksBelow.length > 0) {
-              newPositionTypes[id] = 'middle';
-              tasksAbove.forEach(t => newPositionTypes[t.id] = 'top');
-              tasksBelow.forEach(t => newPositionTypes[t.id] = 'bottom');
-          }
-          
-          // Update both ref and state to trigger re-render
-          if (Object.keys(newPositionTypes).length > 0) {
-              taskPositionTypeRef.current = { ...taskPositionTypeRef.current, ...newPositionTypes };
-              setTaskPositionTypeState(newPositionTypes);
-          }
-      }
-  }, [layoutById, timedEvents]);
+    stableLayoutRef.current = layoutById;
+  }, [layoutById]);
 
   const handleDragEnd = useCallback(() => {
       setDraggingEventId(null);
@@ -2342,13 +1163,8 @@ export default function OggiScreen() {
                    layoutById={layoutById}
                    calculateDragLayout={calculateDragLayout}
                    brokenOverlapPairsRef={brokenOverlapPairsRef}
-                   finalDragColumnRef={finalDragColumnRef}
-                   adjTaskIdsRef={adjTaskIdsRef}
-                   nearTaskIdsRef={nearTaskIdsRef}
-                   brokenAdjTasksRef={brokenAdjTasksRef}
-                   initialAdjTasksRef={initialAdjTasksRef}
-                   taskPositionTypeRef={taskPositionTypeRef}
-                   taskPositionTypeState={taskPositionTypeState}
+                   columnRankRef={columnRankRef}
+                   rankCounterRef={rankCounterRef}
                  />
                );
              })}
