@@ -674,10 +674,14 @@ export default function OggiScreen() {
   const windowStartMin = toMinutes(windowStart);
   const windowEndMin = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
   
+  const [allDayHeight, setAllDayHeight] = useState(0);
+
+
   const hourHeight = useMemo(() => {
-      const factor = activeTheme === 'futuristic' ? 0.78 : 0.775;
-      return (Dimensions.get('window').height * factor) / visibleHours;
-  }, [visibleHours, activeTheme]);
+    const factor = activeTheme === 'futuristic' ? 0.78 : 0.775;
+    const base = Dimensions.get('window').height * factor;
+    return (base - allDayHeight) / visibleHours;
+  }, [allDayHeight, visibleHours, activeTheme]);
 
   const totalMinutes = windowEndMin - windowStartMin;
   const totalHeight = (totalMinutes / 60) * hourHeight;
@@ -711,9 +715,19 @@ export default function OggiScreen() {
       const hasOverrideForSelected = !!h.timeOverrides?.[selectedYmd];
       if (h.createdAt && selectedYmd < h.createdAt && !hasOverrideForSelected) continue;
 
+      // Single-frequency tasks only appear on days that have an explicit override
+      const isSingle = h.habitFreq === 'single' || (
+        !h.habitFreq &&
+        (Object.keys(h.timeOverrides ?? {}).length > 0) &&
+        (h.schedule?.daysOfWeek?.length ?? 0) === 0 &&
+        !h.schedule?.monthDays?.length &&
+        !h.schedule?.yearMonth
+      );
+      if (isSingle && !hasOverrideForSelected) continue;
+
       const sched = h.schedule;
       let showToday = true;
-      if (sched) {
+      if (sched && !isSingle) {
         const dow = sched.daysOfWeek ?? [];
         const mdays = sched.monthDays ?? [];
         const yrM = sched.yearMonth ?? null;
@@ -727,13 +741,10 @@ export default function OggiScreen() {
 
       const ymd = selectedYmd;
       const override = h.timeOverrides?.[ymd];
-      const overrideStart = typeof override === 'string' ? override : override?.start;
-      const overrideEnd = typeof override === 'object' && override !== null ? override.end : null;
-      
-      const schedDays = h.schedule?.daysOfWeek ?? [];
-      const schedMonth = h.schedule?.monthDays ?? [];
-      const isOneOff = (schedDays.length === 0 && schedMonth.length === 0 && h.timeOverrides && Object.keys(h.timeOverrides).length > 0);
-      if (isOneOff && !overrideStart) continue;
+      // '00:00' stored as a string (not an object) is used as an all-day marker by the modal
+      const isAllDayMarker = override === '00:00';
+      const overrideStart = !isAllDayMarker && typeof override === 'string' ? override : (!isAllDayMarker ? override?.start : undefined);
+      const overrideEnd = !isAllDayMarker && typeof override === 'object' && override !== null ? override.end : null;
 
       const weekly = h.schedule?.weeklyTimes?.[weekday] ?? null;
       const monthlyT = h.schedule?.monthlyTimes?.[dayOfMonth] ?? null;
@@ -742,7 +753,7 @@ export default function OggiScreen() {
       const color = h.color ?? '#3b82f6';
       const title = h.text;
 
-      if (!start && !end) {
+      if (isAllDayMarker || (!start && !end)) {
         allDay.push({ id: h.id, title, startTime: '00:00', endTime: '24:00', isAllDay: true, color });
       } else if (start) {
         let finalEnd = end;
@@ -762,6 +773,11 @@ export default function OggiScreen() {
     }
     return { timedEvents: items, allDayEvents: allDay };
   }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1]);
+
+  // Reset all-day section height when there are no all-day events so hourHeight is unaffected
+  useEffect(() => {
+    if (allDayEvents.length === 0) setAllDayHeight(0);
+  }, [allDayEvents.length]);
 
   useEffect(() => {
     if (Object.keys(pendingEventPositions).length === 0) return;
@@ -2236,30 +2252,34 @@ export default function OggiScreen() {
         </View>
       </View>
 
-      {/* All Day Area */}
-      {allDayEvents.length > 0 && (
-        <View style={styles.allDayContainer}>
-             <View style={styles.allDayLabelContainer}>
-                <View style={styles.allDayDot} />
-             </View>
-             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.allDayScroll}>
-               {allDayEvents.map((e) => {
-                 const bg = e.color;
-                 const light = isLightColor(bg);
-                 return (
-                   <View key={e.id} style={[styles.allDayItem, { backgroundColor: bg }]}>
-                      <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
-                        {e.title}
-                      </Text>
-                   </View>
-                 );
-               })}
-             </ScrollView>
+      {/* All Day Area — visible only when there are all-day events */}
+      {allDayEvents.length > 0 ? (
+        <View style={styles.allDayContainer} onLayout={(e) => setAllDayHeight(e.nativeEvent.layout.height)}>
+          {allDayEvents.map((e, i) => {
+            const bg = e.color;
+            const light = isLightColor(bg);
+            return (
+              <View
+                key={e.id}
+                style={[
+                  styles.allDayItem,
+                  { backgroundColor: bg },
+                  i < allDayEvents.length - 1 && { marginRight: 4 },
+                ]}
+              >
+                <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
+                  {e.title}
+                </Text>
+              </View>
+            );
+          })}
         </View>
-      )}
+      ) : null}
 
       {/* Main Timeline Scroll */}
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView
+        style={{ flex: 1 }}
+      >
         <ScrollView 
           ref={scrollViewRef}
           style={styles.scrollView}
@@ -2484,33 +2504,16 @@ const styles = StyleSheet.create({
   // All Day
   allDayContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: '#222',
-    minHeight: 50,
-  },
-  allDayLabelContainer: {
-    width: LEFT_MARGIN,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  allDayDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFF',
-  },
-  allDayScroll: {
-    flex: 1,
-    paddingRight: 10,
+    borderBottomColor: '#333',
   },
   allDayItem: {
-    paddingHorizontal: 10,
+    flex: 1,
+    paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 6,
-    marginRight: 6,
-    minWidth: 80,
   },
 
   // Timeline

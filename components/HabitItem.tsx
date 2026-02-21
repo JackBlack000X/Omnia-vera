@@ -10,6 +10,7 @@ import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 type Props = {
   habit: Habit;
   index: number;
+  isDone: boolean;
   onRename: (habit: Habit) => void;
   onSchedule: (habit: Habit) => void;
   onColor: (habit: Habit) => void;
@@ -89,7 +90,7 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
 
   return (
     <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]} pointerEvents="none">
-      <Canvas style={{ width: width + 2, height: height + 2 }} mode="continuous">
+      <Canvas style={{ width: width + 2, height: height + 2 }}>
         <Fill>
           <Shader 
             source={noiseShader} 
@@ -106,11 +107,9 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
   );
 }
 
-export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldCloseMenu = false }: Props) {
+export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false }: Props) {
   const { activeTheme } = useAppTheme();
-  const { history, getDay, toggleDone, removeHabit } = useHabits();
-  const today = getDay(new Date());
-  const isDone = useMemo(() => Boolean(history[today]?.completedByHabitId?.[habit.id]), [history, today, habit.id]);
+  const { toggleDone, removeHabit } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
   const [cardDimensions, setCardDimensions] = React.useState({ width: 0, height: 0 });
   const [checkDimensions, setCheckDimensions] = React.useState({ width: 0, height: 0 });
@@ -174,8 +173,18 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
     return 'Tutto il giorno';
   };
   
+  const isSingle = habit.habitFreq === 'single' || (
+    !habit.habitFreq &&
+    (Object.keys(habit.timeOverrides ?? {}).length > 0) &&
+    (habit.schedule?.daysOfWeek?.length ?? 0) === 0 &&
+    !habit.schedule?.monthDays?.length &&
+    !habit.schedule?.yearMonth
+  );
+
   // Determine frequency text
   const getFrequencyText = () => {
+    if (isSingle) return 'Singola';
+
     if (!habit.schedule) return 'Ogni giorno';
     
     const { daysOfWeek, monthDays, yearMonth, yearDay } = habit.schedule;
@@ -210,17 +219,18 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
   
   const timeText = getTimeText();
   const frequencyText = getFrequencyText();
+
   // White circle ONLY if truly "every day":
   // no monthly-specific days, no annual date, and daysOfWeek is empty or all 7
   const s = habit.schedule;
-  const isDaily = !s || (
+  const isDaily = !isSingle && (!s || (
     (s.daysOfWeek.length === 0 || s.daysOfWeek.length === 7) &&
     (!s.monthDays || s.monthDays.length === 0) &&
     !s.yearMonth &&
     !s.yearDay &&
     !s.time &&
     !s.endTime
-  );
+  ));
   
   // Don't show frequency text for daily tasks since white circle already indicates this
   const shouldShowFrequency = !isDaily;
@@ -332,7 +342,7 @@ export function HabitItem({ habit, index, onRename, onSchedule, onColor, shouldC
       </View>
     </Swipeable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

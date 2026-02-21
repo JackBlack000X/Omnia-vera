@@ -1,8 +1,8 @@
 import { getCalendarDays, getMonthName, getMonthYear, isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
 import { useAppTheme } from '@/lib/theme-context';
-import React, { useMemo, useRef, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Alert, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -82,17 +82,184 @@ function calculateCompletedForLevel(level: CompletionLevel, total: number): numb
   }
 }
 
+type MonthData = { year: number; month: number; date: Date; numWeeks: number };
+
+type MonthViewProps = {
+  item: MonthData;
+  isCurrentMonthActive: boolean;
+  habitsLength: number;
+  testCompletions: Record<string, TestCompletion>;
+  recentHistory: Record<string, { date: string; completedByHabitId: Record<string, boolean> }>;
+  streakInfo: Map<string, 'start' | 'middle' | 'end' | 'single'>;
+  onDayPress: (day: { date: Date; isCurrentMonth: boolean; ymd: string }) => void;
+  isFirst: boolean;
+};
+
+const MonthView = React.memo(function MonthView({
+  item, isCurrentMonthActive, habitsLength, testCompletions, recentHistory, streakInfo, onDayPress, isFirst,
+}: MonthViewProps) {
+  const { year, month } = item;
+  const days = useMemo(() => getCalendarDays(year, month), [year, month]);
+  const todayRef = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const dayStats = useMemo(() => {
+    const stats: Record<string, { completed: number; total: number; level: CompletionLevel }> = {};
+    for (const day of days) {
+      const testCompletion = testCompletions[day.ymd];
+      let completed = 0;
+      if (testCompletion) {
+        completed = testCompletion.completed;
+      } else {
+        const completion = recentHistory[day.ymd];
+        completed = completion ? Object.values(completion.completedByHabitId).filter(Boolean).length : 0;
+      }
+      const total = habitsLength;
+      const level = getCompletionLevel(completed, total);
+      stats[day.ymd] = { completed, total, level };
+    }
+    return stats;
+  }, [days, testCompletions, recentHistory, habitsLength]);
+
+  return (
+    <View style={[styles.calendarMonth, isFirst && { marginTop: 16 }]}>
+      <View style={styles.monthNav}>
+        <View style={[styles.monthLabel, isCurrentMonthActive && styles.monthLabelActive]}>
+          <Text style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}>
+            {getMonthName(month)} {year}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.calendar}>
+        <View style={styles.weekHeader}>
+          {DAYS.map((day) => (
+            <View key={day} style={styles.dayHeaderContainer}>
+              <Text style={styles.dayHeader}>{day}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.daysGrid}>
+          {days.map((day, index) => {
+            const stats = dayStats[day.ymd];
+            const isCurrentMonth = day.isCurrentMonth;
+            const isTodayDate = isToday(day.date);
+            const dayDate = new Date(day.date);
+            dayDate.setHours(0, 0, 0, 0);
+            const isPast = dayDate < todayRef;
+            const completionStyle = stats ? getCompletionStyle(stats.level, isPast) : {};
+            const hasBackground = completionStyle.backgroundColor !== undefined;
+            const streakPosition = streakInfo.get(day.ymd);
+            const rowIndex = Math.floor(index / 7);
+            const prevDay = days[index - 1];
+            const nextDay = days[index + 1];
+            const prevRowIndex = prevDay !== undefined ? Math.floor((index - 1) / 7) : -1;
+            const nextRowIndex = nextDay !== undefined ? Math.floor((index + 1) / 7) : -1;
+            const prevStreakPosition = prevDay ? streakInfo.get(prevDay.ymd) : undefined;
+            const nextStreakPosition = nextDay ? streakInfo.get(nextDay.ymd) : undefined;
+            const connectLeft = !!prevStreakPosition && prevRowIndex === rowIndex;
+            const connectRight = !!nextStreakPosition && nextRowIndex === rowIndex;
+            const streakLines: React.ReactNode[] = [];
+
+            if (streakPosition) {
+              const baseHorizontalStyle = {
+                left: STREAK_BORDER_INSET - (connectLeft ? STREAK_LINE_EXTEND : 0),
+                right: STREAK_BORDER_INSET - (connectRight ? STREAK_LINE_EXTEND : 0),
+              };
+              const topSegments: React.ReactNode[] = [];
+              const bottomSegments: React.ReactNode[] = [];
+
+              const pushHorizontalSegments = (
+                keySuffix: string,
+                overrides: { left?: number; right?: number } = {}
+              ) => {
+                topSegments.push(
+                  <View key={`streak-top-${keySuffix}`} pointerEvents="none"
+                    style={[styles.streakLineBase, styles.streakLineTop, { ...baseHorizontalStyle, ...overrides }]} />
+                );
+                bottomSegments.push(
+                  <View key={`streak-bottom-${keySuffix}`} pointerEvents="none"
+                    style={[styles.streakLineBase, styles.streakLineBottom, { ...baseHorizontalStyle, ...overrides }]} />
+                );
+              };
+
+              if (streakPosition === 'start') {
+                pushHorizontalSegments('start', { left: STREAK_BORDER_INSET + STREAK_EDGE_CLIP, right: baseHorizontalStyle.right });
+              } else if (streakPosition === 'end') {
+                pushHorizontalSegments('end', { left: baseHorizontalStyle.left, right: STREAK_BORDER_INSET + STREAK_EDGE_CLIP });
+              } else if (streakPosition === 'single') {
+                pushHorizontalSegments('single', { left: STREAK_BORDER_INSET + STREAK_EDGE_CLIP, right: STREAK_BORDER_INSET + STREAK_EDGE_CLIP });
+              } else {
+                pushHorizontalSegments('middle');
+              }
+
+              streakLines.push(...topSegments, ...bottomSegments);
+              if (streakPosition === 'start' || streakPosition === 'single') {
+                const showVertical = streakPosition === 'single';
+                if (showVertical) {
+                  streakLines.push(<View key="streak-left" pointerEvents="none" style={[styles.streakLineBase, styles.streakLineLeft]} />);
+                }
+                streakLines.push(<View key="streak-corner-left" pointerEvents="none"
+                  style={[styles.streakCornerBase, styles.streakCornerLeft, showVertical && styles.streakCornerEdgeLeft]} />);
+              }
+              if (streakPosition === 'end' || streakPosition === 'single') {
+                const showVertical = streakPosition === 'single';
+                if (showVertical) {
+                  streakLines.push(<View key="streak-right" pointerEvents="none" style={[styles.streakLineBase, styles.streakLineRight]} />);
+                }
+                streakLines.push(<View key="streak-corner-right" pointerEvents="none"
+                  style={[styles.streakCornerBase, styles.streakCornerRight, showVertical && styles.streakCornerEdgeRight]} />);
+              }
+            }
+
+            return (
+              <View key={index} style={styles.dayCellWrapper}>
+                {streakLines}
+                <TouchableOpacity
+                  onPress={() => onDayPress(day)}
+                  style={[styles.dayCell, !isCurrentMonth && styles.dayOtherMonth, isTodayDate && styles.dayToday, completionStyle]}
+                >
+                  <Text style={[styles.dayNumber, !isCurrentMonth && styles.dayNumberOtherMonth, hasBackground && styles.dayNumberHighlighted]}>
+                    {day.date.getDate()}
+                  </Text>
+                  {stats && stats.total > 0 && (
+                    <View style={styles.dots}>
+                      {Array.from({ length: Math.min(5, stats.completed) }).map((_, i) => (
+                        <View key={i} style={[styles.dot, hasBackground && styles.dotHighlighted]} />
+                      ))}
+                      {stats.completed > 5 && (
+                        <Text style={[styles.dotPlus, hasBackground && styles.dotPlusHighlighted]}>+</Text>
+                      )}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+});
+
+function getNumWeeksInMonth(year: number, month: number): number {
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const firstDayOfWeekMon = (firstDay.getDay() + 6) % 7;
+  return Math.ceil((firstDayOfWeekMon + lastDay.getDate()) / 7);
+}
+
 export default function CalendarScreen() {
   const { habits, history } = useHabits();
   const { activeTheme } = useAppTheme();
+  const { width: screenWidth } = useWindowDimensions();
   const today = new Date();
   const { year: currentYear, month: currentMonth } = getMonthYear(today);
-  
-  // Test state - temporary override for testing colors
+
   const [testCompletions, setTestCompletions] = useState<Record<string, TestCompletion>>({});
   const [showLegend, setShowLegend] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const screenHeight = 400; // Altezza di un mese
 
   React.useEffect(() => {
     if (habits.length === 0) return;
@@ -109,54 +276,53 @@ export default function CalendarScreen() {
       return changed ? next : prev;
     });
   }, [habits.length]);
-  
-  // Genera tutti i mesi da oggi (nov 2025) fino a 10 anni dopo (nov 2035)
-  const allMonths = useMemo(() => {
-    const months: Array<{ year: number; month: number; date: Date }> = [];
+
+  const allMonths = useMemo((): MonthData[] => {
+    const months: MonthData[] = [];
     const startDate = new Date(currentYear, currentMonth - 1, 1);
     const endDate = new Date(currentYear + 10, currentMonth - 1, 1);
-    
     for (let d = new Date(startDate); d <= endDate; d.setMonth(d.getMonth() + 1)) {
       const { year, month } = getMonthYear(d);
-      months.push({ year, month, date: new Date(d) });
+      months.push({ year, month, date: new Date(d), numWeeks: getNumWeeksInMonth(year, month) });
     }
-    
     return months;
   }, [currentYear, currentMonth]);
-  
-  // Trova l'indice del mese corrente
-  const currentMonthIndex = useMemo(() => {
-    return allMonths.findIndex(m => m.year === currentYear && m.month === currentMonth);
-  }, [allMonths, currentYear, currentMonth]);
-  
-  // Scrolla al mese corrente all'avvio
-  React.useEffect(() => {
-    if (currentMonthIndex >= 0 && scrollViewRef.current) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ 
-          y: currentMonthIndex * screenHeight, 
-          animated: false 
-        });
-      }, 100);
+
+  // Compute accurate per-month heights based on screen width for getItemLayout
+  const dayCellHeight = useMemo(() => (screenWidth / 7) / 1.3, [screenWidth]);
+  const MONTH_OVERHEAD = 117; // monthNav + weekHeader + margins
+
+  const monthHeights = useMemo(
+    () => allMonths.map(m => MONTH_OVERHEAD + m.numWeeks * dayCellHeight),
+    [allMonths, dayCellHeight]
+  );
+
+  const monthOffsets = useMemo(() => {
+    const offsets: number[] = [0];
+    for (let i = 0; i < monthHeights.length - 1; i++) {
+      offsets.push(offsets[i] + monthHeights[i]);
     }
-  }, [currentMonthIndex, screenHeight]);
+    return offsets;
+  }, [monthHeights]);
+
+  const getItemLayout = useCallback((_: unknown, index: number) => ({
+    length: monthHeights[index] ?? MONTH_OVERHEAD + 5 * dayCellHeight,
+    offset: monthOffsets[index] ?? index * (MONTH_OVERHEAD + 5 * dayCellHeight),
+    index,
+  }), [monthHeights, monthOffsets, dayCellHeight]);
 
   // Keep only last 90 days of history
   const recentHistory = useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 90);
     const cutoffStr = cutoff.toISOString().split('T')[0];
-    
     const filtered: typeof history = {};
     for (const [date, completion] of Object.entries(history)) {
-      if (date >= cutoffStr) {
-        filtered[date] = completion;
-      }
+      if (date >= cutoffStr) filtered[date] = completion;
     }
     return filtered;
   }, [history]);
 
-  // Calcola le streak di almeno 7 giorni con 100% completamento
   const streakInfo = useMemo(() => {
     const streakMap = new Map<string, 'start' | 'middle' | 'end' | 'single'>();
     if (habits.length === 0) return streakMap;
@@ -164,7 +330,6 @@ export default function CalendarScreen() {
     const allDates = new Set<string>();
     Object.keys(recentHistory).forEach(d => allDates.add(d));
     Object.keys(testCompletions).forEach(d => allDates.add(d));
-
     const sortedDates = Array.from(allDates).sort();
     if (sortedDates.length === 0) return streakMap;
 
@@ -176,13 +341,9 @@ export default function CalendarScreen() {
     };
 
     let currentStreak: string[] = [];
-
     const registerStreak = (streak: string[]) => {
       if (streak.length < 1) return;
-      if (streak.length === 1) {
-        streakMap.set(streak[0], 'single');
-        return;
-      }
+      if (streak.length === 1) { streakMap.set(streak[0], 'single'); return; }
       streak.forEach((date, idx) => {
         if (idx === 0) streakMap.set(date, 'start');
         else if (idx === streak.length - 1) streakMap.set(date, 'end');
@@ -192,124 +353,50 @@ export default function CalendarScreen() {
 
     for (let i = 0; i < sortedDates.length; i++) {
       const date = sortedDates[i];
-      const completed = getCompletedForDate(date);
-      const total = habits.length;
-      const isPerfect = total > 0 && completed === total;
-
+      const isPerfect = habits.length > 0 && getCompletedForDate(date) === habits.length;
       if (isPerfect) {
         if (currentStreak.length === 0) {
           currentStreak.push(date);
         } else {
           const lastDate = new Date(currentStreak[currentStreak.length - 1]);
-          const currentDate = new Date(date);
-          const diffDays = Math.floor((currentDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-          if (diffDays === 1) {
-            currentStreak.push(date);
-          } else {
-            if (currentStreak.length >= 7) registerStreak(currentStreak);
-            currentStreak = [date];
-          }
+          const diffDays = Math.floor((new Date(date).getTime() - lastDate.getTime()) / 86400000);
+          if (diffDays === 1) { currentStreak.push(date); }
+          else { if (currentStreak.length >= 7) registerStreak(currentStreak); currentStreak = [date]; }
         }
       } else {
         if (currentStreak.length >= 7) registerStreak(currentStreak);
         currentStreak = [];
       }
     }
-
     if (currentStreak.length >= 7) registerStreak(currentStreak);
-
     return streakMap;
   }, [recentHistory, testCompletions, habits.length]);
 
-  function getDayStatsForMonth(monthYear: number, monthNum: number) {
-    const days = getCalendarDays(monthYear, monthNum);
-    const stats: Record<string, { completed: number; total: number; level: CompletionLevel }> = {};
-    
-    for (const day of days) {
-      // Use test completion if available, otherwise use real history
-      const testCompletion = testCompletions[day.ymd];
-      let completed = 0;
-      
-      if (testCompletion) {
-        completed = testCompletion.completed;
-      } else {
-        const completion = recentHistory[day.ymd];
-        completed = completion ? Object.values(completion.completedByHabitId).filter(Boolean).length : 0;
-      }
-      
-      const total = habits.length;
-      const level = getCompletionLevel(completed, total);
-      stats[day.ymd] = { completed, total, level };
-    }
-    
-    return { days, stats };
-  }
-
-  function handleDayPress(day: { date: Date; isCurrentMonth: boolean; ymd: string }) {
+  const handleDayPress = useCallback((day: { date: Date; isCurrentMonth: boolean; ymd: string }) => {
     const total = habits.length;
-    if (total === 0) {
-      Alert.alert('Test', 'Nessuna abitudine disponibile');
-      return;
-    }
+    if (total === 0) { Alert.alert('Test', 'Nessuna abitudine disponibile'); return; }
+    Alert.alert('Test - Imposta Completamento', 'Scegli il livello di completamento:', [
+      { text: '100% - Giorno perfetto', onPress: () => setTestCompletions(prev => ({ ...prev, [day.ymd]: { completed: total, total } })) },
+      { text: '75%+ - Buon progresso', onPress: () => setTestCompletions(prev => ({ ...prev, [day.ymd]: { completed: calculateCompletedForLevel('good', total), total } })) },
+      { text: '50%+ - Progresso medio', onPress: () => setTestCompletions(prev => ({ ...prev, [day.ymd]: { completed: calculateCompletedForLevel('medium', total), total } })) },
+      { text: 'Sotto il 50%', onPress: () => setTestCompletions(prev => ({ ...prev, [day.ymd]: { completed: calculateCompletedForLevel('low', total), total } })) },
+      { text: 'Rimuovi (usa dati reali)', onPress: () => setTestCompletions(prev => { const next = { ...prev }; delete next[day.ymd]; return next; }), style: 'destructive' },
+      { text: 'Annulla', style: 'cancel' },
+    ]);
+  }, [habits.length]);
 
-    Alert.alert(
-      'Test - Imposta Completamento',
-      'Scegli il livello di completamento:',
-      [
-        {
-          text: '100% - Giorno perfetto',
-          onPress: () => {
-            setTestCompletions(prev => ({
-              ...prev,
-              [day.ymd]: { completed: total, total }
-            }));
-          }
-        },
-        {
-          text: '75%+ - Buon progresso',
-          onPress: () => {
-            setTestCompletions(prev => ({
-              ...prev,
-              [day.ymd]: { completed: calculateCompletedForLevel('good', total), total }
-            }));
-          }
-        },
-        {
-          text: '50%+ - Progresso medio',
-          onPress: () => {
-            setTestCompletions(prev => ({
-              ...prev,
-              [day.ymd]: { completed: calculateCompletedForLevel('medium', total), total }
-            }));
-          }
-        },
-        {
-          text: 'Sotto il 50%',
-          onPress: () => {
-            setTestCompletions(prev => ({
-              ...prev,
-              [day.ymd]: { completed: calculateCompletedForLevel('low', total), total }
-            }));
-          }
-        },
-        {
-          text: 'Rimuovi (usa dati reali)',
-          onPress: () => {
-            setTestCompletions(prev => {
-              const next = { ...prev };
-              delete next[day.ymd];
-              return next;
-            });
-          },
-          style: 'destructive'
-        },
-        {
-          text: 'Annulla',
-          style: 'cancel'
-        }
-      ]
-    );
-  }
+  const renderItem = useCallback(({ item, index }: { item: MonthData; index: number }) => (
+    <MonthView
+      item={item}
+      isCurrentMonthActive={item.year === currentYear && item.month === currentMonth}
+      habitsLength={habits.length}
+      testCompletions={testCompletions}
+      recentHistory={recentHistory}
+      streakInfo={streakInfo}
+      onDayPress={handleDayPress}
+      isFirst={index === 0}
+    />
+  ), [currentYear, currentMonth, habits.length, testCompletions, recentHistory, streakInfo, handleDayPress]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -326,196 +413,19 @@ export default function CalendarScreen() {
         </View>
       </View>
 
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scrollView}
+      <FlatList
+        data={allMonths}
+        keyExtractor={(item) => `${item.year}-${item.month}`}
+        renderItem={renderItem}
+        getItemLayout={getItemLayout}
+        initialScrollIndex={0}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-      >
-        {allMonths.map((monthData, monthIndex) => {
-          const { year, month } = monthData;
-          const isCurrentMonthActive = year === currentYear && month === currentMonth;
-          const { days, stats: dayStats } = getDayStatsForMonth(year, month);
-          
-          return (
-            <View key={`${year}-${month}`} style={[styles.calendarMonth, monthIndex === 0 && { marginTop: -80 }]}>
-              <View style={styles.monthNav}>
-                <View style={[styles.monthLabel, isCurrentMonthActive && styles.monthLabelActive]}>
-                  <Text style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}>
-                    {getMonthName(month)} {year}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.calendar}>
-                <View style={styles.weekHeader}>
-                  {DAYS.map((day) => (
-                    <View key={day} style={styles.dayHeaderContainer}>
-                      <Text style={styles.dayHeader}>{day}</Text>
-                    </View>
-                  ))}
-                </View>
-                <View style={styles.daysGrid}>
-                  {days.map((day, index) => {
-                    const stats = dayStats[day.ymd];
-                    const isCurrentMonth = day.isCurrentMonth;
-                    const isTodayDate = isToday(day.date);
-                    const todayDate = new Date();
-                    todayDate.setHours(0, 0, 0, 0);
-                    const dayDate = new Date(day.date);
-                    dayDate.setHours(0, 0, 0, 0);
-                    const isPast = dayDate < todayDate;
-                    const completionStyle = stats ? getCompletionStyle(stats.level, isPast) : {};
-                    const hasBackground = completionStyle.backgroundColor !== undefined;
-                  const streakPosition = streakInfo.get(day.ymd);
-                  const rowIndex = Math.floor(index / 7);
-                  const prevDay = days[index - 1];
-                  const nextDay = days[index + 1];
-                  const prevRowIndex = prevDay !== undefined ? Math.floor((index - 1) / 7) : -1;
-                  const nextRowIndex = nextDay !== undefined ? Math.floor((index + 1) / 7) : -1;
-                  const prevStreakPosition = prevDay ? streakInfo.get(prevDay.ymd) : undefined;
-                  const nextStreakPosition = nextDay ? streakInfo.get(nextDay.ymd) : undefined;
-                  const connectLeft = !!prevStreakPosition && prevRowIndex === rowIndex;
-                  const connectRight = !!nextStreakPosition && nextRowIndex === rowIndex;
-                  const streakLines: React.ReactNode[] = [];
-
-                  if (streakPosition) {
-                    const baseHorizontalStyle = {
-                      left: STREAK_BORDER_INSET - (connectLeft ? STREAK_LINE_EXTEND : 0),
-                      right: STREAK_BORDER_INSET - (connectRight ? STREAK_LINE_EXTEND : 0),
-                    };
-                    const topSegments: React.ReactNode[] = [];
-                    const bottomSegments: React.ReactNode[] = [];
-
-                    const pushHorizontalSegments = (
-                      keySuffix: string,
-                      overrides: { left?: number; right?: number } = {}
-                    ) => {
-                      topSegments.push(
-                        <View
-                          key={`streak-top-${keySuffix}`}
-                          pointerEvents="none"
-                          style={[styles.streakLineBase, styles.streakLineTop, { ...baseHorizontalStyle, ...overrides }]}
-                        />
-                      );
-                      bottomSegments.push(
-                        <View
-                          key={`streak-bottom-${keySuffix}`}
-                          pointerEvents="none"
-                          style={[styles.streakLineBase, styles.streakLineBottom, { ...baseHorizontalStyle, ...overrides }]}
-                        />
-                      );
-                    };
-
-                    const shrinkLeft = STREAK_LINE_EXTEND;
-                    const shrinkRight = STREAK_LINE_EXTEND;
-
-                    if (streakPosition === 'start') {
-                      pushHorizontalSegments('start', {
-                        left: STREAK_BORDER_INSET + STREAK_EDGE_CLIP,
-                        right: baseHorizontalStyle.right,
-                      });
-                    } else if (streakPosition === 'end') {
-                      pushHorizontalSegments('end', {
-                        left: baseHorizontalStyle.left,
-                        right: STREAK_BORDER_INSET + STREAK_EDGE_CLIP,
-                      });
-                    } else if (streakPosition === 'single') {
-                      pushHorizontalSegments('single', {
-                        left: STREAK_BORDER_INSET + STREAK_EDGE_CLIP,
-                        right: STREAK_BORDER_INSET + STREAK_EDGE_CLIP,
-                      });
-                    } else {
-                      pushHorizontalSegments('middle');
-                    }
-
-                    streakLines.push(...topSegments, ...bottomSegments);
-                    if (streakPosition === 'start' || streakPosition === 'single') {
-                      const showVertical = streakPosition === 'single';
-                      if (showVertical) {
-                        streakLines.push(
-                          <View
-                            key="streak-left"
-                            pointerEvents="none"
-                            style={[styles.streakLineBase, styles.streakLineLeft]}
-                          />
-                        );
-                      }
-                      streakLines.push(
-                        <View
-                          key="streak-left"
-                          pointerEvents="none"
-                          style={[
-                            styles.streakCornerBase,
-                            styles.streakCornerLeft,
-                            showVertical && styles.streakCornerEdgeLeft,
-                          ]}
-                        />
-                      );
-                    }
-                    if (streakPosition === 'end' || streakPosition === 'single') {
-                      const showVertical = streakPosition === 'single';
-                      if (showVertical) {
-                        streakLines.push(
-                          <View
-                            key="streak-right"
-                            pointerEvents="none"
-                            style={[styles.streakLineBase, styles.streakLineRight]}
-                          />
-                        );
-                      }
-                      streakLines.push(
-                        <View
-                          key="streak-right"
-                          pointerEvents="none"
-                          style={[
-                            styles.streakCornerBase,
-                            styles.streakCornerRight,
-                            showVertical && styles.streakCornerEdgeRight,
-                          ]}
-                        />
-                      );
-                    }
-                  }
-                    return (
-                      <View key={index} style={styles.dayCellWrapper}>
-                      {streakLines}
-                        <TouchableOpacity
-                          onPress={() => handleDayPress(day)}
-                          style={[
-                            styles.dayCell,
-                            !isCurrentMonth && styles.dayOtherMonth,
-                            isTodayDate && styles.dayToday,
-                            completionStyle
-                          ]}
-                        >
-                          <Text style={[
-                            styles.dayNumber,
-                            !isCurrentMonth && styles.dayNumberOtherMonth,
-                            hasBackground && styles.dayNumberHighlighted
-                          ]}>
-                            {day.date.getDate()}
-                          </Text>
-                          {stats && stats.total > 0 && (
-                            <View style={styles.dots}>
-                              {Array.from({ length: Math.min(5, stats.completed) }).map((_, i) => (
-                                <View key={i} style={[styles.dot, hasBackground && styles.dotHighlighted]} />
-                              ))}
-                              {stats.completed > 5 && (
-                                <Text style={[styles.dotPlus, hasBackground && styles.dotPlusHighlighted]}>+</Text>
-                              )}
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            </View>
-          );
-        })}
-      </ScrollView>
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={3}
+        windowSize={5}
+        initialNumToRender={3}
+      />
 
       <Modal
         visible={showLegend}
@@ -585,12 +495,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  monthNav: { alignItems: 'flex-start', justifyContent: 'center', marginBottom: 14, width: '100%' },
+  monthNav: { justifyContent: 'center', marginBottom: 14, width: '100%' },
   monthLabel: {
-    alignSelf: 'flex-start',
-    marginLeft: 5,
-    paddingHorizontal: 0,
-    width: '100%', // Allow full width
+    width: '100%',
+    paddingLeft: 5,
   },
   monthLabelActive: {
   },
@@ -602,6 +510,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'left',
     letterSpacing: -1,
+    alignSelf: 'stretch',
     transform: [{ skewX: '-24deg' }, { scaleX: 0.7 }, { scaleY: 1.2 }],
     textShadowColor: '#FFFFFF',
     textShadowOffset: { width: 1, height: 1 },
@@ -610,12 +519,11 @@ const styles = StyleSheet.create({
   monthYearActive: { 
     letterSpacing: -1.2,
   },
-  scrollView: { flex: 1 },
   scrollContent: { 
     paddingBottom: 100,
-    paddingTop: 100,
+    paddingTop: 20,
   },
-  calendarMonth: { minHeight: 400, marginBottom: -75 },
+  calendarMonth: { marginBottom: 32 },
 
   calendar: { marginBottom: 5 },
   weekHeader: { flexDirection: 'row', marginBottom: 12 },

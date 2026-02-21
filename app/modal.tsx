@@ -245,15 +245,20 @@ export default function ModalScreen() {
     || ((scheduleObj?.monthDays?.length ?? 0) > 0)
     || (!!scheduleObj?.yearMonth && !!scheduleObj?.yearDay);
   const hasAnyTimeConfigured = !!initialStart || !!initialEnd || !!scheduleObj?.weeklyTimes || !!scheduleObj?.monthlyTimes;
-  // Check if it's all-day: no time configured and no weekly/monthly times
-  // Also check if timeOverrides only contain "00:00" (all-day markers)
+  // Use explicit isAllDay flag if present, otherwise fall back to inferring from absence of time config
   const hasTimeOverrides = existing?.timeOverrides && Object.keys(existing.timeOverrides).length > 0;
   const hasSpecificTimeOverrides = hasTimeOverrides && Object.values(existing?.timeOverrides ?? {}).some(time => time !== '00:00');
-  const isAllDay = !hasAnyTimeConfigured && !scheduleObj?.weeklyTimes && !scheduleObj?.monthlyTimes && !hasSpecificTimeOverrides;
+  const isAllDay = existing?.isAllDay !== undefined
+    ? existing.isAllDay
+    : (!hasAnyTimeConfigured && !scheduleObj?.weeklyTimes && !scheduleObj?.monthlyTimes && !hasSpecificTimeOverrides);
   const initialMode: 'allDay' | 'timed' = isAllDay ? 'allDay' : 'timed';
   const [mode, setMode] = useState<'allDay' | 'timed'>(initialMode);
   const [freq, setFreq] = useState<'single' | 'daily' | 'weekly' | 'monthly' | 'annual'>(() => {
     if (existing) {
+      // Use explicit saved frequency if present
+      if (existing.habitFreq) return existing.habitFreq;
+
+      // Fallback: infer from schedule/overrides for older tasks without the field
       const overrides = existing.timeOverrides ? Object.keys(existing.timeOverrides) : [];
       const hasTimeOverrides = overrides.length > 0;
       const hasSpecificSchedule = (existing.schedule?.daysOfWeek?.length ?? 0) > 0 || 
@@ -782,12 +787,14 @@ export default function ModalScreen() {
             if (h.id !== newHabitId) return h;
             const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
               next[ymd] = '00:00'; // All day marker
-              // clear recurring fields
+              // clear recurring fields and all time configs
               const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
               schedule.daysOfWeek = [];
               schedule.monthDays = undefined;
               schedule.time = null;
               schedule.endTime = null;
+              schedule.weeklyTimes = undefined;
+              schedule.monthlyTimes = undefined;
               return { ...h, timeOverrides: next, schedule };
             }));
           } else if (freq === 'daily') {
@@ -801,6 +808,8 @@ export default function ModalScreen() {
               schedule.monthDays = undefined;
               schedule.yearMonth = undefined;
               schedule.yearDay = undefined;
+              schedule.weeklyTimes = undefined;
+              schedule.monthlyTimes = undefined;
               return { ...h, timeOverrides: {}, schedule };
             }));
           } else if (freq === 'weekly') {
@@ -812,6 +821,7 @@ export default function ModalScreen() {
               schedule.time = null;
               schedule.endTime = null;
               schedule.weeklyTimes = undefined;
+              schedule.monthlyTimes = undefined;
               return { ...h, schedule };
             }));
           } else if (freq === 'monthly') {
@@ -823,6 +833,7 @@ export default function ModalScreen() {
               schedule.daysOfWeek = [];
               schedule.time = null;
               schedule.endTime = null;
+              schedule.weeklyTimes = undefined;
               schedule.monthlyTimes = undefined;
               return { ...h, schedule };
             }));
@@ -837,10 +848,14 @@ export default function ModalScreen() {
               schedule.monthDays = undefined;
               schedule.time = null;
               schedule.endTime = null;
+              schedule.weeklyTimes = undefined;
+              schedule.monthlyTimes = undefined;
               return { ...h, schedule };
           }));
         }
         }
+        // Persist explicit flags so the modal restores them correctly on re-open
+        setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, isAllDay: mode === 'allDay', habitFreq: freq } : h));
       }
     } else if (type === 'rename' && existing) {
       const t = text.trim();
@@ -995,6 +1010,8 @@ export default function ModalScreen() {
             schedule.monthDays = undefined;
             schedule.time = null;
             schedule.endTime = null;
+            schedule.weeklyTimes = undefined;
+            schedule.monthlyTimes = undefined;
             return { ...h, timeOverrides: next, schedule };
           }));
         } else if (freq === 'daily') {
@@ -1008,6 +1025,8 @@ export default function ModalScreen() {
             schedule.monthDays = undefined;
             schedule.yearMonth = undefined;
             schedule.yearDay = undefined;
+            schedule.weeklyTimes = undefined;
+            schedule.monthlyTimes = undefined;
             return { ...h, timeOverrides: {}, schedule };
           }));
         } else if (freq === 'weekly') {
@@ -1019,6 +1038,7 @@ export default function ModalScreen() {
             schedule.time = null;
             schedule.endTime = null;
             schedule.weeklyTimes = undefined;
+            schedule.monthlyTimes = undefined;
             return { ...h, schedule };
           }));
         } else if (freq === 'monthly') {
@@ -1030,6 +1050,7 @@ export default function ModalScreen() {
             schedule.daysOfWeek = [];
             schedule.time = null;
             schedule.endTime = null;
+            schedule.weeklyTimes = undefined;
             schedule.monthlyTimes = undefined;
             return { ...h, schedule };
           }));
@@ -1044,10 +1065,14 @@ export default function ModalScreen() {
             schedule.monthDays = undefined;
             schedule.time = null;
             schedule.endTime = null;
+            schedule.weeklyTimes = undefined;
+            schedule.monthlyTimes = undefined;
             return { ...h, schedule };
           }));
         }
       }
+      // Persist explicit flags so the modal restores them correctly on re-open
+      setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, isAllDay: mode === 'allDay', habitFreq: freq } : h));
     }
     close();
   };
@@ -1077,6 +1102,12 @@ export default function ModalScreen() {
               placeholderTextColor="#64748b"
               style={styles.input}
             />
+          )}
+
+          {type === 'edit' && existing?.createdAt && (
+            <Text style={styles.createdAt}>
+              creata il {existing.createdAt.split('-').reverse().join('/')}
+            </Text>
           )}
 
           {(type === 'new' || type === 'edit') && (
@@ -1451,6 +1482,7 @@ const styles = StyleSheet.create({
   chipActiveText: { color: 'white', fontWeight: '700' },
 
   subtle: { color: '#94a3b8', marginTop: 8, marginBottom: 6 },
+  createdAt: { color: '#475569', fontSize: 12, marginTop: 6, marginLeft: 2 },
   timeColumn: { gap: 16 },
   timeSection: { gap: 8 },
   timeSectionTitle: { 

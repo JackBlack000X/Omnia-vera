@@ -5,7 +5,7 @@ import type { Habit } from '@/lib/habits/schema';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -65,29 +65,40 @@ export default function IndexScreen() {
     }, [])
   );
 
-  const handleRename = (h: Habit) => {
+  const handleRename = useCallback((h: Habit) => {
     setClosingMenuId(h.id);
     router.push({ pathname: '/modal', params: { type: 'rename', id: h.id } });
-  };
-  const handleSchedule = (h: Habit) => {
+  }, [router]);
+  const handleSchedule = useCallback((h: Habit) => {
     setClosingMenuId(h.id);
     router.push({ pathname: '/modal', params: { type: 'edit', id: h.id } });
-  };
-  const handleColor = (h: Habit) => {
+  }, [router]);
+  const handleColor = useCallback((h: Habit) => {
     setClosingMenuId(h.id);
     router.push({ pathname: '/modal', params: { type: 'edit', id: h.id } });
-  };
+  }, [router]);
 
-  const renderItem = ({ item, index }: { item: Habit; index: number }) => (
+  const sortedHabits = useMemo(
+    () => [...habits].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [habits]
+  );
+
+  const completedByHabitId = useMemo(
+    () => history[today]?.completedByHabitId ?? {},
+    [history, today]
+  );
+
+  const renderItem = useCallback(({ item, index }: { item: Habit; index: number }) => (
     <HabitItem
       habit={item}
       index={index}
+      isDone={Boolean(completedByHabitId[item.id])}
       onRename={handleSchedule}
       onSchedule={handleSchedule}
       onColor={handleSchedule}
       shouldCloseMenu={closingMenuId === item.id || closingMenuId === 'all'}
     />
-  );
+  ), [completedByHabitId, handleSchedule, closingMenuId]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -169,7 +180,7 @@ export default function IndexScreen() {
         </View>
       ) : (
         <FlatList
-          data={[...habits].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))}
+          data={sortedHabits}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}

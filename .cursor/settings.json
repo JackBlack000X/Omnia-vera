@@ -1,0 +1,31 @@
+{
+  "plugins": {
+    "supabase": {
+      "enabled": true
+    },
+    "vercel": {
+      "enabled": true
+    },
+    "stripe": {
+      "enabled": true
+    },
+    "figma": {
+      "enabled": true
+    },
+    "linear": {
+      "enabled": true
+    },
+    "continual-learning": {
+      "enabled": true
+    },
+    "cursor-team-kit": {
+      "enabled": true
+    },
+    "parallel": {
+      "enabled": true
+    },
+    "superpowers": {
+      "enabled": true
+    }
+  }
+}

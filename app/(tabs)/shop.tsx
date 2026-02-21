@@ -1,6 +1,5 @@
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
-import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -8,52 +7,6 @@ import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-na
 export default function ShopScreen() {
   const router = useRouter();
   const { activeTheme, setActiveTheme } = useAppTheme();
-  const [brightness, setBrightness] = React.useState(2);
-  // Impostazioni salvate (non modificabili)
-  const pointSpacing = 27;
-  const thumbSize = 40;
-  const thumbVerticalOffset = -3;
-  const thumbHorizontalOffset = 16;
-  const [isSliding, setIsSliding] = React.useState(false);
-  // rawSliderValue: 1:1 con il dito (slider reale, invisibile)
-  const [rawSliderValue, setRawSliderValue] = React.useState(2);
-  // displayValue: valore visuale del controller (può essere più veloce del dito)
-  const [displayValue, setDisplayValue] = React.useState(2);
-  const [sliderWidth, setSliderWidth] = React.useState(0);
-  const [showPositionPanel, setShowPositionPanel] = React.useState(false);
-  const [speedMultiplier, setSpeedMultiplier] = React.useState(1.3);
-  const dragStartRawValue = React.useRef(2);
-  const dragStartDisplayValue = React.useRef(2);
-  // Offset laterali per ogni punto (1, 2, 3, 4)
-  const [pointHorizontalOffsets, setPointHorizontalOffsets] = React.useState({
-    1: 33,
-    2: 0,
-    3: -33,
-    4: -65,
-  });
-  
-  const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
-
-  // Centro X del controller custom, allineato ai 4 punti + offset personalizzati (interpolati)
-  const getThumbCenterX = () => {
-    if (sliderWidth === 0) return 0;
-
-    const padding = 18 + pointSpacing;
-    const availableWidth = sliderWidth - padding * 2;
-
-    const currentValue = displayValue;
-    const t = clamp((currentValue - 1) / 3, 0, 1);
-    const baseX = padding + t * availableWidth;
-
-    const lowerPoint = Math.floor(currentValue);
-    const upperPoint = Math.ceil(currentValue);
-    const lowerOffset = pointHorizontalOffsets[lowerPoint as keyof typeof pointHorizontalOffsets] || 0;
-    const upperOffset = pointHorizontalOffsets[upperPoint as keyof typeof pointHorizontalOffsets] || 0;
-    const interpolation = currentValue - lowerPoint;
-    const pointOffset = lowerOffset + (upperOffset - lowerOffset) * interpolation;
-
-    return baseX + thumbHorizontalOffset + pointOffset;
-  };
 
   return (
     <View style={styles.background}>
@@ -62,12 +15,6 @@ export default function ShopScreen() {
           {activeTheme !== 'futuristic' && <Text style={styles.title}>Shop</Text>}
           <View style={styles.headerRight}>
             <TouchableOpacity 
-              onPress={() => setShowPositionPanel(!showPositionPanel)}
-              style={styles.positionPanelToggle}
-            >
-              <Ionicons name="move-outline" size={20} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity 
               onPress={() => router.push('/profile')}
               style={styles.profileBtn}
             >
@@ -75,66 +22,6 @@ export default function ShopScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        
-        {showPositionPanel && (
-          <View style={styles.positionPanel}>
-            <View style={styles.positionPanelHeader}>
-              <Text style={styles.positionPanelTitle}>Posizione Laterale</Text>
-              <TouchableOpacity
-                onPress={() => setShowPositionPanel(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={18} color="white" />
-              </TouchableOpacity>
-            </View>
-            {[1, 2, 3, 4].map((point) => (
-              <View key={point} style={styles.positionControlRow}>
-                <Text style={styles.positionControlLabel}>Punto {point}</Text>
-                <View style={styles.positionControlValue}>
-                  <Text style={styles.positionControlValueText}>
-                    {pointHorizontalOffsets[point as keyof typeof pointHorizontalOffsets]}
-                  </Text>
-                </View>
-                <Slider
-                  style={styles.positionSlider}
-                  minimumValue={-100}
-                  maximumValue={100}
-                  step={1}
-                  value={pointHorizontalOffsets[point as keyof typeof pointHorizontalOffsets]}
-                  onValueChange={(value) => {
-                    setPointHorizontalOffsets(prev => ({
-                      ...prev,
-                      [point]: value
-                    }));
-                  }}
-                  minimumTrackTintColor="#ffffff"
-                  maximumTrackTintColor="rgba(255,255,255,0.2)"
-                  thumbTintColor="#ffffff"
-                />
-              </View>
-            ))}
-
-            <View style={[styles.positionControlRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 12 }]}>
-              <Text style={styles.positionControlLabel}>Velocità</Text>
-              <View style={styles.positionControlValue}>
-                <Text style={styles.positionControlValueText}>
-                  {speedMultiplier.toFixed(1)}x
-                </Text>
-              </View>
-              <Slider
-                style={styles.positionSlider}
-                minimumValue={1}
-                maximumValue={2}
-                step={0.1}
-                value={speedMultiplier}
-                onValueChange={setSpeedMultiplier}
-                minimumTrackTintColor="#ffffff"
-                maximumTrackTintColor="rgba(255,255,255,0.2)"
-                thumbTintColor="#ffffff"
-              />
-            </View>
-          </View>
-        )}
         
         <View style={styles.content}>
           <View style={styles.optionsContainer}>
@@ -153,113 +40,6 @@ export default function ShopScreen() {
             >
               <Text style={styles.optionText}>Futuristic Computer</Text>
             </TouchableOpacity>
-          </View>
-
-          <View style={styles.brightnessContainer}>
-            <View style={styles.brightnessHeader}>
-              <Text style={styles.brightnessLabel}>Luminosità</Text>
-              <Text style={styles.brightnessValue}>{brightness}</Text>
-            </View>
-            
-            <View style={styles.sliderWrapper}>
-              <View 
-                style={[styles.brightnessSlider, { position: 'relative' }]}
-                onLayout={(event) => {
-                  const { width } = event.nativeEvent.layout;
-                  setSliderWidth(width);
-                }}
-              >
-                {/* Slider invisibile: solo per il touch (1:1 col dito) */}
-                <Slider
-                  style={styles.invisibleSlider}
-                  minimumValue={1}
-                  maximumValue={4}
-                  step={0}
-                  tapToSeek={true}
-                  value={rawSliderValue}
-                  onValueChange={(rawValue) => {
-                    setRawSliderValue(rawValue);
-
-                    // Applichiamo la velocità SOLO al controller visuale (displayValue),
-                    // così non si inverte mai la direzione durante il drag.
-                    const rawDelta = rawValue - dragStartRawValue.current;
-                    const acceleratedDelta = rawDelta * speedMultiplier;
-                    const nextDisplay = clamp(dragStartDisplayValue.current + acceleratedDelta, 1, 4);
-
-                    setDisplayValue(nextDisplay);
-                    const rounded = Math.round(nextDisplay);
-                    if (rounded !== brightness) setBrightness(rounded);
-                  }}
-                  onSlidingStart={() => {
-                    setIsSliding(true);
-                    dragStartRawValue.current = rawSliderValue;
-                    dragStartDisplayValue.current = displayValue;
-                  }}
-                  onSlidingComplete={() => {
-                    setIsSliding(false);
-                    const targetValue = Math.round(displayValue);
-
-                    // porta anche lo slider "touch" al target, così resta coerente
-                    setRawSliderValue(targetValue);
-
-                    // Animazione fluida del controller visuale verso il target
-                    const startValue = displayValue;
-                    const duration = 300; // ms
-                    const startTime = Date.now();
-                    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-
-                    const animate = () => {
-                      const elapsed = Date.now() - startTime;
-                      const progress = Math.min(elapsed / duration, 1);
-                      const eased = easeOutCubic(progress);
-                      const current = startValue + (targetValue - startValue) * eased;
-
-                      setDisplayValue(current);
-                      if (progress < 1) {
-                        requestAnimationFrame(animate);
-                      } else {
-                        setDisplayValue(targetValue);
-                        setBrightness(targetValue);
-                      }
-                    };
-                    requestAnimationFrame(animate);
-                  }}
-                  minimumTrackTintColor="transparent"
-                  maximumTrackTintColor="transparent"
-                  thumbTintColor="transparent"
-                />
-
-                {/* Unico controller visibile */}
-                <View
-                  pointerEvents="none"
-                  style={[
-                    styles.customThumb,
-                    {
-                      width: thumbSize,
-                      height: thumbSize,
-                      borderRadius: thumbSize / 2,
-                      left: clamp(getThumbCenterX() - thumbSize / 2, -thumbSize, sliderWidth),
-                      top: 56 / 2 - thumbSize / 2 + thumbVerticalOffset,
-                      opacity: isSliding ? 0.5 : 0.5,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={[
-                styles.sliderPoints,
-                { paddingHorizontal: 18 + pointSpacing }
-              ]}>
-                {[1, 2, 3, 4].map((point) => (
-                  <View
-                    key={point}
-                    style={[
-                      styles.sliderPoint,
-                      brightness === point && styles.sliderPointActive,
-                    ]}
-                  />
-                ))}
-              </View>
-            </View>
           </View>
         </View>
       </SafeAreaView>
@@ -301,16 +81,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  positionPanelToggle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'white',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
   title: {
     fontSize: 28,
     fontWeight: '700',
@@ -335,69 +105,6 @@ const styles = StyleSheet.create({
     gap: 16,
     width: '100%',
   },
-  brightnessContainer: {
-    marginTop: 32,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    backgroundColor: 'rgba(15, 15, 15, 0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  brightnessHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  sliderWrapper: {
-    position: 'relative',
-  },
-  brightnessLabel: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  brightnessValue: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  brightnessSlider: {
-    width: '100%',
-    height: 56,
-  },
-  invisibleSlider: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    opacity: 0.01,
-  },
-  customThumb: {
-    position: 'absolute',
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  sliderPoints: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: -40,
-    position: 'relative',
-  },
-  sliderPoint: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  sliderPointActive: {
-    backgroundColor: '#ffffff',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
   optionButton: {
     backgroundColor: 'rgba(30, 30, 30, 0.8)',
     paddingVertical: 20,
@@ -421,58 +128,5 @@ const styles = StyleSheet.create({
   placeholderText: {
     color: '#94a3b8',
     fontSize: 18,
-  },
-  positionPanel: {
-    position: 'absolute',
-    top: 60,
-    right: 20,
-    width: 200,
-    backgroundColor: 'rgba(15, 15, 15, 0.95)',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    zIndex: 1000,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
-  },
-  positionPanelHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  positionPanelTitle: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  positionControlRow: {
-    marginBottom: 12,
-  },
-  positionControlLabel: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  positionControlValue: {
-    alignItems: 'flex-end',
-    marginBottom: 4,
-  },
-  positionControlValueText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  positionSlider: {
-    width: '100%',
-    height: 24,
   },
 });
