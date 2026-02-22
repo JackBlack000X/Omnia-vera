@@ -19,6 +19,7 @@ export type Habit = {
   createdAt?: string; // YYYY-MM-DD creation date in Europe/Zurich
   isAllDay?: boolean; // explicit all-day flag
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; // explicit frequency flag
+  folder?: string; // custom folder/category name
 };
 
 export type DayCompletion = {

@@ -31,18 +31,19 @@ export type HabitsContextType = {
   history: HabitsState['history'];
   lastResetDate: string | null;
   dayResetTime: string;
-  addHabit: (text: string, color?: string) => void;
+  addHabit: (text: string, color?: string, folder?: string) => string;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
   removeHabit: (id: string) => void;
   toggleDone: (id: string) => void;
   reorder: (id: string, direction: 'up' | 'down') => void;
+  updateHabitsOrder: (orderedHabits: Habit[]) => void;
   resetToday: () => Promise<void>;
   getDay: (date: Date | string) => string;
   setTimeOverride: (id: string, date: string, hhmm: string | null) => void;
   setTimeOverrideRange: (id: string, date: string, startTime: string | null, endTime: string | null) => void;
   updateScheduleTime: (id: string, hhmm: string | null) => void;
-  updateScheduleTimes: (id: string, startTime: string | null, endTime: string | null) => void;
+  updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   updateSchedule: (id: string, daysOfWeek: number[], hhmm: string | null) => void;
   setDayResetTime: (time: string) => Promise<void>;
   setHabits: React.Dispatch<React.SetStateAction<Habit[]>>;
@@ -143,11 +144,11 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  const addHabit = useCallback((text: string, color?: string) => {
+  const addHabit = useCallback((text: string, color?: string, folder?: string) => {
     const newId = generateUUID();
     setHabits((prev) => [
       ...prev,
-      { id: newId, text, order: prev.length, color: color ?? '#4A148C', createdAt: formatYmd() },
+      { id: newId, text, order: prev.length, color: color ?? '#4A148C', createdAt: formatYmd(), folder },
     ]);
     return newId;
   }, []);
@@ -199,6 +200,25 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         newHabits[index] = { ...nextHabit, order: habitToMove.order };
         newHabits[index + 1] = { ...habitToMove, order: nextHabit.order };
       }
+      return newHabits;
+    });
+  }, []);
+
+  const updateHabitsOrder = useCallback((orderedHabits: Habit[]) => {
+    setHabits(prev => {
+      // Map ordered ids
+      const idToIndex = new Map<string, number>();
+      orderedHabits.forEach((h, idx) => idToIndex.set(h.id, idx));
+
+      // Update the 'order' property of each habit in prev based on its position in orderedHabits
+      const newHabits = prev.map(h => {
+        const newOrder = idToIndex.get(h.id);
+        if (newOrder !== undefined) {
+          return { ...h, order: newOrder };
+        }
+        return h;
+      });
+
       return newHabits;
     });
   }, []);
@@ -278,14 +298,74 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const updateScheduleTimes = useCallback((id: string, startTime: string | null, endTime: string | null) => {
+  const updateScheduleFromDate = useCallback((id: string, fromDate: string, startTime: string | null, endTime: string | null) => {
     setHabits(prev => {
       const next = prev.map(h => {
         if (h.id !== id) return h;
+        
+        const nextOverrides = { ...(h.timeOverrides ?? {}) } as Record<string, string | { start: string; end: string }>;
+        const oldStart = h.schedule?.time ?? null;
+        const oldEnd = h.schedule?.endTime ?? null;
+        
+        // If we have a creation date and an old schedule, freeze the past
+        if (h.createdAt && (oldStart || oldEnd)) {
+          const startD = new Date(h.createdAt);
+          const endD = new Date(fromDate);
+          
+          // Iterate from createdAt to fromDate (exclusive)
+          let curr = new Date(startD);
+          while (curr < endD) {
+            const ymd = formatYmd(curr);
+            // Only freeze if no override exists for that day
+            if (!nextOverrides[ymd]) {
+              if (oldStart && oldEnd) {
+                nextOverrides[ymd] = { start: oldStart, end: oldEnd };
+              } else if (oldStart) {
+                nextOverrides[ymd] = oldStart;
+              }
+            }
+            curr.setDate(curr.getDate() + 1);
+          }
+        }
+        
         const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as NonNullable<Habit['schedule']>;
         schedule.time = startTime ?? null;
         schedule.endTime = endTime ?? null;
-        return { ...h, schedule };
+        
+        const isRecurring = h.habitFreq === 'daily' || h.habitFreq === 'weekly' || h.habitFreq === 'monthly' || h.habitFreq === 'annual' || 
+                           (h.schedule?.daysOfWeek?.length ?? 0) > 0 || 
+                           (h.schedule?.monthDays?.length ?? 0) > 0 || 
+                           !!h.schedule?.yearMonth;
+        
+        // For single/ad-hoc tasks, they ONLY appear on days where they have an explicit override.
+        // So we MUST keep the override for fromDate, otherwise the task disappears from today.
+        // For recurring tasks, they naturally appear on their scheduled days, so we can clear the
+        // override and let them fall back to the new base schedule we're setting.
+        if (!isRecurring) {
+          // Update the override for the dragged day
+          if (startTime && endTime) {
+            nextOverrides[fromDate] = { start: startTime, end: endTime };
+          } else if (startTime) {
+            nextOverrides[fromDate] = startTime;
+          }
+          
+          // Since it's "Da oggi in poi" mode, we should also update any future overrides 
+          // this ad-hoc task might have, so they match the new time.
+          const fromDateObj = new Date(fromDate);
+          for (const dateKey of Object.keys(nextOverrides)) {
+            if (dateKey > fromDate) {
+              if (startTime && endTime) {
+                nextOverrides[dateKey] = { start: startTime, end: endTime };
+              } else if (startTime) {
+                nextOverrides[dateKey] = startTime;
+              }
+            }
+          }
+        } else {
+          delete nextOverrides[fromDate];
+        }
+        
+        return { ...h, schedule, timeOverrides: nextOverrides };
       });
       AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
       return next;
@@ -334,9 +414,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime,
-    addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, resetToday, getDay,
-    setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleTimes, updateSchedule, setDayResetTime, setHabits, resetStorage,
-  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleTimes, updateSchedule, setDayResetTime, setHabits, resetStorage]);
+    addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay,
+    setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
+  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

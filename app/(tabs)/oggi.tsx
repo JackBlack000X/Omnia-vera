@@ -1,6 +1,9 @@
 import { THEME } from '@/constants/theme';
 import { isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
+import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
+import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
+import { storage } from '@/lib/storage';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -75,7 +78,6 @@ type OggiEvent = {
   createdAt?: string;
 };
 
-type LayoutInfo = { col: number; columns: number; span: number };
 
 type DraggableEventProps = {
   event: OggiEvent;
@@ -93,12 +95,13 @@ type DraggableEventProps = {
   currentDate: Date;
   getDay: (date: Date) => string;
   setTimeOverrideRange: (habitId: string, ymd: string, start: string, end: string) => void;
-  updateScheduleTimes: (habitId: string, start: string | null, end: string | null) => void;
+  updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   setPendingEventPositions: Dispatch<SetStateAction<Record<string, number>>>;
   setRecentlyMovedEventId: (id: string | null) => void;
   setLastMovedEventId: (id: string) => void;
   setCurrentDragPosition: (minutes: number | null) => void;
   currentDragPosition: number | null;
+  dragMode: 'forward' | 'single';
   timedEvents: OggiEvent[];
   layoutById: Record<string, LayoutInfo>;
   calculateDragLayout: (draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean) => { width: number; left: number };
@@ -125,12 +128,13 @@ function DraggableEvent({
   currentDate,
   getDay,
   setTimeOverrideRange,
-  updateScheduleTimes,
+  updateScheduleFromDate,
   setPendingEventPositions,
   setRecentlyMovedEventId,
   setLastMovedEventId,
   setCurrentDragPosition,
   currentDragPosition,
+  dragMode,
   timedEvents,
   layoutById,
   calculateDragLayout,
@@ -375,8 +379,11 @@ function DraggableEvent({
         }
 
         const selectedYmd = getDay(currentDate);
-        setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
-        updateScheduleTimes(event.id, newStartTime, newEndTime);
+        if (dragMode === 'single') {
+          setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
+        } else {
+          updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
+        }
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -439,7 +446,8 @@ function DraggableEvent({
     setLastMovedEventId,
     setCurrentDragPosition,
     setTimeOverrideRange,
-    updateScheduleTimes,
+    updateScheduleFromDate,
+    dragMode,
     getDay
   ]);
 
@@ -494,12 +502,13 @@ function DraggableEvent({
 }
 
 export default function OggiScreen() {
-  const { habits, history, getDay, setTimeOverrideRange, updateScheduleTimes } = useHabits();
+  const { habits, history, getDay, setTimeOverrideRange, updateScheduleFromDate } = useHabits();
   const { activeTheme } = useAppTheme();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   
   const [showSettings, setShowSettings] = useState(false);
+  const [dragMode, setDragMode] = useState<'forward' | 'single'>('forward');
   const [windowStart, setWindowStart] = useState<string>('06:00');
   const [windowEnd, setWindowEnd] = useState<string>('22:00');
   const [visibleHours, setVisibleHours] = useState<number>(10);
@@ -516,6 +525,7 @@ export default function OggiScreen() {
   
   const stableLayoutRef = useRef<Record<string, LayoutInfo>>({});
   const brokenOverlapPairsRef = useRef<Set<string>>(new Set());
+  const initialOverlapsRef = useRef<Set<string>>(new Set());
   // Rank determines left-to-right order within a cluster.
   // Initialised from createdAt; bumped to a new high value each time a task is dragged,
   // so the last-moved task is always rightmost. Never reset, so relative order is stable.
@@ -525,10 +535,11 @@ export default function OggiScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [start, end, visible] = await Promise.all([
+        const [start, end, visible, mode] = await Promise.all([
           AsyncStorage.getItem('oggi_window_start_v1'),
           AsyncStorage.getItem('oggi_window_end_v1'),
           AsyncStorage.getItem('oggi_visible_hours_v1'),
+          AsyncStorage.getItem('oggi_drag_mode_v1'),
         ]);
         if (start) setWindowStart(start);
         if (end) setWindowEnd(end);
@@ -536,6 +547,7 @@ export default function OggiScreen() {
              const v = parseInt(visible, 10);
              if (!isNaN(v) && v >= 5 && v <= 24) setVisibleHours(v);
         }
+        if (mode === 'single' || mode === 'forward') setDragMode(mode);
       } catch {}
     })();
   }, []);
@@ -549,6 +561,9 @@ export default function OggiScreen() {
   useEffect(() => {
     AsyncStorage.setItem('oggi_visible_hours_v1', visibleHours.toString()).catch(() => {});
   }, [visibleHours]);
+  useEffect(() => {
+    AsyncStorage.setItem('oggi_drag_mode_v1', dragMode).catch(() => {});
+  }, [dragMode]);
 
   useEffect(() => {
     const updateTime = () => setCurrentTime(new Date());
@@ -556,6 +571,42 @@ export default function OggiScreen() {
     const interval = setInterval(updateTime, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    registerForPushNotificationsAsync();
+  }, []);
+
+  // Sync notifications for today's habits
+  useEffect(() => {
+    (async () => {
+      // Only schedule notifications if we are looking at today
+      if (!isToday(currentDate, TZ)) return;
+
+      await cancelAllScheduledNotifications();
+      
+      const now = new Date();
+      for (const ev of timedEvents) {
+        if (ev.isAllDay) continue;
+        
+        const [h, m] = ev.startTime.split(':').map(Number);
+        const eventTime = new Date();
+        eventTime.setHours(h, m, 0, 0);
+
+        // Schedule if it's in the future (within today)
+        if (eventTime > now) {
+          // Send notification 10 minutes before
+          const triggerTime = new Date(eventTime.getTime() - 10 * 60000);
+          if (triggerTime > now) {
+            await scheduleHabitNotification(
+              'Abitudine in arrivo!',
+              `${ev.title} inizia alle ${ev.startTime}`,
+              triggerTime
+            );
+          }
+        }
+      }
+    })();
+  }, [timedEvents, currentDate]);
 
   const today = getDay(currentDate);
   const todayDate = useMemo(() => formatDateLong(currentDate, TZ), [currentDate]);
@@ -734,179 +785,19 @@ export default function OggiScreen() {
     return () => clearTimeout(timer);
   }, [recentlyMovedEventId, timedEvents]);
 
-  const calculateLayout = useCallback((
+  const calculateLayoutCallback = useCallback((
     events: (OggiEvent & { s: number; e: number; duration: number; isLastMoved: boolean })[],
     draggedEventId: string | null,
     stableLayout?: Record<string, LayoutInfo>
   ) => {
-    const layout: Record<string, LayoutInfo> = {};
-    const ranks = columnRankRef.current;
-    const ov = (a: { s: number; e: number }, b: { s: number; e: number }) =>
-      Math.max(a.s, b.s) < Math.min(a.e, b.e);
-    
-    // 1. Cluster events by time overlap
-    const sorted = [...events].sort((a, b) => {
-      if (a.s !== b.s) return a.s - b.s;
-      return b.duration - a.duration;
-    });
-
-    const clusters: typeof events[] = [];
-    let curCluster: typeof events = [];
-    let clEnd = -1;
-
-    for (const ev of sorted) {
-      if (curCluster.length === 0) {
-        curCluster.push(ev);
-        clEnd = ev.e;
-      } else if (ev.s < clEnd) {
-        curCluster.push(ev);
-        clEnd = Math.max(clEnd, ev.e);
-      } else {
-        clusters.push(curCluster);
-        curCluster = [ev];
-        clEnd = ev.e;
-      }
-    }
-    if (curCluster.length > 0) clusters.push(curCluster);
-
-    // 2. Process each cluster
-    for (const cluster of clusters) {
-      if (cluster.length === 1) {
-        layout[cluster[0].id] = { col: 0, columns: 1, span: 1 };
-        continue;
-      }
-
-      // During an active drag, we treat the dragged task specially to ensure it stays on top/right.
-      // Outside of a drag, we rely entirely on the saved ranks and first-fit to pack without holes.
-      const moverId = draggedEventId;
-      const mover = moverId ? cluster.find(e => e.id === moverId) : null;
-
-      const insertionOrder = [...cluster].sort((a, b) => {
-        const aM = mover && a.id === mover.id;
-        const bM = mover && b.id === mover.id;
-        if (aM && !bM) return 1;
-        if (!aM && bM) return -1;
-        const ra = ranks[a.id] ?? 0;
-        const rb = ranks[b.id] ?? 0;
-        if (ra !== rb) return ra - rb;
-        if (a.s !== b.s) return a.s - b.s;
-        return b.duration - a.duration;
-      });
-
-      // During drag: check if mover should preserve its column
-      let moverPreservesCol: number | null = null;
-      if (draggedEventId && mover && stableLayout?.[mover.id]) {
-        const origCol = stableLayout[mover.id].col;
-        const hasAny = cluster.some(o => o.id !== mover.id && ov(mover, o));
-        if (hasAny) {
-          const hasUnbroken = cluster.some(o => {
-            if (o.id === mover.id || !stableLayout[o.id]) return false;
-            if (stableLayout[o.id].col === origCol) return false;
-            const k1 = `${mover.id}-${o.id}`;
-            const k2 = `${o.id}-${mover.id}`;
-            return ov(mover, o) &&
-              !brokenOverlapPairsRef.current.has(k1) &&
-              !brokenOverlapPairsRef.current.has(k2);
-          });
-          if (hasUnbroken) moverPreservesCol = origCol;
-        }
-      }
-
-      const columns: typeof events[] = [];
-
-      // If mover preserves column, place it first so stable tasks route around it
-      if (mover && moverPreservesCol !== null) {
-        while (columns.length <= moverPreservesCol) columns.push([]);
-        columns[moverPreservesCol].push(mover);
-        layout[mover.id] = { col: moverPreservesCol, columns: 1, span: 1 };
-      }
-
-      for (const ev of insertionOrder) {
-        if (mover && ev.id === mover.id && moverPreservesCol !== null) continue;
-
-        const isMover = mover && ev.id === mover.id;
-        let startSearchCol = 0;
-
-        if (!isMover && draggedEventId && stableLayout?.[ev.id]) {
-          // Non-mover task during active drag
-          const mEv = cluster.find(e => e.id === draggedEventId);
-          if (mEv && !ov(ev, mEv)) {
-            // Not overlapping with the mover at all — lock to its stable column.
-            // Tasks that are never touched by the mover must never change column.
-            const stableCol = stableLayout[ev.id].col;
-            while (columns.length <= stableCol) columns.push([]);
-            // Place in stable column (tasks there won't conflict since they also have stable cols
-            // and we're not changing their time positions during drag)
-            columns[stableCol].push(ev);
-            layout[ev.id] = { col: stableCol, columns: 1, span: 1 };
-            continue;
-          } else if (mEv && moverPreservesCol !== null) {
-            // Overlaps mover AND mover is preserving its column.
-            // Keep this task's original relative position (don't drift left).
-            const thisOrigCol = stableLayout[ev.id].col;
-            if (moverPreservesCol < thisOrigCol) startSearchCol = thisOrigCol;
-          }
-        }
-
-        let placed = false;
-        for (let i = startSearchCol; i < columns.length; i++) {
-          if (!columns[i].some(existing => ov(ev, existing))) {
-            columns[i].push(ev);
-            layout[ev.id] = { col: i, columns: 1, span: 1 };
-            placed = true;
-            break;
-          }
-        }
-        if (!placed) {
-          while (columns.length < startSearchCol) columns.push([]);
-          columns.push([ev]);
-          layout[ev.id] = { col: columns.length - 1, columns: 1, span: 1 };
-        }
-      }
-
-      // Calculate spans
-      const totalCols = columns.length;
-
-      const maxConcurrentFor = (ev: typeof events[0]): number => {
-        const others = cluster.filter(o => o.id !== ev.id && ov(ev, o));
-        if (others.length === 0) return 1;
-        const bounds = new Set<number>();
-        bounds.add(ev.s);
-        bounds.add(ev.e);
-        for (const t of others) {
-          if (t.s > ev.s && t.s < ev.e) bounds.add(t.s);
-          if (t.e > ev.s && t.e < ev.e) bounds.add(t.e);
-        }
-        const sb = Array.from(bounds).sort((a, b) => a - b);
-        let max = 1;
-        for (let i = 0; i < sb.length - 1; i++) {
-          const mid = (sb[i] + sb[i + 1]) / 2;
-          let c = 1;
-          for (const t of others) { if (t.s < mid && t.e > mid) c++; }
-          max = Math.max(max, c);
-        }
-        return max;
-      };
-
-      for (const ev of cluster) {
-        const el = layout[ev.id];
-        if (!el) continue;
-
-        const concurrent = maxConcurrentFor(ev);
-        const baseSpan = Math.max(1, Math.floor(totalCols / concurrent));
-
-        let expandSpan = 1;
-        for (let nc = el.col + 1; nc < totalCols; nc++) {
-          if (columns[nc].some(o => o.id !== ev.id && ov(ev, o))) break;
-          expandSpan++;
-        }
-
-        el.columns = totalCols;
-        el.span = Math.min(Math.max(baseSpan, expandSpan), totalCols - el.col);
-      }
-    }
-
-    return layout;
+    return calculateLayout(
+      events,
+      draggedEventId,
+      stableLayout,
+      columnRankRef.current,
+      initialOverlapsRef.current,
+      brokenOverlapPairsRef.current
+    );
   }, []);
 
   // --- LAYOUT MANAGEMENT ---
@@ -939,15 +830,33 @@ export default function OggiScreen() {
             }
         }
         const lockSnapshot = dragClearedOriginalOverlap ? undefined : stableLayoutRef.current;
-        return calculateLayout(events, draggingEventId, lockSnapshot);
+        return calculateLayoutCallback(events, draggingEventId, lockSnapshot);
     } 
     
-    return calculateLayout(events, null);
-  }, [timedEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayout]);
+    return calculateLayoutCallback(events, null);
+  }, [timedEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayoutCallback]);
   
   const handleDragStart = useCallback((id: string) => {
     stableLayoutRef.current = layoutById;
-  }, [layoutById]);
+    
+    // Calculate initial overlaps when drag starts
+    const initialOv = new Set<string>();
+    for (let i = 0; i < timedEvents.length; i++) {
+      const e1 = timedEvents[i];
+      const s1 = toMinutes(e1.startTime);
+      const end1 = toMinutes(e1.endTime);
+      for (let j = i + 1; j < timedEvents.length; j++) {
+        const e2 = timedEvents[j];
+        const s2 = toMinutes(e2.startTime);
+        const end2 = toMinutes(e2.endTime);
+        if (Math.max(s1, s2) < Math.min(end1, end2)) {
+          initialOv.add(`${e1.id}-${e2.id}`);
+          initialOv.add(`${e2.id}-${e1.id}`);
+        }
+      }
+    }
+    initialOverlapsRef.current = initialOv;
+  }, [layoutById, timedEvents]);
 
   const handleDragEnd = useCallback(() => {
       setDraggingEventId(null);
@@ -995,7 +904,7 @@ export default function OggiScreen() {
     // Always recalculate layout to get the correct span, especially when D enters overlap
     // Use the same logic as layoutById: if hasClearedOverlap is true, don't use lock snapshot
     const lockSnapshot = hasClearedOverlap ? undefined : stableLayoutRef.current;
-    const tempLayout = calculateLayout(events, draggedEventId, lockSnapshot);
+    const tempLayout = calculateLayoutCallback(events, draggedEventId, lockSnapshot);
     
     const draggedLayout = tempLayout[draggedEventId] || { col: 0, columns: 1, span: 1 };
     const screenWidth = Dimensions.get('window').width;
@@ -1007,7 +916,7 @@ export default function OggiScreen() {
       width: (colWidth * draggedLayout.span) - 2,
       left,
     };
-  }, [timedEvents, layoutById, calculateLayout, lastMovedEventId]);
+  }, [timedEvents, layoutById, calculateLayoutCallback, lastMovedEventId]);
 
   const getEventStyle = (event: OggiEvent) => {
     const originalStart = toMinutes(event.startTime);
@@ -1153,12 +1062,13 @@ export default function OggiScreen() {
                    currentDate={currentDate}
                    getDay={getDay}
                    setTimeOverrideRange={setTimeOverrideRange}
-                   updateScheduleTimes={updateScheduleTimes}
+                   updateScheduleFromDate={updateScheduleFromDate}
                    setPendingEventPositions={setPendingEventPositions}
                    setRecentlyMovedEventId={setRecentlyMovedEventId}
                    setLastMovedEventId={setLastMovedEventId}
                    setCurrentDragPosition={setCurrentDragPosition}
                    currentDragPosition={currentDragPosition}
+                   dragMode={dragMode}
                    timedEvents={timedEvents}
                    layoutById={layoutById}
                    calculateDragLayout={calculateDragLayout}
@@ -1270,6 +1180,16 @@ export default function OggiScreen() {
                        }}><Text style={styles.controlBtnText}>+</Text></TouchableOpacity>
                     </View>
                 </View>
+
+               {/* Drag Mode Control */}
+               <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Drag & Drop: {dragMode === 'forward' ? 'Da oggi in poi' : 'Solo questo giorno'}</Text>
+                  <View style={styles.settingControls}>
+                     <TouchableOpacity style={styles.controlBtnWide} onPress={() => {
+                        setDragMode(prev => prev === 'forward' ? 'single' : 'forward');
+                     }}><Text style={[styles.controlBtnText, { fontSize: 14 }]}>Cambia</Text></TouchableOpacity>
+                  </View>
+               </View>
 
                <TouchableOpacity style={styles.closeBtn} onPress={() => setShowSettings(false)}>
                   <Text style={styles.closeBtnText}>Chiudi</Text>

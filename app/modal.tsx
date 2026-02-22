@@ -1,8 +1,8 @@
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHabits } from '@/lib/habits/Provider';
 import { Habit } from '@/lib/habits/schema';
-import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -210,8 +210,8 @@ function ConfirmationModal({
 
 // Modal multipurpose: type=new|rename|schedule|color
 export default function ModalScreen() {
-  const { type = 'new', id } = useLocalSearchParams<{ type?: string; id?: string }>();
-  const { habits, addHabit, updateHabit, updateHabitColor, updateSchedule, updateScheduleTime, updateScheduleTimes, setHabits } = useHabits();
+  const { type = 'new', id, folder } = useLocalSearchParams<{ type?: string; id?: string; folder?: string }>();
+  const { habits, addHabit, updateHabit, updateHabitColor, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay } = useHabits();
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
   const colorScheme = useColorScheme();
@@ -220,6 +220,18 @@ export default function ModalScreen() {
 
   const [text, setText] = useState(existing?.text ?? '');
   const [color, setColor] = useState<string>(existing?.color ?? '#4A148C');
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(existing?.folder ?? folder ?? null);
+  const [availableFolders, setAvailableFolders] = useState<string[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem('tasks_custom_folders_v1').then((data) => {
+      if (data) {
+        try {
+          setAvailableFolders(JSON.parse(data));
+        } catch {}
+      }
+    }).catch(() => {});
+  }, []);
   
   // Confirmation modal state
   const [confirmationModal, setConfirmationModal] = useState<{
@@ -632,10 +644,13 @@ export default function ModalScreen() {
     if (type === 'new' || (type === 'edit' && existing)) {
       const t = text.trim();
       if (t.length <= 100) {
-        const newHabitId = type === 'new' ? addHabit(t, color) : existing!.id;
+        const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined) : existing!.id;
         if (type === 'edit' && existing) {
           if (t !== existing.text) updateHabit(existing.id, t);
           if (color !== (existing.color ?? '#4A148C')) updateHabitColor(existing.id, color);
+          if (selectedFolder !== (existing.folder ?? null)) {
+            setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, folder: selectedFolder || undefined } : h));
+          }
         }
         // Se è una task temporizzata, aggiungi anche la programmazione
         if (mode === 'timed') {
@@ -648,7 +663,7 @@ export default function ModalScreen() {
             const m = String(annualMonth).padStart(2, '0');
             const d = String(annualDay).padStart(2, '0');
             const ymd = `${y}-${m}-${d}`;
-            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
+            updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
               const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
@@ -660,7 +675,7 @@ export default function ModalScreen() {
               return { ...h, timeOverrides: next, schedule };
             }));
           } else if (freq === 'daily') {
-            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
+            updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
             // Clear one-off overrides for recurring daily tasks
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -672,7 +687,7 @@ export default function ModalScreen() {
               return { ...h, timeOverrides: {}, schedule };
             }));
           } else if (freq === 'weekly') {
-            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
+            updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
             // Clear monthly days for weekly tasks
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -733,7 +748,7 @@ export default function ModalScreen() {
               return; // wait user choice
             }
           } else if (freq === 'monthly') {
-            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
+            updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
             // Update monthly days and clear weekly days
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -760,7 +775,7 @@ export default function ModalScreen() {
             // Clear one-off overrides for recurring monthly tasks
             setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
           } else if (freq === 'annual') {
-            updateScheduleTimes(newHabitId, time as string, endTime as string | null);
+            updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
             // Annual: set yearMonth/yearDay and clear weekly/monthly fields
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -872,7 +887,7 @@ export default function ModalScreen() {
         const m = String(annualMonth).padStart(2, '0');
         const d = String(annualDay).padStart(2, '0');
         const ymd = `${y}-${m}-${d}`;
-        updateScheduleTimes(existing.id, time, endTime);
+        updateScheduleFromDate(existing.id, getDay(new Date()), time, endTime);
         setHabits(prev => prev.map(h => {
           if (h.id !== existing.id) return h;
           const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
@@ -883,7 +898,7 @@ export default function ModalScreen() {
           return { ...h, timeOverrides: next, schedule };
         }));
       } else if (freq === 'daily') {
-        updateScheduleTimes(existing.id, time, endTime);
+        updateScheduleFromDate(existing.id, getDay(new Date()), time, endTime);
         // Clear one-off overrides for recurring daily tasks
         setHabits(prev => prev.map(h => {
           if (h.id !== existing.id) return h;
@@ -895,7 +910,7 @@ export default function ModalScreen() {
           return { ...h, timeOverrides: {}, schedule };
         }));
       } else if (freq === 'weekly') {
-        updateScheduleTimes(existing.id, time, endTime);
+        updateScheduleFromDate(existing.id, getDay(new Date()), time, endTime);
         updateSchedule(existing.id, daysOfWeek, time);
         // Clear monthly days for weekly tasks
         setHabits(prev => prev.map(h => {
@@ -952,7 +967,7 @@ export default function ModalScreen() {
           return; // wait user choice
         }
       } else if (freq === 'monthly') {
-        updateScheduleTimes(existing.id, time, endTime);
+        updateScheduleFromDate(existing.id, getDay(new Date()), time, endTime);
         // Update monthly days and clear weekly days
         setHabits(prev => prev.map(h => {
           if (h.id !== existing.id) return h;
@@ -979,7 +994,7 @@ export default function ModalScreen() {
         // Clear one-off overrides for recurring monthly tasks
         setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, timeOverrides: {} } : h));
       } else if (freq === 'annual') {
-        updateScheduleTimes(existing.id, time, endTime);
+        updateScheduleFromDate(existing.id, getDay(new Date()), time, endTime);
         // Annual: set yearMonth/yearDay and clear weekly/monthly
         setHabits(prev => prev.map(h => {
           if (h.id !== existing.id) return h;
@@ -1102,6 +1117,29 @@ export default function ModalScreen() {
               placeholderTextColor="#64748b"
               style={styles.input}
             />
+          )}
+
+          {(type === 'new' || type === 'edit') && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>Cartella</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => setSelectedFolder(null)}
+                  style={[styles.chip, selectedFolder === null ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                >
+                  <Text style={selectedFolder === null ? styles.chipActiveText : styles.chipGhostText}>Tutte</Text>
+                </TouchableOpacity>
+                {availableFolders.map(folderName => (
+                  <TouchableOpacity
+                    key={folderName}
+                    onPress={() => setSelectedFolder(folderName)}
+                    style={[styles.chip, selectedFolder === folderName ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                  >
+                    <Text style={selectedFolder === folderName ? styles.chipActiveText : styles.chipGhostText}>{folderName}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
           )}
 
           {type === 'edit' && existing?.createdAt && (
