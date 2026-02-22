@@ -224,13 +224,19 @@ export default function ModalScreen() {
   const [availableFolders, setAvailableFolders] = useState<string[]>([]);
 
   useEffect(() => {
-    AsyncStorage.getItem('tasks_custom_folders_v1').then((data) => {
-      if (data) {
-        try {
-          setAvailableFolders(JSON.parse(data));
-        } catch {}
-      }
-    }).catch(() => {});
+    (async () => {
+      try {
+        let data = await AsyncStorage.getItem('tasks_custom_folders_v2');
+        if (!data) data = await AsyncStorage.getItem('tasks_custom_folders_v1');
+        if (data) {
+          const parsed = JSON.parse(data);
+          if (Array.isArray(parsed)) {
+            const names = parsed.map((f: unknown) => typeof f === 'string' ? f : (f as { name: string })?.name).filter(Boolean);
+            setAvailableFolders(names);
+          }
+        }
+      } catch {}
+    })();
   }, []);
   
   // Confirmation modal state

@@ -461,18 +461,6 @@ function DraggableEvent({
     };
   }, [isDragging, baseTop, layoutStyle.width, layoutStyle.left]);
 
-  const currentLayout = layoutById[event.id] || { col: 0, columns: 1, span: 1 };
-  let debugLabel = `COL:${currentLayout.col}`;
-  if (currentLayout.span > 1) {
-    const cols = [];
-    for (let i = 0; i < currentLayout.span; i++) {
-      cols.push(currentLayout.col + i);
-    }
-    debugLabel = `COL:${cols.join('+')}`;
-  }
-  debugLabel += ` [${currentLayout.columns}]`;
-  if (isDragging) debugLabel += ' DRAG';
-  
   const eventStyle = [
     styles.eventItem,
     {
@@ -485,9 +473,6 @@ function DraggableEvent({
   return (
     <View {...panResponder.panHandlers}>
         <Animated.View style={eventStyle}>
-          <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF', fontSize: 10, fontWeight: 'bold' }]}>
-            {debugLabel}
-          </Text>
           <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
             {event.title}
           </Text>
