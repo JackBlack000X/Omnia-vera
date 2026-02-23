@@ -7,9 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, ScrollView } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const TZ = 'Europe/Zurich';
@@ -63,7 +63,7 @@ export default function IndexScreen() {
   const [sortMode, setSortMode] = useState<SortModeType>('creation');
   const [sortModeByFolder, setSortModeByFolder] = useState<Record<string, SortModeType>>({});
   const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [activeFolder, setActiveFolder] = useState<string | null>(null);
+  const [activeFolder, setActiveFolder] = useState<string | null>('__oggi__');
   const [createFolderVisible, setCreateFolderVisible] = useState(false);
   const [editFolderVisible, setEditFolderVisible] = useState(false);
   const [editingFolder, setEditingFolder] = useState<FolderItem | null>(null);
@@ -76,6 +76,7 @@ export default function IndexScreen() {
   const dragEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDisplayRef = useRef<SectionItem[] | null>(null);
   const isPostDragRef = useRef(false);
+  const preDragSnapshotRef = useRef<SectionItem[] | null>(null);
   const pendingFadeCallbackRef = useRef(true);
   const [draggingFolderIndex, setDraggingFolderIndex] = useState<number | null>(null);
   const overlayY = useSharedValue(0);
@@ -147,10 +148,10 @@ export default function IndexScreen() {
             }).filter((f): f is FolderItem => f != null && typeof (f as FolderItem).name === 'string' && (f as FolderItem).name !== '[object Object]') as FolderItem[];
             setFolders(migrated);
             if (migrated.length !== parsed.length) {
-              AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(migrated)).catch(() => {});
+              AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(migrated)).catch(() => { });
             }
           }
-        } catch {}
+        } catch { }
       } else {
         AsyncStorage.getItem('tasks_custom_folders_v1').then((legacy) => {
           if (legacy) {
@@ -159,19 +160,19 @@ export default function IndexScreen() {
               if (Array.isArray(parsed)) {
                 const migrated = parsed.map((name: string, idx: number) => ({ id: `${name}-${Date.now()}-${idx}`, name, color: '#3b82f6', icon: 'folder-outline' } as FolderItem));
                 setFolders(migrated);
-                AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(migrated)).catch(() => {});
+                AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(migrated)).catch(() => { });
               }
-            } catch {}
+            } catch { }
           }
-        }).catch(() => {});
+        }).catch(() => { });
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const addFolderAndPersist = useCallback((newFolder: FolderItem) => {
     setFolders(prev => {
       const next = [...prev, newFolder];
-      AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -198,12 +199,12 @@ export default function IndexScreen() {
     const oldName = editingFolder.name.trim();
     setFolders(prev => {
       const next = prev.map(f => f.name.trim() === oldName ? { ...f, name, color: newFolderColor, icon: newFolderIcon } : f);
-      AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
       return next;
     });
     setSectionOrder(prev => {
       const next = prev ? prev.map(n => (n ?? '').trim() === oldName ? name : n) : null;
-      if (next) AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(next.map(n => n === null ? TUTTE_KEY : n))).catch(() => {});
+      if (next) AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(next.map(n => n === null ? TUTTE_KEY : n))).catch(() => { });
       return next;
     });
     setSortModeByFolder(prev => {
@@ -223,7 +224,7 @@ export default function IndexScreen() {
   const performDeleteFolder = useCallback((folderName: string) => {
     setFolders(prev => {
       const next = prev.filter(f => f.name !== folderName);
-      AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
       return next;
     });
     setSortModeByFolder(prev => {
@@ -233,7 +234,7 @@ export default function IndexScreen() {
     });
     setSectionOrder(prev => {
       const next = prev ? prev.filter(n => n !== folderName.trim()) : null;
-      if (next) AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(next.map(n => n === null ? TUTTE_KEY : n))).catch(() => {});
+      if (next) AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(next.map(n => n === null ? TUTTE_KEY : n))).catch(() => { });
       return next;
     });
     if (activeFolder === folderName) setActiveFolder(null);
@@ -258,9 +259,9 @@ export default function IndexScreen() {
               .map((x: string) => x === TUTTE_KEY ? null : x);
             if (order.length > 0) setSectionOrder(order);
           }
-        } catch {}
+        } catch { }
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, [TUTTE_KEY]);
 
   useEffect(() => {
@@ -268,7 +269,7 @@ export default function IndexScreen() {
       if (['alphabetical', 'creation', 'custom', 'time', 'color', 'folder'].includes(mode ?? '')) {
         setSortMode(mode as SortModeType);
       }
-    }).catch(() => {});
+    }).catch(() => { });
     AsyncStorage.getItem('tasks_sort_mode_per_folder_v1').then((data) => {
       if (data) {
         try {
@@ -281,16 +282,16 @@ export default function IndexScreen() {
             }
             setSortModeByFolder(valid);
           }
-        } catch {}
+        } catch { }
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   useEffect(() => {
-    AsyncStorage.setItem('tasks_sort_mode_v1', sortMode).catch(() => {});
+    AsyncStorage.setItem('tasks_sort_mode_v1', sortMode).catch(() => { });
   }, [sortMode]);
   useEffect(() => {
-    AsyncStorage.setItem('tasks_sort_mode_per_folder_v1', JSON.stringify(sortModeByFolder)).catch(() => {});
+    AsyncStorage.setItem('tasks_sort_mode_per_folder_v1', JSON.stringify(sortModeByFolder)).catch(() => { });
   }, [sortModeByFolder]);
 
 
@@ -524,11 +525,13 @@ export default function IndexScreen() {
       if (sectionOrder == null && (!tasks || tasks.length === 0)) continue;
       if (isOggiView && tasks.length === 0) continue;
       const folderSortMode: SortModeType =
-        folderName === null ? 'creation' : (sortModeByFolder[folderName] ?? 'creation');
+        folderName === null ? (sortModeByFolder[TUTTE_KEY] ?? 'creation') : (sortModeByFolder[folderName] ?? 'creation');
       const sorted = sortHabitsWithMode(tasks, folderSortMode);
       const folderId = folderName === null ? 'null' : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
       out.push({ type: 'folderHeader', folderName, folderId });
-      out.push({ type: 'folderMergeZone', targetFolderName: folderName, targetFolderId: folderId });
+      if (sorted.length > 0) {
+        out.push({ type: 'folderMergeZone', targetFolderName: folderName, targetFolderId: folderId });
+      }
       out.push({ type: 'folderTaskGroup', folderName, folderId, tasks: sorted });
     }
     return out;
@@ -539,7 +542,13 @@ export default function IndexScreen() {
       setDisplayList(sectionedList);
       return;
     }
-    if (isPostDragRef.current) return;
+    if (isPostDragRef.current) {
+      if (sectionedListOrderKey(sectionedList) === sectionedListOrderKey(displayList)) {
+        isPostDragRef.current = false;
+        pendingDisplayRef.current = null;
+      }
+      return;
+    }
     if (sectionedListOrderKey(sectionedList) !== sectionedListOrderKey(displayList)) {
       pendingDisplayRef.current = null;
       setDisplayList(sectionedList);
@@ -576,8 +585,12 @@ export default function IndexScreen() {
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
     const idx = getIndex?.();
-    const isPartOfDraggedBlock = draggingFolderIndex != null && idx != null &&
-      idx >= draggingFolderIndex && idx <= draggingFolderIndex + 2;
+    const isPartOfDraggedBlock = (draggingFolderIndex != null && idx != null &&
+      idx >= draggingFolderIndex && idx <= draggingFolderIndex + 2) ||
+      (fadingOutFolderId != null && item.type !== 'task' &&
+        ((item.type === 'folderHeader' && item.folderId === fadingOutFolderId) ||
+          (item.type === 'folderMergeZone' && item.targetFolderId === fadingOutFolderId) ||
+          (item.type === 'folderTaskGroup' && item.folderId === fadingOutFolderId)));
 
     if (item.type === 'folderMergeZone') {
       return (
@@ -631,11 +644,12 @@ export default function IndexScreen() {
       );
     }
     if (item.type === 'task') {
+      const canDragTask = !isFolderModeWithSections;
       return (
         <ScaleDecorator>
           <TouchableOpacity
-            onLongPress={drag}
-            disabled={isActive}
+            onLongPress={canDragTask ? drag : undefined}
+            disabled={isActive || !canDragTask}
             activeOpacity={0.9}
             delayLongPress={200}
           >
@@ -692,19 +706,7 @@ export default function IndexScreen() {
     return { block, endIndex: i };
   }, []);
 
-  const getFolderBlockIndicesAfterDrag = useCallback((data: SectionItem[], from: number, to: number, header: FolderHeaderItem) => {
-    const indices: number[] = [to];
-    const blockStart = from < to ? from : from + 2;
-    const blockStartItem = data[blockStart];
-    if (blockStartItem?.type === 'folderMergeZone' && blockStartItem.targetFolderId === header.folderId) {
-      indices.push(blockStart);
-    }
-    const taskGroupIdx = blockStart + 1;
-    if (data[taskGroupIdx]?.type === 'folderTaskGroup' && data[taskGroupIdx].folderId === header.folderId) {
-      indices.push(taskGroupIdx);
-    }
-    return indices.sort((a, b) => a - b);
-  }, []);
+  // getFolderBlockIndicesAfterDrag removed — using snapshot-based revert instead
 
   const validFolderDropIndices = useMemo(() => {
     const indices: number[] = [];
@@ -712,14 +714,14 @@ export default function IndexScreen() {
     while (i < sectionedList.length) {
       const item = sectionedList[i];
       if (item.type === 'folderHeader') {
-        indices.push(i);
+        indices.push(i); // above title
         i++;
         if (sectionedList[i]?.type === 'folderMergeZone') {
-          indices.push(i);
+          indices.push(i); // merge zone (between title and tasks)
           i++;
         }
         if (sectionedList[i]?.type === 'folderTaskGroup') i++;
-        indices.push(i);
+        indices.push(i); // below tasks
       } else {
         i++;
       }
@@ -739,38 +741,81 @@ export default function IndexScreen() {
   const handleSectionedDragEnd = useCallback(({ data, from, to }: { data: SectionItem[]; from: number; to: number }) => {
     const draggedItem = data[to];
     const isFolderHeaderDrag = draggedItem?.type === 'folderHeader';
+    const snapshot = preDragSnapshotRef.current;
 
-    if (isFolderHeaderDrag && draggedItem) {
-      setFadingOutFolderId(draggedItem.folderId);
-      pendingFadeCallbackRef.current = true;
-      overlayScale.value = withTiming(0.96, { duration: 420, easing: Easing.out(Easing.cubic) });
-      overlayOpacity.value = withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) }, (finished) => {
-        if (finished) runOnJS(commitDragEndIfFadeStillRelevant)();
-      });
+    // Fade-out animation will be started AFTER merge detection (so we can skip it for merge drops)
+
+    // No-op if dropped in same place
+    if (from === to) {
+      isPostDragRef.current = false;
+      preDragSnapshotRef.current = null;
+      commitDragEnd();
+      return;
     }
 
-    const droppedOnItem = from < to ? data[to - 1] : from > to ? data[to + 1] : null;
-    // Merge: drop on merge zone OR drop before task group (between merge zone and tasks)
-    const mergeZoneItem =
-      droppedOnItem?.type === 'folderMergeZone'
-        ? droppedOnItem
-        : droppedOnItem?.type === 'folderTaskGroup'
-          ? (from < to ? data[to - 2] : data[to - 1])
-          : null;
-    const isMergeDrop =
-      mergeZoneItem?.type === 'folderMergeZone' && draggedItem?.type === 'folderHeader';
+    // --- NON-FOLDER DRAG (task drag in non-folder mode) ---
+    if (!isFolderHeaderDrag) {
+      const taskItems = data.flatMap((x): Habit[] =>
+        x.type === 'folderTaskGroup' ? x.tasks : x.type === 'task' ? [x.habit] : []
+      );
+      pendingDisplayRef.current = data;
+      setDisplayList(data);
+      isPostDragRef.current = true;
+      const runUpdates = () => {
+        startTransition(() => {
+          updateHabitsOrder(taskItems);
+          if (activeFolder != null) {
+            setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
+          } else {
+            setSortMode('custom');
+          }
+          setTimeout(() => {
+            isPostDragRef.current = false;
+            preDragSnapshotRef.current = null;
+            commitDragEnd();
+          }, 150);
+        });
+      };
+      if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+      dragEndTimeoutRef.current = setTimeout(runUpdates, 400);
+      return;
+    }
 
-    if (isMergeDrop && mergeZoneItem.type === 'folderMergeZone' && draggedItem.type === 'folderHeader') {
+    // --- FOLDER HEADER DRAG ---
+    // Detect merge: ONLY when dropped directly on a folderMergeZone of a DIFFERENT folder
+    const droppedOnItem = from < to ? data[to - 1] : data[to + 1];
+    const mergeZoneItem = droppedOnItem?.type === 'folderMergeZone' ? droppedOnItem : null;
+    const isMergeDrop =
+      mergeZoneItem?.type === 'folderMergeZone' &&
+      draggedItem.type === 'folderHeader' &&
+      mergeZoneItem.targetFolderId !== draggedItem.folderId;
+
+    if (isMergeDrop && mergeZoneItem.type === 'folderMergeZone') {
+      // Find source tasks from the snapshot (reliable, pre-drag state)
+      const sourceTasks: Habit[] = [];
+      if (snapshot) {
+        for (const item of snapshot) {
+          if (item.type === 'folderTaskGroup' && item.folderId === draggedItem.folderId) {
+            sourceTasks.push(...item.tasks);
+            break;
+          }
+        }
+      }
       const sourceFolderName = draggedItem.folderName;
       const targetFolderName = mergeZoneItem.targetFolderName;
-      const blockStart = from < to ? from : to + 1;
-      const taskGroupItem = data[blockStart + 1];
-      const sourceTasks = taskGroupItem?.type === 'folderTaskGroup' && taskGroupItem.folderId === draggedItem.folderId
-        ? taskGroupItem.tasks
-        : [];
-      if (sourceFolderName !== targetFolderName && sourceTasks.length > 0) {
-        const sourceLabel = typeof sourceFolderName === 'string' ? sourceFolderName : 'Tutte';
-        const targetLabel = typeof targetFolderName === 'string' ? targetFolderName : 'Tutte';
+      const sourceLabel = typeof sourceFolderName === 'string' ? sourceFolderName : 'Tutte';
+      const targetLabel = typeof targetFolderName === 'string' ? targetFolderName : 'Tutte';
+
+      if (sourceTasks.length > 0) {
+        // Cancel any fade animation — keep overlay stable until user picks
+        pendingFadeCallbackRef.current = false;
+        cancelAnimation(overlayOpacity);
+        cancelAnimation(overlayScale);
+        overlayOpacity.value = 0;
+        overlayScale.value = 1;
+        setDraggingFolderIndex(null);
+        setOverlayPositionReady(false);
+
         Alert.alert(
           'Aggiungi task',
           `Vuoi aggiungere le task di "${sourceLabel}" in "${targetLabel}"?`,
@@ -779,22 +824,29 @@ export default function IndexScreen() {
               text: 'No',
               style: 'cancel',
               onPress: () => {
-                const reverted = [...data];
-                const [item] = reverted.splice(to, 1);
-                reverted.splice(from, 0, item);
-                pendingDisplayRef.current = reverted;
-                setDisplayList(reverted);
+                // Revert to snapshot
+                if (snapshot) {
+                  pendingDisplayRef.current = snapshot;
+                  setDisplayList(snapshot);
+                }
                 isPostDragRef.current = false;
+                preDragSnapshotRef.current = null;
                 commitDragEnd();
               },
             },
             {
               text: 'Sì',
               onPress: () => {
+                // Move tasks to target folder
                 const targetFolder = targetFolderName === null ? undefined : (targetFolderName as string);
                 sourceTasks.forEach(h => updateHabitFolder(h.id, targetFolder));
-                pendingDisplayRef.current = null;
+                // Revert visual to snapshot (sectionedList will rebuild with new folder assignments)
+                if (snapshot) {
+                  pendingDisplayRef.current = snapshot;
+                  setDisplayList(snapshot);
+                }
                 isPostDragRef.current = false;
+                preDragSnapshotRef.current = null;
                 commitDragEnd();
               },
             },
@@ -804,108 +856,89 @@ export default function IndexScreen() {
       }
     }
 
-    let finalData: SectionItem[] = data;
-    if (isFolderHeaderDrag && from !== to && draggedItem.type === 'folderHeader') {
-      const blockIndices = getFolderBlockIndicesAfterDrag(data, from, to, draggedItem);
-      const blockItems = blockIndices.map(i => data[i]).filter(Boolean);
-      if (blockItems.length > 1) {
-        const sortedIndices = [...blockIndices].sort((a, b) => b - a);
-        let newData = [...data];
-        for (const idx of sortedIndices) {
-          newData.splice(idx, 1);
-        }
-        const insertAt = Math.max(0, to - blockIndices.filter(i => i < to).length);
-        newData.splice(insertAt, 0, ...blockItems);
-        finalData = newData;
-      }
+    // --- SIMPLE FOLDER REORDER ---
+    // Keep items hidden and fade overlay, then update list on completion
+    if (isFolderHeaderDrag && draggedItem) {
+      setFadingOutFolderId(draggedItem.folderId);
+      pendingFadeCallbackRef.current = true;
+      overlayScale.value = withTiming(0.98, { duration: 300, easing: Easing.inOut(Easing.cubic) });
+      overlayOpacity.value = withTiming(0, { duration: 300, easing: Easing.inOut(Easing.cubic) }, () => {
+        runOnJS(commitDragEndIfFadeStillRelevant)();
+      });
     }
 
-    const folderItems = finalData
+    // Extract the new folder order from the post-drag data
+    const folderItems = data
       .filter((x): x is FolderHeaderItem => x.type === 'folderHeader')
       .map(h => ({ type: 'folder' as const, folderName: h.folderName, folderId: h.folderId }));
-    const taskItems = finalData.flatMap((x): Habit[] =>
-      x.type === 'folderTaskGroup' ? x.tasks : x.type === 'task' ? [x.habit] : []
-    );
 
-    pendingDisplayRef.current = finalData;
-    setDisplayList(finalData);
-    isPostDragRef.current = true;
-
-    if (folderItems.length > 0) {
-      const folderOrder = folderItems.map(f => f.folderName);
-      setSectionOrder(folderOrder);
-      AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(folderOrder.map(n => n === null ? TUTTE_KEY : n))).catch(() => {});
-    }
-
-    const runUpdates = () => {
-      if (from === to) {
-        isPostDragRef.current = false;
-        commitDragEnd();
-        return;
-      }
-      const applyUpdates = () => {
-        if (folderItems.length === 0) {
-          updateHabitsOrder(taskItems);
-          if (activeFolder != null) {
-            setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
-          } else {
-            setSortMode('custom');
-          }
-        } else {
-          const folderOrder = folderItems.map(f => f.folderName);
-          const sectionOrderToSave = folderOrder.map(n => n === null ? TUTTE_KEY : n);
-          AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(sectionOrderToSave)).catch(() => {});
-          setSectionOrder(folderOrder);
-          const newFoldersOrder = folderOrder.filter((n): n is string => n !== null);
-          const byFolder = new Map<string | null, Habit[]>();
-          for (const habit of taskItems) {
-            const f = (habit.folder ?? '').trim() || null;
-            if (!byFolder.has(f)) byFolder.set(f, []);
-            byFolder.get(f)!.push(habit);
-          }
-          const orderedHabits: Habit[] = [];
-          for (const fi of folderItems) {
-            const tasks = byFolder.get(fi.folderName) ?? [];
-            for (const h of tasks) orderedHabits.push(h);
-          }
-          updateHabitsOrder(orderedHabits);
-          if (draggedItem?.type === 'task') {
-            const srcFolder = (draggedItem.habit.folder ?? '').trim() || null;
-            if (srcFolder) setSortModeByFolder(prev => ({ ...prev, [srcFolder]: 'custom' }));
-            const toFolder = (() => {
-              let idx = 0;
-              for (const fi of folderItems) {
-                const count = 1 + (byFolder.get(fi.folderName) ?? []).length;
-                if (to < idx + count) return fi.folderName?.trim() ?? null;
-                idx += count;
-              }
-              return null;
-            })();
-            if (toFolder != null && toFolder !== srcFolder) setSortModeByFolder(prev => ({ ...prev, [toFolder]: 'custom' }));
-          }
-          if (newFoldersOrder.length > 0) {
-            setFolders(prev => {
-              const orderMap = new Map(newFoldersOrder.map((n, i) => [n, i]));
-              const next = [...prev].sort((a, b) => {
-                const ia = orderMap.get((a.name ?? '').trim()) ?? 999;
-                const ib = orderMap.get((b.name ?? '').trim()) ?? 999;
-                return ia - ib;
-              });
-              AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => {});
-              return next;
-            });
+    // Rebuild a clean sectioned list from the new folder order using snapshot data
+    const rebuildList = (): SectionItem[] => {
+      const tasksByFolder = new Map<string | null, Habit[]>();
+      if (snapshot) {
+        for (const item of snapshot) {
+          if (item.type === 'folderTaskGroup') {
+            tasksByFolder.set(item.folderName, item.tasks);
           }
         }
-        isPostDragRef.current = false;
-        commitDragEnd();
-      };
-      startTransition(applyUpdates);
+      }
+      const out: SectionItem[] = [];
+      for (const fi of folderItems) {
+        const tasks = tasksByFolder.get(fi.folderName) ?? [];
+        out.push({ type: 'folderHeader', folderName: fi.folderName, folderId: fi.folderId });
+        if (tasks.length > 0) {
+          out.push({ type: 'folderMergeZone', targetFolderName: fi.folderName, targetFolderId: fi.folderId });
+        }
+        out.push({ type: 'folderTaskGroup', folderName: fi.folderName, folderId: fi.folderId, tasks });
+      }
+      return out;
+    };
+
+    const finalData = rebuildList();
+    // Don't update display list yet — wait for overlay fade to finish
+    // But store the new data so it's ready
+    isPostDragRef.current = true;
+
+    // Persist the new folder order
+    const folderOrder = folderItems.map(f => f.folderName);
+    setSectionOrder(folderOrder);
+    AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(folderOrder.map(n => n === null ? TUTTE_KEY : n))).catch(() => { });
+
+    // After a short delay (overlay fade), update the display list and persist
+    const runUpdates = () => {
+      pendingDisplayRef.current = finalData;
+      setDisplayList(finalData);
+      startTransition(() => {
+        const newFoldersOrder = folderOrder.filter((n): n is string => n !== null);
+        if (newFoldersOrder.length > 0) {
+          setFolders(prev => {
+            const orderMap = new Map(newFoldersOrder.map((n, i) => [n, i]));
+            const next = [...prev].sort((a, b) => {
+              const ia = orderMap.get((a.name ?? '').trim()) ?? 999;
+              const ib = orderMap.get((b.name ?? '').trim()) ?? 999;
+              return ia - ib;
+            });
+            AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
+            return next;
+          });
+        }
+        const taskItems = finalData.flatMap((x): Habit[] =>
+          x.type === 'folderTaskGroup' ? x.tasks : []
+        );
+        if (taskItems.length > 0) updateHabitsOrder(taskItems);
+
+        setTimeout(() => {
+          isPostDragRef.current = false;
+          preDragSnapshotRef.current = null;
+          // Safety fallback: ensure drag mode is fully cleaned up
+          commitDragEnd();
+        }, 150);
+      });
     };
 
     if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
-    const PERSIST_DELAY_MS = 800;
-    dragEndTimeoutRef.current = setTimeout(runUpdates, PERSIST_DELAY_MS);
-  }, [updateHabitsOrder, updateHabitFolder, commitDragEnd, commitDragEndIfFadeStillRelevant, activeFolder, getFolderBlockIndicesAfterDrag]);
+    dragEndTimeoutRef.current = setTimeout(runUpdates, 350);
+  }, [updateHabitsOrder, updateHabitFolder, commitDragEnd, commitDragEndIfFadeStillRelevant, activeFolder]);
 
   const setOverlayReady = useCallback(() => setOverlayPositionReady(true), []);
 
@@ -920,26 +953,18 @@ export default function IndexScreen() {
         spacerIndexAnim: { value: number };
       } | null;
       if (!v) return { y: 0, active: -1, dragId: 0 };
-      if (isDraggingFolder.value === 1) {
-        const indices = folderIndicesSV.value;
-        if (indices.length > 0) {
-          const nearest = indices.reduce(
-            (best, idx) =>
-              Math.abs(idx - v.spacerIndexAnim.value) < Math.abs(best - v.spacerIndexAnim.value) ? idx : best,
-            indices[0]
-          );
-          if (nearest !== v.spacerIndexAnim.value) v.spacerIndexAnim.value = nearest;
-        }
-      }
+      // Let the spacer move freely — no snapping to valid indices during drag.
+      // The final drop position is determined by handleSectionedDragEnd.
       const y = v.activeCellOffset.value - v.scrollOffset.value + v.hoverAnim.value;
       return { y, active: v.activeIndexAnim.value, dragId: dragCounter.value };
     },
     (current) => {
       if (current.active >= 0) {
         overlayY.value = current.y;
-        overlayScale.value = 0.96;
-        overlayScale.value = withTiming(1, { duration: 150, easing: Easing.out(Easing.cubic) });
-        overlayOpacity.value = withTiming(1, { duration: 150 });
+        if (overlayOpacity.value < 1) {
+          overlayScale.value = 1;
+          overlayOpacity.value = 1;
+        }
         runOnJS(setOverlayReady)();
       }
     },
@@ -953,7 +978,7 @@ export default function IndexScreen() {
   }));
 
   const draggingSectionItems = useMemo(() => {
-    if (draggingFolderIndex == null || activeFolder !== null) return [];
+    if (draggingFolderIndex == null || (activeFolder !== null && activeFolder !== OGGI_TODAY_KEY)) return [];
     const list = displayList ?? sectionedList;
     const result = getFolderBlockFromHeaderIndex(list, draggingFolderIndex);
     if (!result) return [];
@@ -988,7 +1013,7 @@ export default function IndexScreen() {
             }
           ]}>
             <View style={[
-              styles.progressBarFill, 
+              styles.progressBarFill,
               { width: `${stats.pct}%` },
               activeTheme === 'futuristic' && {
                 borderRadius: 0
@@ -999,81 +1024,95 @@ export default function IndexScreen() {
             {optionsMenuVisible && (
               <>
                 {[
-                  { key: 'sort', icon: 'swap-vertical-outline' as const, onPress: () => {
-                    setOptionsMenuVisible(false);
-                    const folderNameNow = activeFolder?.trim() ?? null;
-                    const inFolder = folderNameNow !== null;
-                    const current: SortModeType = inFolder
-                      ? (sortModeByFolder[folderNameNow] ?? 'creation')
-                      : sortMode;
-                    const setCurrent = (mode: SortModeType) => {
-                      if (inFolder && folderNameNow) {
-                        setSortModeByFolder(prev => ({ ...prev, [folderNameNow]: mode }));
-                      } else {
-                        setSortMode(mode);
-                      }
-                    };
-                    const sel = (label: string, mode: SortModeType) =>
-                      current === mode ? `${label} ✓` : label;
-                    const labels: Record<SortModeType, string> = {
-                      creation: 'Data di creazione',
-                      time: 'Orario',
-                      color: 'Ordine per colore',
-                      folder: 'Ordine per cartelle',
-                      alphabetical: 'Ordine alfabetico',
-                      custom: 'Ordine libero (Trascina)',
-                    };
-                    Alert.alert(
-                      inFolder ? 'Ordina task (in questa cartella)' : 'Ordina task',
-                      `Ordine attuale: ${labels[current] ?? current}`,
-                      [
+                  {
+                    key: 'sort', icon: 'swap-vertical-outline' as const, onPress: () => {
+                      setOptionsMenuVisible(false);
+                      const folderNameNow = activeFolder?.trim() ?? null;
+                      const inFolder = folderNameNow !== null;
+                      const current: SortModeType = inFolder
+                        ? (sortModeByFolder[folderNameNow] ?? 'creation')
+                        : sortMode;
+                      const setCurrent = (mode: SortModeType) => {
+                        if (inFolder && folderNameNow) {
+                          setSortModeByFolder(prev => ({ ...prev, [folderNameNow]: mode }));
+                        } else {
+                          setSortMode(mode);
+                        }
+                      };
+                      const sel = (label: string, mode: SortModeType) =>
+                        current === mode ? `${label} ✓` : label;
+                      const labels: Record<SortModeType, string> = {
+                        creation: 'Data di creazione',
+                        time: 'Orario',
+                        color: 'Ordine per colore',
+                        folder: 'Ordine per cartelle',
+                        alphabetical: 'Ordine alfabetico',
+                        custom: 'Ordine libero (Trascina)',
+                      };
+                      const isRealFolder = inFolder && folderNameNow !== OGGI_TODAY_KEY;
+                      const options: any[] = [
                         { text: 'Annulla', style: 'cancel' },
                         { text: sel('Data di creazione', 'creation'), onPress: () => setCurrent('creation') },
                         { text: sel('Orario', 'time'), onPress: () => setCurrent('time') },
                         { text: sel('Ordine per colore', 'color'), onPress: () => setCurrent('color') },
-                        { text: sel('Ordine per cartelle', 'folder'), onPress: () => setCurrent('folder') },
-                        { text: sel('Ordine alfabetico', 'alphabetical'), onPress: () => setCurrent('alphabetical') },
-                        { text: sel('Ordine libero (Trascina)', 'custom'), onPress: () => setCurrent('custom') },
-                      ]
-                    );
-                  }},
-                  { key: 'reset', icon: 'refresh-outline' as const, onPress: () => {
-                    setOptionsMenuVisible(false);
-                    Alert.alert(
-                      'Azzera le task di oggi?',
-                      'Vuoi segnare tutte le task come non completate per oggi?',
-                      [
-                        { text: 'Annulla', style: 'cancel' },
-                        { text: 'Conferma', style: 'destructive', onPress: resetToday }
-                      ]
-                    );
-                  }},
-                  { key: 'time', icon: 'time-outline' as const, onPress: () => {
-                    setOptionsMenuVisible(false);
-                    const hours = Array.from({ length: 24 }, (_, i) => i);
-                    const hourOptions = hours.map(hour => ({
-                      text: `${hour.toString().padStart(2, '0')}:00`,
-                      onPress: () => setDayResetTime(`${hour.toString().padStart(2, '0')}:00`)
-                    }));
-                    Alert.alert(
-                      'Imposta orario reset giornaliero',
-                      `Attualmente: ${dayResetTime}\n\nA che ora deve iniziare la nuova giornata?`,
-                      [
-                        { text: 'Annulla', style: 'cancel' },
-                        ...hourOptions
-                      ]
-                    );
-                  }},
-                  { key: 'selection', icon: 'checkmark-done-outline' as const, onPress: () => {
-                    setOptionsMenuVisible(false);
-                    setSelectionMode(v => {
-                      if (v) {
-                        setSelectedIds(new Set());
-                        return false;
+                      ];
+                      if (!isRealFolder) {
+                        options.push({ text: sel('Ordine per cartelle', 'folder'), onPress: () => setCurrent('folder') });
                       }
-                      return true;
-                    });
-                  }},
+                      options.push(
+                        { text: sel('Ordine alfabetico', 'alphabetical'), onPress: () => setCurrent('alphabetical') },
+                        { text: sel('Ordine libero (Trascina)', 'custom'), onPress: () => setCurrent('custom') }
+                      );
+                      Alert.alert(
+                        isRealFolder ? 'Ordina task (in questa cartella)' : 'Ordina task',
+                        `Ordine attuale: ${labels[current] ?? current}`,
+                        options
+                      );
+                    }
+                  },
+                  {
+                    key: 'reset', icon: 'refresh-outline' as const, onPress: () => {
+                      setOptionsMenuVisible(false);
+                      Alert.alert(
+                        'Azzera le task di oggi?',
+                        'Vuoi segnare tutte le task come non completate per oggi?',
+                        [
+                          { text: 'Annulla', style: 'cancel' },
+                          { text: 'Conferma', style: 'destructive', onPress: resetToday }
+                        ]
+                      );
+                    }
+                  },
+                  {
+                    key: 'time', icon: 'time-outline' as const, onPress: () => {
+                      setOptionsMenuVisible(false);
+                      const hours = Array.from({ length: 24 }, (_, i) => i);
+                      const hourOptions = hours.map(hour => ({
+                        text: `${hour.toString().padStart(2, '0')}:00`,
+                        onPress: () => setDayResetTime(`${hour.toString().padStart(2, '0')}:00`)
+                      }));
+                      Alert.alert(
+                        'Imposta orario reset giornaliero',
+                        `Attualmente: ${dayResetTime}\n\nA che ora deve iniziare la nuova giornata?`,
+                        [
+                          { text: 'Annulla', style: 'cancel' },
+                          ...hourOptions
+                        ]
+                      );
+                    }
+                  },
+                  {
+                    key: 'selection', icon: 'checkmark-done-outline' as const, onPress: () => {
+                      setOptionsMenuVisible(false);
+                      setSelectionMode(v => {
+                        if (v) {
+                          setSelectedIds(new Set());
+                          return false;
+                        }
+                        return true;
+                      });
+                    }
+                  },
                 ].map((opt) => (
                   <TouchableOpacity
                     key={opt.key}
@@ -1107,16 +1146,16 @@ export default function IndexScreen() {
         </View>
       </View>
 
-      <View 
-        style={styles.foldersContainer} 
+      <View
+        style={styles.foldersContainer}
         onLayout={(e) => {
           foldersContainerWidthRef.current = e.nativeEvent.layout.width;
           updateFoldersScrollEnabled();
         }}
       >
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
           scrollEnabled={foldersScrollEnabled}
           contentContainerStyle={styles.foldersScroll}
           onContentSizeChange={(contentWidth) => {
@@ -1162,7 +1201,7 @@ export default function IndexScreen() {
               );
             })()
           )}
-          
+
           <TouchableOpacity style={styles.folderAddBtn} onPress={handleAddFolder}>
             <Ionicons name="add" size={18} color={THEME.textMuted} />
           </TouchableOpacity>
@@ -1184,9 +1223,12 @@ export default function IndexScreen() {
             containerStyle={styles.dragListContainer}
             showsVerticalScrollIndicator={false}
             dragItemOverflow
+            animationConfig={{ damping: 20, stiffness: 200 }}
             onAnimValInit={(v) => setAnimVals(v)}
             onDragBegin={(index) => {
               const list = pendingDisplayRef.current ?? displayList ?? sectionedList;
+              // Save snapshot of the list BEFORE dragging for clean revert
+              preDragSnapshotRef.current = [...list];
               if (list[index]?.type === 'folderHeader') {
                 setFadingOutFolderId(null);
                 pendingFadeCallbackRef.current = false;
@@ -1242,11 +1284,13 @@ export default function IndexScreen() {
                 `Vuoi eliminare ${selectedIds.size} task?`,
                 [
                   { text: 'Annulla', style: 'cancel' },
-                  { text: 'Elimina', style: 'destructive', onPress: () => {
-                    selectedIds.forEach(id => removeHabit(id));
-                    setSelectedIds(new Set());
-                    setSelectionMode(false);
-                  } }
+                  {
+                    text: 'Elimina', style: 'destructive', onPress: () => {
+                      selectedIds.forEach(id => removeHabit(id));
+                      setSelectedIds(new Set());
+                      setSelectionMode(false);
+                    }
+                  }
                 ]
               );
             }}
@@ -1272,19 +1316,19 @@ export default function IndexScreen() {
       )}
 
       <Modal visible={editFolderVisible} transparent animationType="fade">
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
           onPress={() => { setEditFolderVisible(false); setEditingFolder(null); }}
         >
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.modalCenter}
           >
             <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
               <View style={styles.createFolderCard}>
                 <Text style={styles.createFolderTitle}>Modifica cartella</Text>
-                
+
                 <Text style={styles.createFolderLabel}>Nome</Text>
                 <TextInput
                   value={newFolderName}
@@ -1295,7 +1339,7 @@ export default function IndexScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                
+
                 <Text style={styles.createFolderLabel}>Colore</Text>
                 <View style={styles.createFolderRow}>
                   {FOLDER_COLORS.map(c => (
@@ -1310,7 +1354,7 @@ export default function IndexScreen() {
                     />
                   ))}
                 </View>
-                
+
                 <Text style={styles.createFolderLabel}>Icona</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.iconRow}>
                   {FOLDER_ICONS.map(i => (
@@ -1318,7 +1362,7 @@ export default function IndexScreen() {
                       key={i.name}
                       onPress={() => setNewFolderIcon(i.name)}
                       style={[
-                        styles.iconOption, 
+                        styles.iconOption,
                         newFolderIcon === i.name && [styles.iconOptionSelected, { borderColor: newFolderColor }]
                       ]}
                     >
@@ -1326,8 +1370,8 @@ export default function IndexScreen() {
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
-                
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   onPress={() => {
                     if (editingFolder) {
                       Alert.alert('Elimina Cartella', `Vuoi eliminare la cartella "${editingFolder.name}"? (Le task torneranno in "Tutte")`, [
@@ -1341,13 +1385,13 @@ export default function IndexScreen() {
                   <Ionicons name="trash-outline" size={18} color="#ef4444" />
                   <Text style={styles.editFolderDeleteText}>Elimina cartella</Text>
                 </TouchableOpacity>
-                
+
                 <View style={styles.createFolderActions}>
                   <TouchableOpacity style={styles.createFolderBtnSecondary} onPress={() => { setEditFolderVisible(false); setEditingFolder(null); }}>
                     <Text style={styles.createFolderBtnSecondaryText}>Annulla</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.createFolderBtnPrimary, { backgroundColor: newFolderName.trim() ? newFolderColor : '#4b5563' }]} 
+                  <TouchableOpacity
+                    style={[styles.createFolderBtnPrimary, { backgroundColor: newFolderName.trim() ? newFolderColor : '#4b5563' }]}
                     onPress={handleSaveEditFolder}
                     disabled={!newFolderName.trim()}
                   >
@@ -1361,19 +1405,19 @@ export default function IndexScreen() {
       </Modal>
 
       <Modal visible={createFolderVisible} transparent animationType="fade">
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1} 
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
           onPress={() => setCreateFolderVisible(false)}
         >
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.modalCenter}
           >
             <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
               <View style={styles.createFolderCard}>
                 <Text style={styles.createFolderTitle}>Nuova cartella</Text>
-                
+
                 <Text style={styles.createFolderLabel}>Nome</Text>
                 <TextInput
                   value={newFolderName}
@@ -1384,7 +1428,7 @@ export default function IndexScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                
+
                 <Text style={styles.createFolderLabel}>Colore</Text>
                 <View style={styles.createFolderRow}>
                   {FOLDER_COLORS.map(c => (
@@ -1399,7 +1443,7 @@ export default function IndexScreen() {
                     />
                   ))}
                 </View>
-                
+
                 <Text style={styles.createFolderLabel}>Icona</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.iconRow}>
                   {FOLDER_ICONS.map(i => (
@@ -1407,7 +1451,7 @@ export default function IndexScreen() {
                       key={i.name}
                       onPress={() => setNewFolderIcon(i.name)}
                       style={[
-                        styles.iconOption, 
+                        styles.iconOption,
                         newFolderIcon === i.name && [styles.iconOptionSelected, { borderColor: newFolderColor }]
                       ]}
                     >
@@ -1415,13 +1459,13 @@ export default function IndexScreen() {
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
-                
+
                 <View style={styles.createFolderActions}>
                   <TouchableOpacity style={styles.createFolderBtnSecondary} onPress={() => setCreateFolderVisible(false)}>
                     <Text style={styles.createFolderBtnSecondaryText}>Annulla</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.createFolderBtnPrimary, { backgroundColor: newFolderName.trim() ? newFolderColor : '#4b5563' }]} 
+                  <TouchableOpacity
+                    style={[styles.createFolderBtnPrimary, { backgroundColor: newFolderName.trim() ? newFolderColor : '#4b5563' }]}
                     onPress={handleCreateFolder}
                     disabled={!newFolderName.trim()}
                   >
@@ -1438,19 +1482,19 @@ export default function IndexScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { 
-    flex: 1, 
-    backgroundColor: 'transparent', 
-    paddingHorizontal: 16 
+  screen: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 16
   },
-  
-  header: { 
-    marginTop: 8, 
-    marginBottom: 15 
+
+  header: {
+    marginTop: 8,
+    marginBottom: 15
   },
-  title: { 
-    fontSize: 28, 
-    fontWeight: '700', 
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
     color: THEME.text
   },
 
@@ -1468,14 +1512,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12
   },
-  progressBarBg: { 
+  progressBarBg: {
     flex: 1,
-    height: 8, 
-    borderRadius: 4, 
-    backgroundColor: '#374151', 
-    overflow: 'hidden' 
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#374151',
+    overflow: 'hidden'
   },
-  progressBarFill: { 
+  progressBarFill: {
     height: '100%',
     backgroundColor: '#3b82f6'
   },
@@ -1590,6 +1634,9 @@ const styles = StyleSheet.create({
   blockInvisible: {
     opacity: 0,
     pointerEvents: 'none',
+  },
+  blockInvisibleCollapsed: {
+    display: 'none',
   },
   sectionRowInvisible: {
     opacity: 0,
@@ -1747,29 +1794,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 20
   },
-  emptyText: { 
-    color: THEME.textMuted, 
+  emptyText: {
+    color: THEME.textMuted,
     textAlign: 'center',
     fontSize: 16
   },
 
-  listContainer: { 
-    paddingBottom: 100 
+  listContainer: {
+    paddingBottom: 100
   },
 
-  fab: { 
-    position: 'absolute', 
-    right: 20, 
-    bottom: 98, 
-    backgroundColor: '#1d4ed8', 
-    width: 83, 
-    height: 83, 
-    borderRadius: 42, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    shadowColor: '#1d4ed8', 
-    shadowOpacity: 0.6, 
-    shadowRadius: 20, 
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 98,
+    backgroundColor: '#1d4ed8',
+    width: 83,
+    height: 83,
+    borderRadius: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1d4ed8',
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 0 },
     elevation: 12
   },
