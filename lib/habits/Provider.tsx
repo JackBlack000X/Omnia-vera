@@ -9,16 +9,21 @@ const STORAGE_LASTRESET = 'habitcheck_lastreset_v1';
 const STORAGE_DAYRESETTIME = 'habitcheck_dayresettime_v1';
 const TZ = 'Europe/Zurich';
 
+/** Parse YYYY-MM-DD at noon UTC to avoid timezone boundary issues */
+function parseYmdSafe(ymd: string): Date {
+  return new Date(ymd + 'T12:00:00.000Z');
+}
+
 function formatYmd(date = new Date(), tz = TZ): string {
   try {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(date);
   } catch {
-    const d = new Date();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${d.getFullYear()}-${m}-${dd}`;
+    const d = date instanceof Date ? date : parseYmdSafe(String(date));
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${m}-${dd}`;
   }
 }
 
@@ -155,11 +160,19 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateHabit = useCallback((id: string, text: string) => {
-    setHabits((prev) => prev.map((h) => (h.id === id ? { ...h, text } : h)));
+    setHabits((prev) => {
+      const next = prev.map((h) => (h.id === id ? { ...h, text } : h));
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const updateHabitColor = useCallback((id: string, color: string) => {
-    setHabits((prev) => prev.map((h) => (h.id === id ? { ...h, color } : h)));
+    setHabits((prev) => {
+      const next = prev.map((h) => (h.id === id ? { ...h, color } : h));
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const updateHabitFolder = useCallback((id: string, folder: string | undefined) => {
@@ -243,24 +256,30 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const getDay = useCallback((date: Date | string) => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    
-    // If day reset time is not midnight, adjust the date
+    // YYYY-MM-DD string: return as-is (already a day key)
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+
+    const d = typeof date === 'string' ? parseYmdSafe(date) : date;
+
+    // If day reset time is not midnight, use time in Zurich for the check
     if (dayResetTime !== '00:00') {
       const [resetHour, resetMinute] = dayResetTime.split(':').map(Number);
       const resetMinutes = resetHour * 60 + resetMinute;
-      
-      // Get current time in minutes
-      const currentMinutes = d.getHours() * 60 + d.getMinutes();
-      
-      // If current time is before reset time, consider it the previous day
+
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(d);
+      const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+      const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+      const currentMinutes = hour * 60 + minute;
+
       if (currentMinutes < resetMinutes) {
         const prevDay = new Date(d);
-        prevDay.setDate(prevDay.getDate() - 1);
+        prevDay.setUTCDate(prevDay.getUTCDate() - 1);
         return formatYmd(prevDay);
       }
     }
-    
+
     return formatYmd(d);
   }, [dayResetTime]);
 
@@ -318,14 +337,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         
         // If we have a creation date and an old schedule, freeze the past
         if (h.createdAt && (oldStart || oldEnd)) {
-          const startD = new Date(h.createdAt);
-          const endD = new Date(fromDate);
-          
-          // Iterate from createdAt to fromDate (exclusive)
+          const startD = parseYmdSafe(h.createdAt);
+          const endD = parseYmdSafe(fromDate);
+
           let curr = new Date(startD);
-          while (curr < endD) {
+          while (curr.getTime() < endD.getTime()) {
             const ymd = formatYmd(curr);
-            // Only freeze if no override exists for that day
             if (!nextOverrides[ymd]) {
               if (oldStart && oldEnd) {
                 nextOverrides[ymd] = { start: oldStart, end: oldEnd };
@@ -333,7 +350,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
                 nextOverrides[ymd] = oldStart;
               }
             }
-            curr.setDate(curr.getDate() + 1);
+            curr.setUTCDate(curr.getUTCDate() + 1);
           }
         }
         
@@ -360,7 +377,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           
           // Since it's "Da oggi in poi" mode, we should also update any future overrides 
           // this ad-hoc task might have, so they match the new time.
-          const fromDateObj = new Date(fromDate);
           for (const dateKey of Object.keys(nextOverrides)) {
             if (dateKey > fromDate) {
               if (startTime && endTime) {

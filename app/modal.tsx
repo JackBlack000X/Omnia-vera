@@ -211,7 +211,7 @@ function ConfirmationModal({
 // Modal multipurpose: type=new|rename|schedule|color
 export default function ModalScreen() {
   const { type = 'new', id, folder } = useLocalSearchParams<{ type?: string; id?: string; folder?: string }>();
-  const { habits, addHabit, updateHabit, updateHabitColor, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay } = useHabits();
+  const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay } = useHabits();
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
   const colorScheme = useColorScheme();
@@ -231,7 +231,16 @@ export default function ModalScreen() {
         if (data) {
           const parsed = JSON.parse(data);
           if (Array.isArray(parsed)) {
-            const names = parsed.map((f: unknown) => typeof f === 'string' ? f : (f as { name: string })?.name).filter(Boolean);
+            const names = parsed
+              .map((f: unknown) => {
+                if (typeof f === 'string') return f;
+                if (f && typeof f === 'object' && 'name' in f) {
+                  const n = (f as { name: unknown }).name;
+                  return typeof n === 'string' ? n : null;
+                }
+                return null;
+              })
+              .filter((n): n is string => typeof n === 'string');
             setAvailableFolders(names);
           }
         }
@@ -316,9 +325,22 @@ export default function ModalScreen() {
     return base;
   });
   const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(monthDays[0] ?? null);
-  const [annualMonth, setAnnualMonth] = useState<number>(existing?.schedule?.yearMonth ?? (new Date().getMonth() + 1));
-  const [annualDay, setAnnualDay] = useState<number>(existing?.schedule?.yearDay ?? new Date().getDate());
-  const [annualYear, setAnnualYear] = useState<number>(new Date().getFullYear());
+  // For single tasks, get date from timeOverrides (YYYY-MM-DD keys); for annual from schedule
+  const initialSingleDate = useMemo(() => {
+    const keys = existing?.timeOverrides ? Object.keys(existing.timeOverrides).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)) : [];
+    if (keys.length > 0) {
+      const [y, m, d] = keys[0].split('-').map(Number);
+      return { year: y, month: m, day: d };
+    }
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+  }, [existing?.timeOverrides]);
+  const [annualMonth, setAnnualMonth] = useState<number>(() =>
+    existing?.schedule?.yearMonth ?? initialSingleDate.month);
+  const [annualDay, setAnnualDay] = useState<number>(() =>
+    existing?.schedule?.yearDay ?? initialSingleDate.day);
+  const [annualYear, setAnnualYear] = useState<number>(() =>
+    (existing?.schedule?.yearMonth && existing?.schedule?.yearDay) ? new Date().getFullYear() : initialSingleDate.year);
   
   // Check if selected date is today
   const isToday = useMemo(() => {
@@ -655,7 +677,7 @@ export default function ModalScreen() {
           if (t !== existing.text) updateHabit(existing.id, t);
           if (color !== (existing.color ?? '#4A148C')) updateHabitColor(existing.id, color);
           if (selectedFolder !== (existing.folder ?? null)) {
-            setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, folder: selectedFolder || undefined } : h));
+            updateHabitFolder(existing.id, selectedFolder || undefined);
           }
         }
         // Se è una task temporizzata, aggiungi anche la programmazione
@@ -664,22 +686,25 @@ export default function ModalScreen() {
           const endTime = endMin !== null ? minutesToHhmm(endMin) as string : null;
           
           if (freq === 'single') {
-            // save one-off override for selected date
+            // save one-off override for selected date only
             const y = annualYear;
             const m = String(annualMonth).padStart(2, '0');
             const d = String(annualDay).padStart(2, '0');
             const ymd = `${y}-${m}-${d}`;
-            updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
-            setHabits(prev => prev.map(h => {
-              if (h.id !== newHabitId) return h;
-              const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
-              next[ymd] = time;
-              // clear recurring fields
-              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
-              schedule.daysOfWeek = [];
-              schedule.monthDays = undefined;
-              return { ...h, timeOverrides: next, schedule };
-            }));
+            updateScheduleFromDate(newHabitId, ymd, time as string, endTime as string | null);
+            setHabits(prev => {
+              const next = prev.map(h => {
+                if (h.id !== newHabitId) return h;
+                const overrides: Record<string, string | { start: string; end: string }> = {};
+                if (time) overrides[ymd] = endTime ? { start: time, end: endTime } : time;
+                const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+                schedule.daysOfWeek = [];
+                schedule.monthDays = undefined;
+                return { ...h, timeOverrides: overrides, schedule };
+              });
+              AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+              return next;
+            });
           } else if (freq === 'daily') {
             updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
             // Clear one-off overrides for recurring daily tasks
@@ -799,25 +824,27 @@ export default function ModalScreen() {
         // Se è "Tutto il giorno", salva solo la frequenza senza orari
         if (mode === 'allDay') {
           if (freq === 'single') {
-            // For single frequency, save as one-off override for selected date without time
+            // For single frequency, save as one-off override for selected date only
             const y = annualYear;
             const m = String(annualMonth).padStart(2, '0');
             const d = String(annualDay).padStart(2, '0');
-          const ymd = `${y}-${m}-${d}`;
-          setHabits(prev => prev.map(h => {
-            if (h.id !== newHabitId) return h;
-            const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
-              next[ymd] = '00:00'; // All day marker
-              // clear recurring fields and all time configs
-              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
-              schedule.daysOfWeek = [];
-              schedule.monthDays = undefined;
-              schedule.time = null;
-              schedule.endTime = null;
-              schedule.weeklyTimes = undefined;
-              schedule.monthlyTimes = undefined;
-              return { ...h, timeOverrides: next, schedule };
-            }));
+            const ymd = `${y}-${m}-${d}`;
+            setHabits(prev => {
+              const next = prev.map(h => {
+                if (h.id !== newHabitId) return h;
+                const overrides: Record<string, string> = { [ymd]: '00:00' }; // All day marker
+                const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+                schedule.daysOfWeek = [];
+                schedule.monthDays = undefined;
+                schedule.time = null;
+                schedule.endTime = null;
+                schedule.weeklyTimes = undefined;
+                schedule.monthlyTimes = undefined;
+                return { ...h, timeOverrides: overrides, schedule };
+              });
+              AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+              return next;
+            });
           } else if (freq === 'daily') {
             // Clear time fields for daily all-day tasks
             setHabits(prev => prev.map(h => {
@@ -888,21 +915,25 @@ export default function ModalScreen() {
       const endTime = mode === 'timed' && endMin !== null ? minutesToHhmm(endMin) as string : null;
       
       if (freq === 'single') {
-        // For single frequency, save as one-off override for selected date
+        // For single frequency, save as one-off override for selected date only (remove today if moved)
         const y = annualYear;
         const m = String(annualMonth).padStart(2, '0');
         const d = String(annualDay).padStart(2, '0');
         const ymd = `${y}-${m}-${d}`;
-        updateScheduleFromDate(existing.id, getDay(new Date()), time, endTime);
-        setHabits(prev => prev.map(h => {
-          if (h.id !== existing.id) return h;
-          const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
-          if (time) next[ymd] = time; else delete next[ymd];
-          const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
-          schedule.daysOfWeek = [];
-          schedule.monthDays = undefined;
-          return { ...h, timeOverrides: next, schedule };
-        }));
+        updateScheduleFromDate(existing.id, ymd, time, endTime);
+        setHabits(prev => {
+          const next = prev.map(h => {
+            if (h.id !== existing.id) return h;
+            const overrides: Record<string, string | { start: string; end: string }> = {};
+            if (time) overrides[ymd] = endTime ? { start: time, end: endTime } : time;
+            const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+            schedule.daysOfWeek = [];
+            schedule.monthDays = undefined;
+            return { ...h, timeOverrides: overrides, schedule };
+          });
+          AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+          return next;
+        });
       } else if (freq === 'daily') {
         updateScheduleFromDate(existing.id, getDay(new Date()), time, endTime);
         // Clear one-off overrides for recurring daily tasks
@@ -1017,24 +1048,27 @@ export default function ModalScreen() {
       // Se è "Tutto il giorno", salva solo la frequenza senza orari
       if (mode === 'allDay') {
         if (freq === 'single') {
-          // For single frequency, save as one-off override for selected date without time
+          // For single frequency, save as one-off override for selected date only (remove today if moved)
           const y = annualYear;
           const m = String(annualMonth).padStart(2, '0');
           const d = String(annualDay).padStart(2, '0');
-        const ymd = `${y}-${m}-${d}`;
-          setHabits(prev => prev.map(h => {
-            if (h.id !== existing.id) return h;
-            const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
-            next[ymd] = '00:00'; // All day marker
-            const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
-            schedule.daysOfWeek = [];
-            schedule.monthDays = undefined;
-            schedule.time = null;
-            schedule.endTime = null;
-            schedule.weeklyTimes = undefined;
-            schedule.monthlyTimes = undefined;
-            return { ...h, timeOverrides: next, schedule };
-          }));
+          const ymd = `${y}-${m}-${d}`;
+          setHabits(prev => {
+            const next = prev.map(h => {
+              if (h.id !== existing.id) return h;
+              const overrides: Record<string, string> = { [ymd]: '00:00' }; // All day marker, only this date
+              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+              schedule.daysOfWeek = [];
+              schedule.monthDays = undefined;
+              schedule.time = null;
+              schedule.endTime = null;
+              schedule.weeklyTimes = undefined;
+              schedule.monthlyTimes = undefined;
+              return { ...h, timeOverrides: overrides, schedule };
+            });
+            AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+            return next;
+          });
         } else if (freq === 'daily') {
           // Clear time fields for daily all-day tasks
           setHabits(prev => prev.map(h => {

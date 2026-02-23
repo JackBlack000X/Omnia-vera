@@ -16,6 +16,9 @@ type Props = {
   onColor: (habit: Habit) => void;
   shouldCloseMenu?: boolean;
   onMoveToFolder?: (habit: Habit) => void;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (habit: Habit) => void;
 };
 
 // Colori delle card come nella foto
@@ -108,7 +111,7 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
   );
 }
 
-export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder }: Props) {
+export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect }: Props) {
   const { activeTheme } = useAppTheme();
   const { toggleDone, removeHabit } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
@@ -245,50 +248,50 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   // Don't show frequency text for daily tasks since white circle already indicates this
   const shouldShowFrequency = !isDaily;
 
-  return (
-    <Swipeable 
-      ref={swipeableRef}
-      renderRightActions={renderRightActions} 
-      renderLeftActions={renderLeftActions} 
-      overshootFriction={8}
+  const cardInner = (
+    <View 
+      style={[
+        styles.card, 
+        { backgroundColor: cardColor },
+        activeTheme === 'futuristic' && { 
+          borderRadius: 0,
+          transform: [{ skewX: '-30deg' }],
+          paddingHorizontal: 0,
+          marginHorizontal: 0,
+          height: 60,
+          paddingVertical: 12,
+          width: '90%',
+          alignSelf: 'center'
+        }
+      ]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCardDimensions({ width, height });
+      }}
     >
-      <View 
-        style={[
-          styles.card, 
-          { backgroundColor: cardColor },
-          activeTheme === 'futuristic' && { 
-            borderRadius: 0,
-            transform: [{ skewX: '-30deg' }],
-            paddingHorizontal: 0,
-            marginHorizontal: 0,
-            height: 60,
-            paddingVertical: 12,
-            width: '90%',
-            alignSelf: 'center'
+      {activeTheme === 'futuristic' && cardDimensions.width > 0 && cardDimensions.height > 0 && (
+        <NoiseOverlay width={cardDimensions.width} height={cardDimensions.height} darkColor={noiseColor} />
+      )}
+      <TouchableOpacity
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: selectionMode ? isSelected : isDone }}
+        onPress={() => {
+          if (selectionMode && onToggleSelect) {
+            onToggleSelect(habit);
+          } else {
+            toggleDone(habit.id);
           }
-        ]}
-        onLayout={(e) => {
-          const { width, height } = e.nativeEvent.layout;
-          setCardDimensions({ width, height });
         }}
+        style={[
+          styles.checkContainer,
+          activeTheme === 'futuristic' && { marginLeft: 10 }
+        ]}
       >
-        {activeTheme === 'futuristic' && cardDimensions.width > 0 && cardDimensions.height > 0 && (
-          <NoiseOverlay width={cardDimensions.width} height={cardDimensions.height} darkColor={noiseColor} />
-        )}
-        <TouchableOpacity
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: isDone }}
-          onPress={() => toggleDone(habit.id)}
-          style={[
-            styles.checkContainer,
-            activeTheme === 'futuristic' && { marginLeft: 10 }
-          ]}
-        >
           <View 
             style={[
               styles.check,
               isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
-              isDone && styles.checkDone,
+              (selectionMode ? isSelected : isDone) && styles.checkDone,
               activeTheme === 'futuristic' && { 
                 borderRadius: 0,
                 aspectRatio: 1,
@@ -296,18 +299,18 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
               }
             ]}
             onLayout={(e) => {
-              if (activeTheme === 'futuristic' && !isDone) {
+              if (activeTheme === 'futuristic' && !(selectionMode ? isSelected : isDone)) {
                 const { width, height } = e.nativeEvent.layout;
                 setCheckDimensions({ width, height });
               }
             }}
           >
-            {activeTheme === 'futuristic' && !isDone && checkDimensions.width > 0 && checkDimensions.height > 0 && (
+            {activeTheme === 'futuristic' && !(selectionMode ? isSelected : isDone) && checkDimensions.width > 0 && checkDimensions.height > 0 && (
               <View style={{ position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, overflow: 'hidden', borderRadius: 10 }}>
                 <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
               </View>
             )}
-            {isDone && (
+            {(selectionMode ? isSelected : isDone) && (
               <Ionicons 
                 name="checkmark" 
                 size={16} 
@@ -350,6 +353,28 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
           </View>
         )}
       </View>
+  );
+
+  const Wrapper = selectionMode
+    ? ({ children }: { children: React.ReactNode }) => (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => onToggleSelect?.(habit)}
+          style={{ width: '100%' }}
+        >
+          {children}
+        </TouchableOpacity>
+      )
+    : ({ children }: { children: React.ReactNode }) => <>{children}</>;
+
+  return (
+    <Swipeable 
+      ref={swipeableRef}
+      renderRightActions={selectionMode ? () => null : renderRightActions}
+      renderLeftActions={selectionMode ? () => null : renderLeftActions}
+      overshootFriction={8}
+    >
+      <Wrapper>{cardInner}</Wrapper>
     </Swipeable>
   );
 });
