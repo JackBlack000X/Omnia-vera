@@ -380,7 +380,7 @@ function DraggableEvent({
 
         const selectedYmd = getDay(currentDate);
         if (dragMode === 'single') {
-          setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
+        setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
         } else {
           updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
         }
@@ -454,21 +454,21 @@ function DraggableEvent({
   const animatedStyle = useAnimatedStyle(() => {
     return {
       top: isDragging ? dragInitialTop.value + dragY.value : baseTop,
-      opacity: isDragging ? 0.8 : 1,
-      zIndex: isDragging ? 1000 : 1,
-      width: isDragging ? dragWidthValue.value : layoutStyle.width,
-      left: isDragging ? dragLeftValue.value : layoutStyle.left,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 1000 : 1,
+    width: isDragging ? dragWidthValue.value : layoutStyle.width,
+    left: isDragging ? dragLeftValue.value : layoutStyle.left,
     };
   }, [isDragging, baseTop, layoutStyle.width, layoutStyle.left]);
 
   const eventStyle = [
-    styles.eventItem,
-    {
-      height: layoutStyle.height,
-      backgroundColor: bg,
-    },
-    animatedStyle,
-  ];
+        styles.eventItem,
+        {
+          height: layoutStyle.height,
+          backgroundColor: bg,
+        },
+        animatedStyle,
+      ];
 
   return (
     <View {...panResponder.panHandlers}>
@@ -822,7 +822,7 @@ export default function OggiScreen() {
   }, [timedEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayoutCallback]);
   
   const handleDragStart = useCallback((id: string) => {
-    stableLayoutRef.current = layoutById;
+      stableLayoutRef.current = layoutById;
     
     // Calculate initial overlaps when drag starts
     const initialOv = new Set<string>();
@@ -1173,8 +1173,8 @@ export default function OggiScreen() {
                      <TouchableOpacity style={styles.controlBtnWide} onPress={() => {
                         setDragMode(prev => prev === 'forward' ? 'single' : 'forward');
                      }}><Text style={[styles.controlBtnText, { fontSize: 14 }]}>Cambia</Text></TouchableOpacity>
-                  </View>
-               </View>
+                    </View>
+                </View>
 
                <TouchableOpacity style={styles.closeBtn} onPress={() => setShowSettings(false)}>
                   <Text style={styles.closeBtnText}>Chiudi</Text>

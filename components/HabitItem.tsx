@@ -15,6 +15,7 @@ type Props = {
   onSchedule: (habit: Habit) => void;
   onColor: (habit: Habit) => void;
   shouldCloseMenu?: boolean;
+  onMoveToFolder?: (habit: Habit) => void;
 };
 
 // Colori delle card come nella foto
@@ -107,7 +108,7 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
   );
 }
 
-export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false }: Props) {
+export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder }: Props) {
   const { activeTheme } = useAppTheme();
   const { toggleDone, removeHabit } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
@@ -123,6 +124,15 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
 
   const renderRightActions = () => (
     <View style={[styles.rightActions, styles.actionsTall]}>
+      {onMoveToFolder && (
+        <TouchableOpacity 
+          accessibilityRole="button" 
+          onPress={() => onMoveToFolder(habit)} 
+          style={[styles.actionBtnTallRight, styles.moveBtn]}
+        >
+          <Ionicons name="folder-open" size={24} color="white" />
+        </TouchableOpacity>
+      )}
       <TouchableOpacity 
         accessibilityRole="button" 
         onPress={() => removeHabit(habit.id)} 
@@ -476,6 +486,9 @@ const styles = StyleSheet.create({
 
   deleteBtn: {
     backgroundColor: '#ef4444'
+  },
+  moveBtn: {
+    backgroundColor: '#3b82f6'
   },
 
   colorBtn: {

@@ -6,8 +6,9 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, ScrollView } from 'react-native';
+import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -29,6 +30,55 @@ const FOLDER_ICONS: { name: string; label: string }[] = [
 
 type FolderItem = { id: string; name: string; color: string; icon?: string };
 
+type SectionItem =
+  | { type: 'folder'; folderName: string | null; folderId: string }
+  | { type: 'task'; habit: Habit };
+
+function FolderRowCancelTranslate({
+  hoverAnim,
+  children,
+}: {
+  hoverAnim: { value: number };
+  children: React.ReactNode;
+}) {
+  const style = useAnimatedStyle(() => ({ transform: [{ translateY: -hoverAnim.value }] }));
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+function TaskRowFollowFolderDrag({
+  cellIndex,
+  animVals,
+  children,
+}: {
+  cellIndex: number;
+  animVals: {
+    activeIndexAnim: { value: number };
+    spacerIndexAnim: { value: number };
+    activeCellSize: { value: number };
+    hoverAnim: { value: number };
+  } | null;
+  children: React.ReactNode;
+}) {
+  const style = useAnimatedStyle(() => {
+    if (!animVals || cellIndex < 0) return { transform: [{ translateY: 0 }] };
+    const activeIdx = animVals.activeIndexAnim.value;
+    const spacer = animVals.spacerIndexAnim.value;
+    const size = animVals.activeCellSize.value;
+    const hover = animVals.hoverAnim.value;
+    if (activeIdx < 0) return { transform: [{ translateY: 0 }] };
+    const isAfterActive = cellIndex > activeIdx;
+    const isBeforeActive = cellIndex < activeIdx;
+    const shouldTranslate = isAfterActive
+      ? cellIndex <= spacer
+      : isBeforeActive
+        ? cellIndex >= spacer
+        : false;
+    const libraryTranslate = shouldTranslate ? (isAfterActive ? -size : size) : 0;
+    return { transform: [{ translateY: hover - libraryTranslate }] };
+  });
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
 function formatDateLong(date: Date, tz: string): string {
   try {
     return new Intl.DateTimeFormat('it-IT', {
@@ -46,19 +96,50 @@ function formatDateLong(date: Date, tz: string): string {
 export default function IndexScreen() {
   const router = useRouter();
   const { activeTheme } = useAppTheme();
-  const { habits, history, getDay, toggleDone, removeHabit, updateHabit, addHabit, reorder, updateHabitsOrder, resetToday, dayResetTime, setDayResetTime } = useHabits();
+  const { habits, history, getDay, toggleDone, removeHabit, updateHabit, addHabit, reorder, updateHabitsOrder, updateHabitFolder, resetToday, dayResetTime, setDayResetTime } = useHabits();
   const [input, setInput] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [closingMenuId, setClosingMenuId] = useState<string | null>(null);
-  const [sortMode, setSortMode] = useState<'creation' | 'alphabetical' | 'custom' | 'time' | 'color' | 'folder'>('creation');
+  type SortModeType = 'creation' | 'alphabetical' | 'custom' | 'time' | 'color' | 'folder';
+  const [sortMode, setSortMode] = useState<SortModeType>('creation');
+  const [sortModeByFolder, setSortModeByFolder] = useState<Record<string, SortModeType>>({});
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [createFolderVisible, setCreateFolderVisible] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState(FOLDER_COLORS[3]);
   const [newFolderIcon, setNewFolderIcon] = useState(FOLDER_ICONS[0].name);
+  const [foldersScrollEnabled, setFoldersScrollEnabled] = useState(false);
+  const foldersContainerWidthRef = useRef(0);
+  const foldersContentWidthRef = useRef(0);
+  const dragEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDisplayRef = useRef<SectionItem[] | null>(null);
+  const [draggingFolderIndex, setDraggingFolderIndex] = useState<number | null>(null);
+  const overlayY = useSharedValue(0);
+  const overlayOpacity = useSharedValue(0);
+  const dragCounter = useSharedValue(0);
+  const isDraggingFolder = useSharedValue(0);
+  const [overlayPositionReady, setOverlayPositionReady] = useState(false);
+  const [animVals, setAnimVals] = useState<unknown>(null);
+  const [displayList, setDisplayList] = useState<SectionItem[] | null>(null);
   const today = getDay(new Date());
+
+  const sectionedListOrderKey = useCallback((list: SectionItem[]) => {
+    return list.map(i => i.type === 'folder' ? `f-${i.folderId}` : `t-${i.habit.id}`).join(',');
+  }, []);
+
+  const updateFoldersScrollEnabled = useCallback(() => {
+    const cw = foldersContentWidthRef.current;
+    const tw = foldersContainerWidthRef.current;
+    setFoldersScrollEnabled(tw > 0 && cw > tw);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     AsyncStorage.getItem('tasks_custom_folders_v2').then((data) => {
@@ -130,6 +211,11 @@ export default function IndexScreen() {
               AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => {});
               return next;
             });
+            setSortModeByFolder(prev => {
+              const next = { ...prev };
+              delete next[folderName.trim()];
+              return next;
+            });
             if (activeFolder === folderName) {
               setActiveFolder(null);
             }
@@ -142,7 +228,22 @@ export default function IndexScreen() {
   useEffect(() => {
     AsyncStorage.getItem('tasks_sort_mode_v1').then((mode) => {
       if (['alphabetical', 'creation', 'custom', 'time', 'color', 'folder'].includes(mode ?? '')) {
-        setSortMode(mode as 'creation' | 'alphabetical' | 'custom' | 'time' | 'color' | 'folder');
+        setSortMode(mode as SortModeType);
+      }
+    }).catch(() => {});
+    AsyncStorage.getItem('tasks_sort_mode_per_folder_v1').then((data) => {
+      if (data) {
+        try {
+          const parsed = JSON.parse(data) as Record<string, string>;
+          if (parsed && typeof parsed === 'object') {
+            const valid: Record<string, SortModeType> = {};
+            const modes: SortModeType[] = ['alphabetical', 'creation', 'custom', 'time', 'color', 'folder'];
+            for (const [k, v] of Object.entries(parsed)) {
+              if (typeof v === 'string' && modes.includes(v)) valid[k] = v as SortModeType;
+            }
+            setSortModeByFolder(valid);
+          }
+        } catch {}
       }
     }).catch(() => {});
   }, []);
@@ -150,6 +251,9 @@ export default function IndexScreen() {
   useEffect(() => {
     AsyncStorage.setItem('tasks_sort_mode_v1', sortMode).catch(() => {});
   }, [sortMode]);
+  useEffect(() => {
+    AsyncStorage.setItem('tasks_sort_mode_per_folder_v1', JSON.stringify(sortModeByFolder)).catch(() => {});
+  }, [sortModeByFolder]);
 
   const stats = useMemo(() => {
     const total = habits.length;
@@ -194,20 +298,26 @@ export default function IndexScreen() {
     router.push({ pathname: '/modal', params: { type: 'edit', id: h.id } });
   }, [router]);
 
-  const sortedHabits = useMemo(() => {
-    let list = [...habits];
-    
-    if (activeFolder) {
-      list = list.filter(h => h.folder === activeFolder);
-    }
+  const handleMoveToFolder = useCallback((habit: Habit) => {
+    const options = [
+      { text: 'Tutte (nessuna cartella)', onPress: () => { updateHabitFolder(habit.id, undefined); setClosingMenuId(habit.id); } },
+      ...folders.map(f => ({ text: f.name, onPress: () => { updateHabitFolder(habit.id, f.name); setClosingMenuId(habit.id); } })),
+      { text: 'Annulla', style: 'cancel' as const }
+    ];
+    Alert.alert('Sposta in cartella', `Dove vuoi spostare "${habit.text}"?`, options);
+  }, [folders, updateHabitFolder]);
 
-    if (sortMode === 'alphabetical') {
-      return list.sort((a, b) => a.text.localeCompare(b.text));
+  const effectiveSortMode: SortModeType =
+    activeFolder === null ? sortMode : (sortModeByFolder[activeFolder.trim()] ?? 'creation');
+
+  const sortHabitsWithMode = useCallback((list: Habit[], mode: SortModeType) => {
+    if (mode === 'alphabetical') {
+      return [...list].sort((a, b) => a.text.localeCompare(b.text));
     }
-    if (sortMode === 'custom') {
-      return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (mode === 'custom') {
+      return [...list].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
-    if (sortMode === 'color') {
+    if (mode === 'color') {
       const hexToHue = (hex: string): number => {
         const h = hex.replace(/^#/, '');
         if (h.length !== 6 && h.length !== 3) return 400;
@@ -226,91 +336,357 @@ export default function IndexScreen() {
         else hue = ((r - g) / d + 4) / 6;
         return hue * 360;
       };
-      return list.sort((a, b) => {
+      return [...list].sort((a, b) => {
         const hueA = hexToHue(a.color ?? '#4A148C');
         const hueB = hexToHue(b.color ?? '#4A148C');
         const diff = hueA - hueB;
         return diff !== 0 ? diff : (a.order ?? 0) - (b.order ?? 0);
       });
     }
-    if (sortMode === 'time') {
+    if (mode === 'time') {
       const getStartTime = (h: Habit) => {
         const override = h.timeOverrides?.[today];
         const isAllDayMarker = override === '00:00';
         if (isAllDayMarker || h.isAllDay) return -1;
-        
         const overrideStart = !isAllDayMarker && typeof override === 'string' ? override : (!isAllDayMarker ? override?.start : undefined);
         if (overrideStart) {
           const [hh, mm] = overrideStart.split(':').map(Number);
           return hh * 60 + mm;
         }
-
         const dateObj = new Date();
         const weekday = dateObj.getDay();
         const dayOfMonth = dateObj.getDate();
-        
         const weekly = h.schedule?.weeklyTimes?.[weekday] ?? null;
         const monthlyT = h.schedule?.monthlyTimes?.[dayOfMonth] ?? null;
         const start = weekly?.start ?? monthlyT?.start ?? (h.schedule?.time ?? null);
-        
         if (!start) return -1;
         const [hh, mm] = start.split(':').map(Number);
         return hh * 60 + mm;
       };
-
-      return list.sort((a, b) => getStartTime(a) - getStartTime(b));
+      return [...list].sort((a, b) => getStartTime(a) - getStartTime(b));
     }
-    if (sortMode === 'folder') {
-      return list.sort((a, b) => {
+    if (mode === 'folder') {
+      return [...list].sort((a, b) => {
         const fa = a.folder ?? '';
         const fb = b.folder ?? '';
         const cmp = fa.localeCompare(fb);
         return cmp !== 0 ? cmp : (a.order ?? 0) - (b.order ?? 0);
       });
     }
-    // Per 'creation', ritorniamo la lista nell'ordine originale di inserimento (dal più vecchio al più nuovo)
     return list;
-  }, [habits, sortMode, today, activeFolder]);
+  }, [today]);
+
+  const sortHabitsList = useCallback(
+    (list: Habit[]) => sortHabitsWithMode(list, effectiveSortMode),
+    [sortHabitsWithMode, effectiveSortMode]
+  );
+
+  const sortedHabits = useMemo(() => {
+    let list = [...habits];
+    if (activeFolder) {
+      const target = activeFolder.trim();
+      list = list.filter(h => (h.folder ?? '').trim() === target);
+    }
+    return sortHabitsList(list);
+  }, [habits, sortMode, today, activeFolder, sortHabitsList]);
+
+  const sectionedList = useMemo((): SectionItem[] => {
+    if (activeFolder !== null) {
+      return sortedHabits.map(h => ({ type: 'task' as const, habit: h }));
+    }
+    if (sortMode !== 'folder') {
+      return sortedHabits.map(h => ({ type: 'task' as const, habit: h }));
+    }
+    const byFolder = new Map<string | null, Habit[]>();
+    for (const h of habits) {
+      const f = (h.folder ?? '').trim() || null;
+      if (!byFolder.has(f)) byFolder.set(f, []);
+      byFolder.get(f)!.push(h);
+    }
+    const sectionOrder: (string | null)[] = [null];
+    for (const f of folders) {
+      const name = (f.name ?? '').trim();
+      if (name && byFolder.has(name)) sectionOrder.push(name);
+    }
+    const out: SectionItem[] = [];
+    for (const folderName of sectionOrder) {
+      const tasks = byFolder.get(folderName);
+      if (!tasks || tasks.length === 0) continue;
+      const folderSortMode: SortModeType =
+        folderName === null ? 'creation' : (sortModeByFolder[folderName] ?? 'creation');
+      const sorted = sortHabitsWithMode(tasks, folderSortMode);
+      const folderId = folderName === null ? 'null' : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
+      out.push({ type: 'folder', folderName, folderId });
+      for (const h of sorted) out.push({ type: 'task', habit: h });
+    }
+    return out;
+  }, [habits, folders, activeFolder, sortMode, sortModeByFolder, sortedHabits, sortHabitsWithMode]);
+
+  useEffect(() => {
+    if (displayList === null) {
+      setDisplayList(sectionedList);
+      return;
+    }
+    if (sectionedListOrderKey(sectionedList) !== sectionedListOrderKey(displayList)) {
+      pendingDisplayRef.current = null;
+      setDisplayList(sectionedList);
+    }
+  }, [sectionedList, displayList, sectionedListOrderKey]);
 
   const completedByHabitId = useMemo(
     () => history[today]?.completedByHabitId ?? {},
     [history, today]
   );
 
-  const renderItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<Habit>) => {
-    const idx = getIndex?.() ?? sortedHabits.findIndex(h => h.id === item.id);
-    const prev = idx >= 0 ? sortedHabits[idx - 1] : undefined;
-    const showFolderHeader = activeFolder === null && (!prev || prev.folder !== item.folder) && item.folder;
-    const folderMeta = folders.find(f => f.name === item.folder);
-    const folderColor = folderMeta?.color ?? THEME.textMuted;
-    return (
-      <View>
-        {showFolderHeader && (
-          <View style={styles.folderSeparator}>
-            <Text style={[styles.folderSeparatorText, { color: folderColor }]}>{item.folder}</Text>
-          </View>
-        )}
-        <ScaleDecorator>
-          <TouchableOpacity 
-            onLongPress={drag} 
-            disabled={isActive} 
-            activeOpacity={0.9} 
+  const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
+    if (item.type === 'folder') {
+      const folderMeta = folders.find(f => (f.name ?? '').trim() === (item.folderName ?? '').trim());
+      const folderColor = folderMeta?.color ?? THEME.textMuted;
+      const label = item.folderName ?? 'Tutte';
+      const hoverAnim = animVals && (animVals as { hoverAnim: { value: number } }).hoverAnim;
+      const inner = (
+        <View style={[styles.folderSeparator, isActive && overlayPositionReady && styles.folderRowInvisible]}>
+          <TouchableOpacity
+            onLongPress={drag}
+            disabled={isActive}
+            activeOpacity={0.9}
             delayLongPress={200}
           >
-            <HabitItem
-              habit={item}
-              index={0}
-              isDone={Boolean(completedByHabitId[item.id])}
-              onRename={handleSchedule}
-              onSchedule={handleSchedule}
-              onColor={handleSchedule}
-              shouldCloseMenu={closingMenuId === item.id || closingMenuId === 'all'}
-            />
+            <Text style={[styles.folderSeparatorText, { color: folderColor }]}>{label}</Text>
           </TouchableOpacity>
+        </View>
+      );
+      const folderRow = (
+        <ScaleDecorator activeScale={1}>
+          {isActive && hoverAnim ? (
+            <FolderRowCancelTranslate hoverAnim={hoverAnim}>{inner}</FolderRowCancelTranslate>
+          ) : (
+            inner
+          )}
         </ScaleDecorator>
-      </View>
+      );
+      return folderRow;
+    }
+    const idx = getIndex?.();
+    const isInDraggedSection =
+      draggingFolderIndex != null &&
+      overlayPositionReady &&
+      idx !== undefined &&
+      idx > draggingFolderIndex &&
+      (() => {
+        const nextFolder = sectionedList.findIndex((it, i) => i > draggingFolderIndex && it.type === 'folder');
+        const end = nextFolder < 0 ? sectionedList.length : nextFolder;
+        return idx < end;
+      })();
+    const isInDraggedSectionForCancel =
+      draggingFolderIndex != null &&
+      idx !== undefined &&
+      idx > draggingFolderIndex &&
+      (() => {
+        const nextFolder = sectionedList.findIndex((it, i) => i > draggingFolderIndex && it.type === 'folder');
+        const end = nextFolder < 0 ? sectionedList.length : nextFolder;
+        return idx < end;
+      })();
+    const taskVals = animVals
+      ? (animVals as { activeIndexAnim: { value: number }; spacerIndexAnim: { value: number }; activeCellSize: { value: number }; hoverAnim: { value: number } })
+      : null;
+    const taskRow = (
+      <ScaleDecorator>
+        <TouchableOpacity
+          onLongPress={drag}
+          disabled={isActive}
+          activeOpacity={0.9}
+          delayLongPress={200}
+        >
+          <HabitItem
+            habit={item.habit}
+            index={0}
+            isDone={Boolean(completedByHabitId[item.habit.id])}
+            onRename={handleSchedule}
+            onSchedule={handleSchedule}
+            onColor={handleSchedule}
+            shouldCloseMenu={closingMenuId === item.habit.id || closingMenuId === 'all'}
+            onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+          />
+        </TouchableOpacity>
+      </ScaleDecorator>
     );
-  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortedHabits, folders]);
+    const wrapped =
+      isInDraggedSectionForCancel && taskVals ? (
+        <TaskRowFollowFolderDrag cellIndex={idx ?? -1} animVals={taskVals}>
+          {taskRow}
+        </TaskRowFollowFolderDrag>
+      ) : (
+        taskRow
+      );
+    return isInDraggedSection ? <View style={styles.sectionRowInvisible}>{wrapped}</View> : wrapped;
+  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, folders, handleMoveToFolder, draggingFolderIndex, sectionedList, overlayPositionReady, animVals]);
+
+  const commitDragEnd = useCallback(() => {
+    isDraggingFolder.value = 0;
+    setDraggingFolderIndex(null);
+    setOverlayPositionReady(false);
+  }, [isDraggingFolder]);
+
+  const folderIndicesArray = useMemo(
+    () => sectionedList.map((item, i) => (item.type === 'folder' ? i : -1)).filter((i) => i >= 0),
+    [sectionedList]
+  );
+  const folderIndicesSV = useSharedValue<number[]>([]);
+  useEffect(() => {
+    folderIndicesSV.value = folderIndicesArray;
+  }, [folderIndicesArray, folderIndicesSV]);
+
+  const handleSectionedDragEnd = useCallback(({ data, from, to }: { data: SectionItem[]; from: number; to: number }) => {
+    let finalData = data;
+    const draggedItem = data[to];
+    if (draggedItem?.type === 'folder') {
+      const folderName = draggedItem.folderName;
+      let blockLen = 1;
+      while (to + blockLen < data.length && data[to + blockLen].type === 'task') {
+        const h = data[to + blockLen].habit;
+        const taskFolder = (h.folder ?? '').trim() || null;
+        if (taskFolder !== (folderName ?? null)) break;
+        blockLen++;
+      }
+      const block = data.slice(to, to + blockLen);
+      const validFolderIndices = data
+        .map((item, i) => (item.type === 'folder' ? i : -1))
+        .filter((i) => i >= 0);
+      const snappedTo = validFolderIndices.length === 0
+        ? 0
+        : validFolderIndices.reduce((best, idx) =>
+            Math.abs(idx - to) < Math.abs(best - to) ? idx : best
+          , validFolderIndices[0]);
+      const remaining = [...data.slice(0, to), ...data.slice(to + blockLen)];
+      const insertIndex = snappedTo <= to ? snappedTo : snappedTo - blockLen;
+      const insertIdx = Math.max(0, Math.min(insertIndex, remaining.length));
+      finalData = [...remaining.slice(0, insertIdx), ...block, ...remaining.slice(insertIdx)];
+    }
+
+    const folderItems = finalData.filter((x): x is Extract<SectionItem, { type: 'folder' }> => x.type === 'folder');
+    const taskItems = finalData.filter((x): x is Extract<SectionItem, { type: 'task' }> => x.type === 'task');
+
+    pendingDisplayRef.current = finalData;
+    setDisplayList(finalData);
+
+    const runUpdates = () => {
+      if (from === to) {
+        commitDragEnd();
+        return;
+      }
+      const applyUpdates = () => {
+        if (folderItems.length === 0) {
+          updateHabitsOrder(taskItems.map(t => t.habit));
+          if (activeFolder != null) {
+            setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
+          } else {
+            setSortMode('custom');
+          }
+        } else {
+          const folderOrder = folderItems.map(f => f.folderName);
+          const newFoldersOrder = folderOrder.filter((n): n is string => n !== null);
+          const byFolder = new Map<string | null, Habit[]>();
+          for (const { habit } of taskItems) {
+            const f = (habit.folder ?? '').trim() || null;
+            if (!byFolder.has(f)) byFolder.set(f, []);
+            byFolder.get(f)!.push(habit);
+          }
+          const orderedHabits: Habit[] = [];
+          for (const fi of folderItems) {
+            const tasks = byFolder.get(fi.folderName) ?? [];
+            for (const h of tasks) orderedHabits.push(h);
+          }
+          updateHabitsOrder(orderedHabits);
+          if (draggedItem?.type === 'task') {
+            const srcFolder = (draggedItem.habit.folder ?? '').trim() || null;
+            if (srcFolder) setSortModeByFolder(prev => ({ ...prev, [srcFolder]: 'custom' }));
+            const toFolder = (() => {
+              let idx = 0;
+              for (const fi of folderItems) {
+                const count = 1 + (byFolder.get(fi.folderName) ?? []).length;
+                if (to < idx + count) return fi.folderName?.trim() ?? null;
+                idx += count;
+              }
+              return null;
+            })();
+            if (toFolder != null && toFolder !== srcFolder) setSortModeByFolder(prev => ({ ...prev, [toFolder]: 'custom' }));
+          }
+          if (newFoldersOrder.length > 0) {
+            setFolders(prev => {
+              const orderMap = new Map(newFoldersOrder.map((n, i) => [n, i]));
+              const next = [...prev].sort((a, b) => {
+                const ia = orderMap.get((a.name ?? '').trim()) ?? 999;
+                const ib = orderMap.get((b.name ?? '').trim()) ?? 999;
+                return ia - ib;
+              });
+              AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => {});
+              return next;
+            });
+          }
+        }
+        commitDragEnd();
+      };
+      startTransition(applyUpdates);
+    };
+
+    if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+    const PERSIST_DELAY_MS = 800;
+    dragEndTimeoutRef.current = setTimeout(runUpdates, PERSIST_DELAY_MS);
+  }, [updateHabitsOrder, commitDragEnd, activeFolder]);
+
+  const setOverlayReady = useCallback(() => setOverlayPositionReady(true), []);
+
+  useAnimatedReaction(
+    () => {
+      'worklet';
+      const v = animVals as {
+        activeCellOffset: { value: number };
+        scrollOffset: { value: number };
+        hoverAnim: { value: number };
+        activeIndexAnim: { value: number };
+        spacerIndexAnim: { value: number };
+      } | null;
+      if (!v) return { y: 0, active: -1, dragId: 0 };
+      if (isDraggingFolder.value === 1) {
+        const indices = folderIndicesSV.value;
+        if (indices.length > 0) {
+          const nearest = indices.reduce(
+            (best, idx) =>
+              Math.abs(idx - v.spacerIndexAnim.value) < Math.abs(best - v.spacerIndexAnim.value) ? idx : best,
+            indices[0]
+          );
+          if (nearest !== v.spacerIndexAnim.value) v.spacerIndexAnim.value = nearest;
+        }
+      }
+      const y = v.activeCellOffset.value - v.scrollOffset.value + v.hoverAnim.value;
+      return { y, active: v.activeIndexAnim.value, dragId: dragCounter.value };
+    },
+    (current) => {
+      if (current.active >= 0) {
+        overlayY.value = current.y;
+        overlayOpacity.value = withTiming(1, { duration: 150 });
+        runOnJS(setOverlayReady)();
+      }
+    },
+    [animVals, setOverlayReady, overlayY, overlayOpacity, dragCounter, isDraggingFolder, folderIndicesSV]
+  );
+
+  const overlayAnimatedStyle = useAnimatedStyle(() => ({
+    top: overlayY.value,
+    opacity: overlayOpacity.value,
+  }));
+
+  const draggingSectionItems = useMemo(() => {
+    if (draggingFolderIndex == null || activeFolder !== null) return [];
+    const items: SectionItem[] = [];
+    for (let i = draggingFolderIndex; i < sectionedList.length; i++) {
+      const it = sectionedList[i];
+      if (it.type === 'folder' && i > draggingFolderIndex) break;
+      items.push(it);
+    }
+    return items;
+  }, [draggingFolderIndex, sectionedList, activeFolder]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -340,17 +716,39 @@ export default function IndexScreen() {
           </View>
           <View style={styles.progressActions}>
             <TouchableOpacity onPress={() => {
+              const folderNameNow = activeFolder?.trim() ?? null;
+              const inFolder = folderNameNow !== null;
+              const current: SortModeType = inFolder
+                ? (sortModeByFolder[folderNameNow] ?? 'creation')
+                : sortMode;
+              const setCurrent = (mode: SortModeType) => {
+                if (inFolder && folderNameNow) {
+                  setSortModeByFolder(prev => ({ ...prev, [folderNameNow]: mode }));
+                } else {
+                  setSortMode(mode);
+                }
+              };
+              const sel = (label: string, mode: SortModeType) =>
+                current === mode ? `${label} ✓` : label;
+              const labels: Record<SortModeType, string> = {
+                creation: 'Data di creazione',
+                time: 'Orario',
+                color: 'Ordine per colore',
+                folder: 'Ordine per cartelle',
+                alphabetical: 'Ordine alfabetico',
+                custom: 'Ordine libero (Trascina)',
+              };
               Alert.alert(
-                'Ordina task',
-                'Scegli come ordinare le tue task',
+                inFolder ? 'Ordina task (in questa cartella)' : 'Ordina task',
+                `Ordine attuale: ${labels[current] ?? current}`,
                 [
                   { text: 'Annulla', style: 'cancel' },
-                  { text: 'Data di creazione', onPress: () => setSortMode('creation') },
-                  { text: 'Orario', onPress: () => setSortMode('time') },
-                  { text: 'Ordine per colore', onPress: () => setSortMode('color') },
-                  { text: 'Ordine per cartelle', onPress: () => setSortMode('folder') },
-                  { text: 'Ordine alfabetico', onPress: () => setSortMode('alphabetical') },
-                  { text: 'Ordine libero (Trascina)', onPress: () => setSortMode('custom') },
+                  { text: sel('Data di creazione', 'creation'), onPress: () => setCurrent('creation') },
+                  { text: sel('Orario', 'time'), onPress: () => setCurrent('time') },
+                  { text: sel('Ordine per colore', 'color'), onPress: () => setCurrent('color') },
+                  { text: sel('Ordine per cartelle', 'folder'), onPress: () => setCurrent('folder') },
+                  { text: sel('Ordine alfabetico', 'alphabetical'), onPress: () => setCurrent('alphabetical') },
+                  { text: sel('Ordine libero (Trascina)', 'custom'), onPress: () => setCurrent('custom') },
                 ]
               );
             }} style={[
@@ -409,8 +807,23 @@ export default function IndexScreen() {
         </View>
       </View>
 
-      <View style={styles.foldersContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.foldersScroll}>
+      <View 
+        style={styles.foldersContainer} 
+        onLayout={(e) => {
+          foldersContainerWidthRef.current = e.nativeEvent.layout.width;
+          updateFoldersScrollEnabled();
+        }}
+      >
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          scrollEnabled={foldersScrollEnabled}
+          contentContainerStyle={styles.foldersScroll}
+          onContentSizeChange={(contentWidth) => {
+            foldersContentWidthRef.current = contentWidth;
+            updateFoldersScrollEnabled();
+          }}
+        >
           <TouchableOpacity 
             style={styles.folderRow}
             onPress={() => setActiveFolder(null)}
@@ -445,18 +858,55 @@ export default function IndexScreen() {
           <Text style={styles.emptyText}>Nessuna task ancora… Tocca + per aggiungere la tua prima task</Text>
         </View>
       ) : (
-        <DraggableFlatList
-          data={sortedHabits}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
-          style={activeTheme === 'futuristic' && { marginHorizontal: -16 }}
-          showsVerticalScrollIndicator={false}
-          onDragEnd={({ data }) => {
-            updateHabitsOrder(data);
-            setSortMode('custom');
-          }}
-        />
+        <View style={styles.listWrap}>
+          <DraggableFlatList<SectionItem>
+            data={pendingDisplayRef.current ?? displayList ?? sectionedList}
+            keyExtractor={(item) => item.type === 'folder' ? `folder-${item.folderId}` : `task-${item.habit.id}`}
+            renderItem={renderSectionItem}
+            contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
+            style={[activeTheme === 'futuristic' && { marginHorizontal: -16 }]}
+            containerStyle={styles.dragListContainer}
+            showsVerticalScrollIndicator={false}
+            dragItemOverflow
+            onAnimValInit={(v) => setAnimVals(v)}
+            onDragBegin={(index) => {
+              if (sectionedList[index]?.type === 'folder') {
+                isDraggingFolder.value = 1;
+                setOverlayPositionReady(false);
+                setDraggingFolderIndex(index);
+                dragCounter.value = dragCounter.value + 1;
+                overlayOpacity.value = 0;
+              }
+            }}
+            onDragEnd={handleSectionedDragEnd}
+          />
+          {draggingFolderIndex != null && overlayPositionReady && draggingSectionItems.length > 0 && (
+            <Animated.View style={[styles.dragOverlay, overlayAnimatedStyle]} pointerEvents="none">
+              {draggingSectionItems.map((it, i) =>
+                it.type === 'folder' ? (
+                  <View key={`folder-${it.folderId}`} style={styles.folderSeparator}>
+                    <Text style={[styles.folderSeparatorText, styles.dragOverlayFolderTitle, { color: folders.find(f => (f.name ?? '').trim() === (it.folderName ?? '').trim())?.color ?? THEME.textMuted }]}>
+                      {it.folderName ?? 'Tutte'}
+                    </Text>
+                  </View>
+                ) : (
+                  <View key={`task-${it.habit.id}`} style={styles.dragOverlayTask}>
+                    <HabitItem
+                      habit={it.habit}
+                      index={0}
+                      isDone={Boolean(completedByHabitId[it.habit.id])}
+                      onRename={handleSchedule}
+                      onSchedule={handleSchedule}
+                      onColor={handleSchedule}
+                      shouldCloseMenu
+                      onMoveToFolder={undefined}
+                    />
+                  </View>
+                )
+              )}
+            </Animated.View>
+          )}
+        </View>
       )}
 
       <Link href={{ pathname: '/modal', params: { type: 'new', folder: activeFolder ?? undefined } }} asChild>
@@ -630,6 +1080,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 4,
   },
+  listWrap: {
+    flex: 1,
+    position: 'relative' as const,
+    overflow: 'visible' as const,
+  },
+  dragListContainer: {
+    overflow: 'visible',
+  },
+  dragOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  dragOverlayTask: {
+    marginHorizontal: 0,
+  },
+  folderRowInvisible: {
+    opacity: 0,
+  },
+  sectionRowInvisible: {
+    opacity: 0,
+  },
   folderSeparator: {
     paddingVertical: 4,
     paddingTop: 8,
@@ -640,6 +1118,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  dragOverlayFolderTitle: {
+    fontSize: 14,
   },
 
   modalOverlay: {

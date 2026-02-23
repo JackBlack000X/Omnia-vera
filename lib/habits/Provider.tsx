@@ -34,6 +34,7 @@ export type HabitsContextType = {
   addHabit: (text: string, color?: string, folder?: string) => string;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
+  updateHabitFolder: (id: string, folder: string | undefined) => void;
   removeHabit: (id: string) => void;
   toggleDone: (id: string) => void;
   reorder: (id: string, direction: 'up' | 'down') => void;
@@ -159,6 +160,14 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const updateHabitColor = useCallback((id: string, color: string) => {
     setHabits((prev) => prev.map((h) => (h.id === id ? { ...h, color } : h)));
+  }, []);
+
+  const updateHabitFolder = useCallback((id: string, folder: string | undefined) => {
+    setHabits((prev) => {
+      const next = prev.map((h) => (h.id === id ? { ...h, folder: folder?.trim() || undefined } : h));
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const removeHabit = useCallback((id: string) => {
@@ -414,9 +423,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime,
-    addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay,
+    addHabit, updateHabit, updateHabitColor, updateHabitFolder, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay,
     setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
-  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
+  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }
