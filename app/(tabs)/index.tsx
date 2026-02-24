@@ -9,7 +9,7 @@ import { Link, useFocusEffect, useRouter } from 'expo-router';
 import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { SharedValue, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const TZ = 'Europe/Zurich';
@@ -28,14 +28,28 @@ const FOLDER_ICONS: { name: string; label: string }[] = [
   { name: 'archive-outline', label: 'Archivio' },
 ];
 
+const MergeIcon = ({ isActive, isMergeHoverSV }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean> }) => {
+  const animatedStyle = useAnimatedStyle(() => {
+    const isVisible = isActive && isMergeHoverSV.value;
+    return {
+      opacity: withTiming(isVisible ? 1 : 0, { duration: 150 }),
+      transform: [{ scale: withTiming(isVisible ? 1 : 0.5, { duration: 150 }) }]
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.mergePlusIcon, animatedStyle]}>
+      <Ionicons name="add" size={24} color={THEME.success} />
+    </Animated.View>
+  );
+};
+
+
 type FolderItem = { id: string; name: string; color: string; icon?: string };
 
 type FolderBlockItem = { type: 'folderBlock'; folderName: string | null; folderId: string; tasks: Habit[] };
-type FolderHeaderItem = { type: 'folderHeader'; folderName: string | null; folderId: string };
-type FolderMergeZoneItem = { type: 'folderMergeZone'; targetFolderName: string | null; targetFolderId: string };
-type FolderTaskGroupItem = { type: 'folderTaskGroup'; folderName: string | null; folderId: string; tasks: Habit[] };
 type TaskItem = { type: 'task'; habit: Habit };
-type SectionItem = FolderBlockItem | FolderHeaderItem | FolderMergeZoneItem | FolderTaskGroupItem | TaskItem;
+type SectionItem = FolderBlockItem | TaskItem;
 
 function formatDateLong(date: Date, tz: string): string {
   try {
@@ -77,15 +91,11 @@ export default function IndexScreen() {
   const pendingDisplayRef = useRef<SectionItem[] | null>(null);
   const isPostDragRef = useRef(false);
   const preDragSnapshotRef = useRef<SectionItem[] | null>(null);
-  const pendingFadeCallbackRef = useRef(true);
-  const [draggingFolderIndex, setDraggingFolderIndex] = useState<number | null>(null);
-  const overlayY = useSharedValue(0);
-  const overlayOpacity = useSharedValue(0);
-  const overlayScale = useSharedValue(1);
-  const dragCounter = useSharedValue(0);
-  const isDraggingFolder = useSharedValue(0);
-  const [overlayPositionReady, setOverlayPositionReady] = useState(false);
+  const isMergeHoverSV = useSharedValue(false);
+  const dragDirectionSV = useSharedValue(0); // -1 for up, 1 for down
+  // No more isMergeHoverNode state here - now using useAnimatedStyle in renderItem for zero flutters.
   const [animVals, setAnimVals] = useState<unknown>(null);
+
   const [displayList, setDisplayList] = useState<SectionItem[] | null>(null);
   const [sectionOrder, setSectionOrder] = useState<(string | null)[] | null>(null);
   const [fadingOutFolderId, setFadingOutFolderId] = useState<string | null>(null);
@@ -94,15 +104,13 @@ export default function IndexScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const today = getDay(new Date());
 
+  const prevSectionedListRef = useRef<SectionItem[]>([]);
   const TUTTE_KEY = '__tutte__';
   const OGGI_TODAY_KEY = '__oggi__'; // virtual folder: tasks appearing today only
 
   const sectionedListOrderKey = useCallback((list: SectionItem[]) => {
     return list.map(i => {
-      if (i.type === 'folderBlock') return `f-${i.folderId}`;
-      if (i.type === 'folderHeader') return `h-${i.folderId}`;
-      if (i.type === 'folderMergeZone') return `m-${i.targetFolderId}`;
-      if (i.type === 'folderTaskGroup') return `g-${i.folderId}-${i.tasks.map(t => `${t.id}:${t.text}:${t.folder ?? ''}`).join('|')}`;
+      if (i.type === 'folderBlock') return `f-${i.folderId}-${i.tasks.map(t => `${t.id}:${t.text}:${t.folder ?? ''}`).join('|')}`;
       return `t-${i.habit.id}-${i.habit.text}-${i.habit.folder ?? ''}`;
     }).join(',');
   }, []);
@@ -524,17 +532,39 @@ export default function IndexScreen() {
       const tasks = byFolder.get(folderName) ?? [];
       if (sectionOrder == null && (!tasks || tasks.length === 0)) continue;
       if (isOggiView && tasks.length === 0) continue;
+      const folderId = folderName === null ? 'null' : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
       const folderSortMode: SortModeType =
         folderName === null ? (sortModeByFolder[TUTTE_KEY] ?? 'creation') : (sortModeByFolder[folderName] ?? 'creation');
       const sorted = sortHabitsWithMode(tasks, folderSortMode);
-      const folderId = folderName === null ? 'null' : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
-      out.push({ type: 'folderHeader', folderName, folderId });
-      if (sorted.length > 0) {
-        out.push({ type: 'folderMergeZone', targetFolderName: folderName, targetFolderId: folderId });
-      }
-      out.push({ type: 'folderTaskGroup', folderName, folderId, tasks: sorted });
+      out.push({ type: 'folderBlock', folderName, folderId, tasks: sorted });
     }
-    return out;
+    const finalized = out.map(newItem => {
+      const prev = prevSectionedListRef.current.find(p => {
+        if (p.type !== newItem.type) return false;
+        if (p.type === 'folderBlock' && newItem.type === 'folderBlock') {
+          return p.folderId === newItem.folderId && p.tasks.length === newItem.tasks.length;
+        }
+        if (p.type === 'task' && newItem.type === 'task') {
+          return p.habit.id === newItem.habit.id;
+        }
+        return false;
+      });
+      // Basic shallow comparison of critical data to decide reuse
+      if (prev) {
+        if (prev.type === 'folderBlock' && newItem.type === 'folderBlock') {
+          const tasksMatch = prev.tasks.length === newItem.tasks.length &&
+            prev.tasks.every((t, idx) => t.id === newItem.tasks[idx].id);
+          if (tasksMatch && prev.folderName === newItem.folderName) return prev;
+        }
+        if (prev.type === 'task' && newItem.type === 'task') {
+          if (prev.habit.text === newItem.habit.text && prev.habit.folder === newItem.habit.folder) return prev;
+        }
+      }
+      return newItem;
+    });
+
+    prevSectionedListRef.current = finalized;
+    return finalized;
   }, [habits, habitsAppearingToday, folders, activeFolder, sortMode, sortModeByFolder, sortedHabits, sortHabitsWithMode, sectionOrder]);
 
   useEffect(() => {
@@ -584,61 +614,54 @@ export default function IndexScreen() {
   }, [sectionOrder, folders]);
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
-    const idx = getIndex?.();
-    const isPartOfDraggedBlock = (draggingFolderIndex != null && idx != null &&
-      idx >= draggingFolderIndex && idx <= draggingFolderIndex + 2) ||
-      (fadingOutFolderId != null && item.type !== 'task' &&
-        ((item.type === 'folderHeader' && item.folderId === fadingOutFolderId) ||
-          (item.type === 'folderMergeZone' && item.targetFolderId === fadingOutFolderId) ||
-          (item.type === 'folderTaskGroup' && item.folderId === fadingOutFolderId)));
-
-    if (item.type === 'folderMergeZone') {
-      return (
-        <ScaleDecorator>
-          <View style={[styles.folderMergeZone, isPartOfDraggedBlock && overlayPositionReady && styles.blockInvisible]} />
-        </ScaleDecorator>
-      );
-    }
-    if (item.type === 'folderHeader') {
+    if (item.type === 'folderBlock') {
       const folderMeta = folders.find(f => (f.name ?? '').trim() === (item.folderName ?? '').trim());
       const folderColor = folderMeta?.color ?? THEME.textMuted;
       const label = typeof item.folderName === 'string' ? item.folderName : 'Tutte';
+
       return (
         <ScaleDecorator activeScale={1}>
-          <View style={[styles.folderSeparator, isActive && overlayPositionReady && styles.blockInvisible]}>
-            <TouchableOpacity
-              onLongPress={selectionMode ? undefined : drag}
-              disabled={isActive || selectionMode}
-              activeOpacity={0.9}
-              delayLongPress={200}
-            >
-              <Text style={[styles.folderSeparatorText, { color: folderColor }]}>{label}</Text>
-            </TouchableOpacity>
-          </View>
-        </ScaleDecorator>
-      );
-    }
-    if (item.type === 'folderTaskGroup') {
-      return (
-        <ScaleDecorator>
-          <View style={[styles.folderTaskGroup, isPartOfDraggedBlock && overlayPositionReady && styles.blockInvisible]}>
-            {item.tasks.map((h) => (
-              <View key={h.id} style={styles.taskInFolder}>
-                <HabitItem
-                  habit={h}
-                  index={0}
-                  isDone={Boolean(completedByHabitId[h.id])}
-                  onRename={handleSchedule}
-                  onSchedule={handleSchedule}
-                  onColor={handleSchedule}
-                  shouldCloseMenu={closingMenuId === h.id || closingMenuId === 'all'}
-                  onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                  selectionMode={selectionMode}
-                  isSelected={selectedIds.has(h.id)}
-                  onToggleSelect={toggleSelect}
-                />
-              </View>
-            ))}
+          <View style={[isActive && styles.dragActiveFolderBlock]}>
+            {/* The Folder Header */}
+            <View style={styles.folderSeparator}>
+              <TouchableOpacity
+                onLongPress={selectionMode ? undefined : drag}
+                disabled={isActive || selectionMode}
+                activeOpacity={0.9}
+                delayLongPress={200}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}
+              >
+                <Text style={[
+                  styles.folderSeparatorText,
+                  { color: folderColor },
+                  isActive && { transform: [{ scale: 1.35 }] }
+                ]}>
+                  {label}
+                </Text>
+
+                <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} />
+              </TouchableOpacity>
+            </View>
+            {/* The Folder Tasks */}
+            <View style={styles.folderTaskGroup}>
+              {item.tasks.map((h) => (
+                <View key={h.id} style={styles.taskInFolder}>
+                  <HabitItem
+                    habit={h}
+                    index={0}
+                    isDone={Boolean(completedByHabitId[h.id])}
+                    onRename={handleSchedule}
+                    onSchedule={handleSchedule}
+                    onColor={handleSchedule}
+                    shouldCloseMenu={closingMenuId === h.id || closingMenuId === 'all'}
+                    onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                    selectionMode={selectionMode}
+                    isSelected={selectedIds.has(h.id)}
+                    onToggleSelect={toggleSelect}
+                  />
+                </View>
+              ))}
+            </View>
           </View>
         </ScaleDecorator>
       );
@@ -671,38 +694,18 @@ export default function IndexScreen() {
       );
     }
     return null;
-  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, overlayPositionReady, isFolderModeWithSections, selectionMode, selectedIds, toggleSelect, draggingFolderIndex]);
+  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, isFolderModeWithSections, selectionMode, selectedIds, toggleSelect, isMergeHoverSV]);
 
   const commitDragEnd = useCallback(() => {
-    setFadingOutFolderId(null);
-    overlayOpacity.value = 0;
-    overlayScale.value = 1;
-    isDraggingFolder.value = 0;
-    setDraggingFolderIndex(null);
-    setOverlayPositionReady(false);
-  }, [isDraggingFolder, overlayOpacity, overlayScale]);
-
-  const commitDragEndIfFadeStillRelevant = useCallback(() => {
-    if (!pendingFadeCallbackRef.current) return;
-    pendingFadeCallbackRef.current = false;
-    commitDragEnd();
-  }, [commitDragEnd]);
+    isMergeHoverSV.value = false;
+  }, [isMergeHoverSV]);
 
   const getFolderBlockFromHeaderIndex = useCallback((list: SectionItem[], headerIdx: number) => {
     const header = list[headerIdx];
-    if (header?.type !== 'folderHeader') return null;
+    if (header?.type !== 'folderBlock') return null; // Changed from folderHeader to folderBlock
     const block: SectionItem[] = [header];
     let i = headerIdx + 1;
-    const mz = list[i];
-    if (mz?.type === 'folderMergeZone' && mz.targetFolderId === header.folderId) {
-      block.push(mz);
-      i++;
-    }
-    const tg = list[i];
-    if (tg?.type === 'folderTaskGroup' && tg.folderId === header.folderId) {
-      block.push(tg);
-      i++;
-    }
+    // No merge zone or task group items in the new SectionItem structure
     return { block, endIndex: i };
   }, []);
 
@@ -713,15 +716,10 @@ export default function IndexScreen() {
     let i = 0;
     while (i < sectionedList.length) {
       const item = sectionedList[i];
-      if (item.type === 'folderHeader') {
+      if (item.type === 'folderBlock') {
         indices.push(i); // above title
         i++;
-        if (sectionedList[i]?.type === 'folderMergeZone') {
-          indices.push(i); // merge zone (between title and tasks)
-          i++;
-        }
-        if (sectionedList[i]?.type === 'folderTaskGroup') i++;
-        indices.push(i); // below tasks
+        // No merge zone or task group items in the new SectionItem structure
       } else {
         i++;
       }
@@ -733,42 +731,27 @@ export default function IndexScreen() {
     () => validFolderDropIndices,
     [validFolderDropIndices]
   );
-  const folderIndicesSV = useSharedValue<number[]>([]);
-  useEffect(() => {
-    folderIndicesSV.value = folderIndicesArray;
-  }, [folderIndicesArray, folderIndicesSV]);
 
   const handleSectionedDragEnd = useCallback(({ data, from, to }: { data: SectionItem[]; from: number; to: number }) => {
-    const draggedItem = data[to];
-    const isFolderHeaderDrag = draggedItem?.type === 'folderHeader';
     const snapshot = preDragSnapshotRef.current;
+    const draggedItem = snapshot ? snapshot[from] : null;
 
-    // Fade-out animation will be started AFTER merge detection (so we can skip it for merge drops)
-
-    // No-op if dropped in same place
-    if (from === to) {
-      isPostDragRef.current = false;
-      preDragSnapshotRef.current = null;
+    if (from === to && !isMergeHoverSV.value) {
       commitDragEnd();
       return;
     }
 
-    // --- NON-FOLDER DRAG (task drag in non-folder mode) ---
-    if (!isFolderHeaderDrag) {
-      const taskItems = data.flatMap((x): Habit[] =>
-        x.type === 'folderTaskGroup' ? x.tasks : x.type === 'task' ? [x.habit] : []
-      );
+    if (!draggedItem || draggedItem.type !== 'folderBlock') {
+      // It's a task drag
+      const taskItems = data.flatMap((x): Habit[] => x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : []);
       pendingDisplayRef.current = data;
       setDisplayList(data);
       isPostDragRef.current = true;
       const runUpdates = () => {
         startTransition(() => {
           updateHabitsOrder(taskItems);
-          if (activeFolder != null) {
-            setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
-          } else {
-            setSortMode('custom');
-          }
+          if (activeFolder != null) setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
+          else setSortMode('custom');
           setTimeout(() => {
             isPostDragRef.current = false;
             preDragSnapshotRef.current = null;
@@ -777,222 +760,114 @@ export default function IndexScreen() {
         });
       };
       if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
-      dragEndTimeoutRef.current = setTimeout(runUpdates, 400);
+      dragEndTimeoutRef.current = setTimeout(runUpdates, 100);
       return;
     }
 
-    // --- FOLDER HEADER DRAG ---
-    // Detect merge: ONLY when dropped directly on a folderMergeZone of a DIFFERENT folder
-    const droppedOnItem = from < to ? data[to - 1] : data[to + 1];
-    const mergeZoneItem = droppedOnItem?.type === 'folderMergeZone' ? droppedOnItem : null;
-    const isMergeDrop =
-      mergeZoneItem?.type === 'folderMergeZone' &&
-      draggedItem.type === 'folderHeader' &&
-      mergeZoneItem.targetFolderId !== draggedItem.folderId;
+    // FOLDER DRAG LOGIC
+    // Determine if we dropped inside the hover radius 
+    if (isMergeHoverSV.value && snapshot) {
+      const direction = dragDirectionSV.value;
 
-    if (isMergeDrop && mergeZoneItem.type === 'folderMergeZone') {
-      // Find source tasks from the snapshot (reliable, pre-drag state)
-      const sourceTasks: Habit[] = [];
-      if (snapshot) {
-        for (const item of snapshot) {
-          if (item.type === 'folderTaskGroup' && item.folderId === draggedItem.folderId) {
-            sourceTasks.push(...item.tasks);
+      let actualTarget: FolderBlockItem | null = null;
+      const candidates = [from + direction, from - 1, from + 1];
+      for (const idx of candidates) {
+        if (idx >= 0 && idx < snapshot.length && idx !== from) {
+          const item = snapshot[idx];
+          if (item && item.type === 'folderBlock' && item.folderId !== (draggedItem as FolderBlockItem).folderId) {
+            actualTarget = item as FolderBlockItem;
             break;
           }
         }
       }
-      const sourceFolderName = draggedItem.folderName;
-      const targetFolderName = mergeZoneItem.targetFolderName;
-      const sourceLabel = typeof sourceFolderName === 'string' ? sourceFolderName : 'Tutte';
-      const targetLabel = typeof targetFolderName === 'string' ? targetFolderName : 'Tutte';
 
-      if (sourceTasks.length > 0) {
-        // Cancel any fade animation — keep overlay stable until user picks
-        pendingFadeCallbackRef.current = false;
-        cancelAnimation(overlayOpacity);
-        cancelAnimation(overlayScale);
-        overlayOpacity.value = 0;
-        overlayScale.value = 1;
-        setDraggingFolderIndex(null);
-        setOverlayPositionReady(false);
+      if (actualTarget) {
+        const sourceTasks = (draggedItem as FolderBlockItem).tasks;
+        const sourceLabel = typeof (draggedItem as FolderBlockItem).folderName === 'string' ? (draggedItem as FolderBlockItem).folderName : 'Tutte';
+        const targetLabel = typeof actualTarget.folderName === 'string' ? actualTarget.folderName : 'Tutte';
 
-        Alert.alert(
-          'Aggiungi task',
-          `Vuoi aggiungere le task di "${sourceLabel}" in "${targetLabel}"?`,
-          [
-            {
-              text: 'No',
-              style: 'cancel',
-              onPress: () => {
-                // Revert to snapshot
-                if (snapshot) {
-                  pendingDisplayRef.current = snapshot;
-                  setDisplayList(snapshot);
+        if (sourceTasks.length > 0) {
+          // Revert immediately visually so we don't snap incorrectly
+          setDisplayList(snapshot);
+
+          Alert.alert(
+            'Aggiungi task',
+            `Vuoi aggiungere le task di "${sourceLabel}" in "${targetLabel}"?`,
+            [
+              {
+                text: 'No', style: 'cancel', onPress: () => {
+                  isPostDragRef.current = false;
+                  preDragSnapshotRef.current = null;
+                  commitDragEnd();
                 }
-                isPostDragRef.current = false;
-                preDragSnapshotRef.current = null;
-                commitDragEnd();
               },
-            },
-            {
-              text: 'Sì',
-              onPress: () => {
-                // Move tasks to target folder
-                const targetFolder = targetFolderName === null ? undefined : (targetFolderName as string);
-                sourceTasks.forEach(h => updateHabitFolder(h.id, targetFolder));
-                // Revert visual to snapshot (sectionedList will rebuild with new folder assignments)
-                if (snapshot) {
-                  pendingDisplayRef.current = snapshot;
-                  setDisplayList(snapshot);
+              {
+                text: 'Sì', onPress: () => {
+                  const targetFolder = actualTarget.folderName === null ? undefined : (actualTarget.folderName as string);
+                  sourceTasks.forEach(h => updateHabitFolder(h.id, targetFolder));
+                  isPostDragRef.current = false;
+                  preDragSnapshotRef.current = null;
+                  commitDragEnd();
                 }
-                isPostDragRef.current = false;
-                preDragSnapshotRef.current = null;
-                commitDragEnd();
-              },
-            },
-          ]
-        );
-        return;
+              }
+            ]
+          );
+          return;
+        }
       }
     }
 
-    // --- SIMPLE FOLDER REORDER ---
-    // Keep items hidden and fade overlay, then update list on completion
-    if (isFolderHeaderDrag && draggedItem) {
-      setFadingOutFolderId(draggedItem.folderId);
-      pendingFadeCallbackRef.current = true;
-      overlayScale.value = withTiming(0.98, { duration: 300, easing: Easing.inOut(Easing.cubic) });
-      overlayOpacity.value = withTiming(0, { duration: 300, easing: Easing.inOut(Easing.cubic) }, () => {
-        runOnJS(commitDragEndIfFadeStillRelevant)();
-      });
-    }
-
-    // Extract the new folder order from the post-drag data
-    const folderItems = data
-      .filter((x): x is FolderHeaderItem => x.type === 'folderHeader')
-      .map(h => ({ type: 'folder' as const, folderName: h.folderName, folderId: h.folderId }));
-
-    // Rebuild a clean sectioned list from the new folder order using snapshot data
-    const rebuildList = (): SectionItem[] => {
-      const tasksByFolder = new Map<string | null, Habit[]>();
-      if (snapshot) {
-        for (const item of snapshot) {
-          if (item.type === 'folderTaskGroup') {
-            tasksByFolder.set(item.folderName, item.tasks);
-          }
-        }
-      }
-      const out: SectionItem[] = [];
-      for (const fi of folderItems) {
-        const tasks = tasksByFolder.get(fi.folderName) ?? [];
-        out.push({ type: 'folderHeader', folderName: fi.folderName, folderId: fi.folderId });
-        if (tasks.length > 0) {
-          out.push({ type: 'folderMergeZone', targetFolderName: fi.folderName, targetFolderId: fi.folderId });
-        }
-        out.push({ type: 'folderTaskGroup', folderName: fi.folderName, folderId: fi.folderId, tasks });
-      }
-      return out;
-    };
-
-    const finalData = rebuildList();
-    // Don't update display list yet — wait for overlay fade to finish
-    // But store the new data so it's ready
+    // Simple Folder Reorder
+    const folderItems = data.filter((x): x is FolderBlockItem => x.type === 'folderBlock');
     isPostDragRef.current = true;
-
-    // Persist the new folder order
     const folderOrder = folderItems.map(f => f.folderName);
     setSectionOrder(folderOrder);
     AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(folderOrder.map(n => n === null ? TUTTE_KEY : n))).catch(() => { });
 
-    // After a short delay (overlay fade), update the display list and persist
-    const runUpdates = () => {
-      pendingDisplayRef.current = finalData;
-      setDisplayList(finalData);
-      startTransition(() => {
-        const newFoldersOrder = folderOrder.filter((n): n is string => n !== null);
-        if (newFoldersOrder.length > 0) {
-          setFolders(prev => {
-            const orderMap = new Map(newFoldersOrder.map((n, i) => [n, i]));
-            const next = [...prev].sort((a, b) => {
-              const ia = orderMap.get((a.name ?? '').trim()) ?? 999;
-              const ib = orderMap.get((b.name ?? '').trim()) ?? 999;
-              return ia - ib;
-            });
-            AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
-            return next;
-          });
-        }
-        const taskItems = finalData.flatMap((x): Habit[] =>
-          x.type === 'folderTaskGroup' ? x.tasks : []
-        );
-        if (taskItems.length > 0) updateHabitsOrder(taskItems);
+    pendingDisplayRef.current = data;
+    setDisplayList(data);
 
-        setTimeout(() => {
-          isPostDragRef.current = false;
-          preDragSnapshotRef.current = null;
-          // Safety fallback: ensure drag mode is fully cleaned up
-          commitDragEnd();
-        }, 150);
+    const newFoldersOrder = folderOrder.filter((n): n is string => n !== null);
+    if (newFoldersOrder.length > 0) {
+      setFolders(prev => {
+        const orderMap = new Map(newFoldersOrder.map((n, i) => [n, i]));
+        const next = [...prev].sort((a, b) => {
+          const ia = orderMap.get((a.name ?? '').trim()) ?? 999;
+          const ib = orderMap.get((b.name ?? '').trim()) ?? 999;
+          return ia - ib;
+        });
+        AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
+        return next;
       });
-    };
+    }
 
-    if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
-    dragEndTimeoutRef.current = setTimeout(runUpdates, 350);
-  }, [updateHabitsOrder, updateHabitFolder, commitDragEnd, commitDragEndIfFadeStillRelevant, activeFolder]);
+    setTimeout(() => {
+      isPostDragRef.current = false;
+      preDragSnapshotRef.current = null;
+      commitDragEnd();
+    }, 200);
 
-  const setOverlayReady = useCallback(() => setOverlayPositionReady(true), []);
+  }, [updateHabitsOrder, updateHabitFolder, commitDragEnd, activeFolder, isMergeHoverSV, folders]);
 
   useAnimatedReaction(
     () => {
       'worklet';
-      const v = animVals as {
-        activeCellOffset: { value: number };
-        scrollOffset: { value: number };
-        hoverAnim: { value: number };
-        activeIndexAnim: { value: number };
-        spacerIndexAnim: { value: number };
-      } | null;
-      if (!v) return { y: 0, active: -1, dragId: 0 };
-      // Let the spacer move freely — no snapping to valid indices during drag.
-      // The final drop position is determined by handleSectionedDragEnd.
-      const y = v.activeCellOffset.value - v.scrollOffset.value + v.hoverAnim.value;
-      return { y, active: v.activeIndexAnim.value, dragId: dragCounter.value };
+      const v = animVals as any;
+      if (!v || v.activeIndexAnim.value < 0) return null;
+      const hover = v.hoverAnim?.value ?? 0;
+      dragDirectionSV.value = hover === 0 ? 0 : (hover < 0 ? -1 : 1);
+      const absHover = Math.abs(hover);
+      // Trigger merge hover icon if the user pulls the folder 40-110px 
+      // away from its current snap position without triggering a swap yet.
+      return absHover > 40 && absHover < 110;
     },
-    (current) => {
-      if (current.active >= 0) {
-        overlayY.value = current.y;
-        if (overlayOpacity.value < 1) {
-          overlayScale.value = 1;
-          overlayOpacity.value = 1;
-        }
-        runOnJS(setOverlayReady)();
+    (isHovering) => {
+      if (isHovering !== null) {
+        isMergeHoverSV.value = isHovering;
       }
     },
-    [animVals, setOverlayReady, overlayY, overlayOpacity, overlayScale, dragCounter, isDraggingFolder, folderIndicesSV]
+    [animVals]
   );
-
-  const overlayAnimatedStyle = useAnimatedStyle(() => ({
-    top: overlayY.value,
-    opacity: overlayOpacity.value,
-    transform: [{ scale: overlayScale.value }],
-  }));
-
-  const draggingSectionItems = useMemo(() => {
-    if (draggingFolderIndex == null || (activeFolder !== null && activeFolder !== OGGI_TODAY_KEY)) return [];
-    const list = displayList ?? sectionedList;
-    const result = getFolderBlockFromHeaderIndex(list, draggingFolderIndex);
-    if (!result) return [];
-    const { block } = result;
-    const header = block[0];
-    if (header?.type !== 'folderHeader') return [];
-    const taskGroup = block.find((x): x is FolderTaskGroupItem => x.type === 'folderTaskGroup');
-    const tasks = taskGroup?.tasks ?? [];
-    const items: Array<{ type: 'folder'; folderName: string | null; folderId: string } | { type: 'task'; habit: Habit }> = [
-      { type: 'folder' as const, folderName: header.folderName, folderId: header.folderId },
-      ...tasks.map(h => ({ type: 'task' as const, habit: h }))
-    ];
-    return items;
-  }, [draggingFolderIndex, displayList, sectionedList, activeFolder, getFolderBlockFromHeaderIndex]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -1170,7 +1045,6 @@ export default function IndexScreen() {
                 style={styles.folderRow}
                 onPress={() => setActiveFolder(OGGI_TODAY_KEY)}
               >
-                <Ionicons name="today-outline" size={18} color={activeFolder === OGGI_TODAY_KEY ? THEME.text : THEME.textMuted} />
                 <Text style={[styles.folderLabel, activeFolder === OGGI_TODAY_KEY && styles.folderLabelActive]}>Oggi</Text>
               </TouchableOpacity>
             ) : folderNameOrNull === null ? (
@@ -1216,60 +1090,27 @@ export default function IndexScreen() {
         <View style={styles.listWrap}>
           <DraggableFlatList<SectionItem>
             data={pendingDisplayRef.current ?? displayList ?? sectionedList}
-            keyExtractor={(item) => item.type === 'folderBlock' ? `folder-${item.folderId}` : item.type === 'folderHeader' ? `header-${item.folderId}` : item.type === 'folderMergeZone' ? `merge-${item.targetFolderId}` : item.type === 'folderTaskGroup' ? `group-${item.folderId}` : `task-${item.habit.id}`}
+            keyExtractor={(item) => item.type === 'folderBlock' ? `folder-${item.folderName ?? 'null'}` : `task-${item.habit.id}`}
             renderItem={renderSectionItem}
             contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
             style={[activeTheme === 'futuristic' && { marginHorizontal: -16 }]}
             containerStyle={styles.dragListContainer}
             showsVerticalScrollIndicator={false}
             dragItemOverflow
+            autoscrollThreshold={0}
+            windowSize={30}
+            removeClippedSubviews={false}
             animationConfig={{ damping: 20, stiffness: 200 }}
             onAnimValInit={(v) => setAnimVals(v)}
             onDragBegin={(index) => {
-              const list = pendingDisplayRef.current ?? displayList ?? sectionedList;
+              isPostDragRef.current = false;
+              pendingDisplayRef.current = null;
+              const list = displayList ?? sectionedList;
               // Save snapshot of the list BEFORE dragging for clean revert
               preDragSnapshotRef.current = [...list];
-              if (list[index]?.type === 'folderHeader') {
-                setFadingOutFolderId(null);
-                pendingFadeCallbackRef.current = false;
-                cancelAnimation(overlayOpacity);
-                cancelAnimation(overlayScale);
-                overlayScale.value = 1;
-                isDraggingFolder.value = 1;
-                setOverlayPositionReady(false);
-                setDraggingFolderIndex(index);
-                dragCounter.value = dragCounter.value + 1;
-                overlayOpacity.value = 0;
-              }
             }}
             onDragEnd={handleSectionedDragEnd}
           />
-          {draggingFolderIndex != null && overlayPositionReady && draggingSectionItems.length > 0 && (
-            <Animated.View style={[styles.dragOverlay, overlayAnimatedStyle]} pointerEvents="none">
-              {draggingSectionItems.map((it, i) =>
-                it.type === 'folder' ? (
-                  <View key={`folder-${it.folderId}`} style={styles.folderSeparator}>
-                    <Text style={[styles.folderSeparatorText, styles.dragOverlayFolderTitle, { color: folders.find(f => (f.name ?? '').trim() === (it.folderName ?? '').trim())?.color ?? THEME.textMuted }]}>
-                      {typeof it.folderName === 'string' ? it.folderName : 'Tutte'}
-                    </Text>
-                  </View>
-                ) : (
-                  <View key={`task-${it.habit.id}`} style={styles.dragOverlayTask}>
-                    <HabitItem
-                      habit={it.habit}
-                      index={0}
-                      isDone={Boolean(completedByHabitId[it.habit.id])}
-                      onRename={handleSchedule}
-                      onSchedule={handleSchedule}
-                      onColor={handleSchedule}
-                      shouldCloseMenu
-                      onMoveToFolder={undefined}
-                    />
-                  </View>
-                )
-              )}
-            </Animated.View>
-          )}
         </View>
       )}
 
@@ -1530,8 +1371,6 @@ const styles = StyleSheet.create({
   progressBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
-    backgroundColor: '#1f2937',
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -1643,20 +1482,20 @@ const styles = StyleSheet.create({
   },
   folderSeparator: {
     paddingVertical: 4,
-    paddingTop: 8,
-    marginTop: 2,
+    paddingTop: 10,
   },
   folderMergeZone: {
     height: 12,
     marginVertical: 2,
   },
   folderTaskGroup: {
-    marginBottom: 4,
+    paddingBottom: 4,
   },
   taskInFolder: {
     marginVertical: 2,
   },
   folderSeparatorText: {
+    paddingLeft: 3,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -1820,5 +1659,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 12
   },
-
+  dragActiveFolderBlock: {
+    opacity: 0.95,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+  },
+  mergePlusIcon: {
+    position: 'absolute',
+    right: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });
