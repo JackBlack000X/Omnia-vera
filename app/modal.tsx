@@ -222,6 +222,7 @@ export default function ModalScreen() {
   const [color, setColor] = useState<string>(existing?.color ?? '#4A148C');
   const [selectedFolder, setSelectedFolder] = useState<string | null>(existing?.folder ?? folder ?? null);
   const [availableFolders, setAvailableFolders] = useState<string[]>([]);
+  const [tipo, setTipo] = useState<'task' | 'abitudine' | 'evento'>(existing?.tipo ?? 'task');
 
   useEffect(() => {
     (async () => {
@@ -672,12 +673,15 @@ export default function ModalScreen() {
     if (type === 'new' || (type === 'edit' && existing)) {
       const t = text.trim();
       if (t.length <= 100) {
-        const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined) : existing!.id;
+        const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined, tipo) : existing!.id;
         if (type === 'edit' && existing) {
           if (t !== existing.text) updateHabit(existing.id, t);
           if (color !== (existing.color ?? '#4A148C')) updateHabitColor(existing.id, color);
           if (selectedFolder !== (existing.folder ?? null)) {
             updateHabitFolder(existing.id, selectedFolder || undefined);
+          }
+          if (tipo !== (existing.tipo ?? 'task')) {
+            setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, tipo } : h));
           }
         }
         // Se è una task temporizzata, aggiungi anche la programmazione
@@ -1145,7 +1149,7 @@ export default function ModalScreen() {
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}>
           <View style={styles.box}>
           <Text style={styles.title}>
-            {type === 'new' ? 'Nuova Task' : type === 'rename' ? 'Rinomina Task' : type === 'schedule' ? 'Programma Abitudine' : type === 'edit' ? 'Modifica Task' : 'Scegli Colore'}
+            {type === 'new' ? 'Aggiungi' : type === 'rename' ? 'Rinomina Task' : type === 'schedule' ? 'Programma Abitudine' : type === 'edit' ? 'Modifica Task' : 'Scegli Colore'}
           </Text>
 
           {(type === 'new' || type === 'rename' || type === 'edit') && (
@@ -1157,6 +1161,25 @@ export default function ModalScreen() {
               placeholderTextColor="#64748b"
               style={styles.input}
             />
+          )}
+
+          {(type === 'new' || type === 'edit') && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>Tipo</Text>
+              <View style={[styles.row, { marginTop: 8 }]}>
+                {(['task', 'abitudine', 'evento'] as const).map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    onPress={() => setTipo(t)}
+                    style={[styles.chip, tipo === t ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                  >
+                    <Text style={tipo === t ? styles.chipActiveText : styles.chipGhostText}>
+                      {t === 'task' ? 'Task' : t === 'abitudine' ? 'Abitudine' : 'Evento'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           )}
 
           {(type === 'new' || type === 'edit') && (

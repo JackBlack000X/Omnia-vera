@@ -96,6 +96,8 @@ export default function IndexScreen() {
   const dragDirectionSV = useSharedValue(0); // -1 for up, 1 for down
   const isMergeHoverAtReleaseRef = useRef(false);
   const dragDirectionAtReleaseRef = useRef(0);
+  const lastMergeHoverTimeRef = useRef<number>(0);
+  const mergeDirectionRef = useRef(0); // last non-zero direction while merge indicator was active
   // No more isMergeHoverNode state here - now using useAnimatedStyle in renderItem for zero flutters.
   const [animVals, setAnimVals] = useState<unknown>(null);
   const emptyFoldersIndicesSV = useSharedValue<number[]>([]);
@@ -790,18 +792,27 @@ export default function IndexScreen() {
       let actualTarget: FolderBlockItem | null = null;
 
       // If a list reorder actually registered under the hood before drop
-      if (from !== to) {
-        // The item at `to` in the NEW data is where we dropped.
-        // Wait, the item at `to` is the dragged item itself. The item it swapped WITH
-        // is now at some other index depending on direction. 
-        // More reliably, just find the folder in the NEW `data` that is adjacent to `to`
-        // in the direction we were dragging.
+      if (from !== to && snapshot) {
         const direction = dragDirectionAtReleaseRef.current;
-        const targetIdx = to + direction;
-        if (targetIdx >= 0 && targetIdx < data.length) {
-          const potentialTarget = data[targetIdx];
-          if (potentialTarget && potentialTarget.type === 'folderBlock') {
-            actualTarget = potentialTarget;
+        // Primary: item one step beyond the drop position in the hover direction.
+        // In any linear drag from→to, items between to and from shift by one slot.
+        // The item at to+direction was never in the displaced range, so snapshot[to+direction]
+        // is always the intended merge target.
+        const primaryIdx = to + direction;
+        if (primaryIdx >= 0 && primaryIdx < snapshot.length) {
+          const candidate = snapshot[primaryIdx];
+          if (candidate && candidate.type === 'folderBlock' &&
+              candidate.folderId !== (draggedItem as FolderBlockItem).folderId) {
+            actualTarget = candidate as FolderBlockItem;
+          }
+        }
+        // Secondary fallback: displaced folder at `to` (covers edge case to=0, direction=-1
+        // where primaryIdx would be -1 and out of bounds).
+        if (!actualTarget) {
+          const displaced = snapshot[to];
+          if (displaced && displaced.type === 'folderBlock' &&
+              displaced.folderId !== (draggedItem as FolderBlockItem).folderId) {
+            actualTarget = displaced as FolderBlockItem;
           }
         }
       }
@@ -900,16 +911,23 @@ export default function IndexScreen() {
       const v = animVals as any;
       if (!v || v.activeIndexAnim.value < 0) return null;
 
-      // Look up if this item is an empty folder directly on the UI thread
-      // to avoid JS bridge delays and visual flashes.
       const activeIdx = Math.round(v.activeIndexAnim.value);
-      if (emptyFoldersIndicesSV.value[activeIdx] === 1) {
-        return { isHovering: false, direction: 0 };
-      }
-
       const hover = v.hoverAnim?.value ?? 0;
       const direction = hover === 0 ? 0 : (hover < 0 ? -1 : 1);
       const absHover = Math.abs(hover);
+
+      // Block the merge indicator if the TARGET (the folder being approached) is empty.
+      // We check the neighbor slot, not activeIdx, because after a swap the dragged item
+      // occupies the slot that originally belonged to another folder, and
+      // emptyFoldersIndicesSV (built from the pre-drag order) would wrongly flag it as empty.
+      // The neighbor one step ahead has never been displaced, so its original index is still valid.
+      if (direction !== 0) {
+        const neighborIdx = activeIdx + direction;
+        if (neighborIdx >= 0 && neighborIdx < emptyFoldersIndicesSV.value.length &&
+            emptyFoldersIndicesSV.value[neighborIdx] === 1) {
+          return { isHovering: false, direction };
+        }
+      }
 
       return {
         isHovering: absHover > 40 && absHover < 110,
@@ -920,6 +938,10 @@ export default function IndexScreen() {
       if (res !== null) {
         isMergeHoverSV.value = res.isHovering;
         dragDirectionSV.value = res.direction;
+        if (res.isHovering && res.direction !== 0) {
+          lastMergeHoverTimeRef.current = Date.now();
+          mergeDirectionRef.current = res.direction;
+        }
       }
     },
     [animVals]
@@ -1167,6 +1189,8 @@ export default function IndexScreen() {
               dragDirectionSV.value = 0;
               isPostDragRef.current = false;
               pendingDisplayRef.current = null;
+              lastMergeHoverTimeRef.current = 0;
+              mergeDirectionRef.current = 0;
               const list = displayList ?? sectionedList;
 
               // Save snapshot of the list BEFORE dragging for clean revert
@@ -1175,8 +1199,10 @@ export default function IndexScreen() {
             onRelease={(index) => {
               // Capture exactly what the UI thread values are at the moment of finger lift,
               // BEFORE any snap-back animations destroy the hover state.
-              isMergeHoverAtReleaseRef.current = isMergeHoverSV.value;
-              dragDirectionAtReleaseRef.current = dragDirectionSV.value;
+              const wasMergeHoverRecently = (Date.now() - lastMergeHoverTimeRef.current) < 500;
+              isMergeHoverAtReleaseRef.current = isMergeHoverSV.value || wasMergeHoverRecently;
+              dragDirectionAtReleaseRef.current =
+                mergeDirectionRef.current !== 0 ? mergeDirectionRef.current : dragDirectionSV.value;
             }}
             onDragEnd={handleSectionedDragEnd}
           />

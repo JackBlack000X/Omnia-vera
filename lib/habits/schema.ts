@@ -20,6 +20,7 @@ export type Habit = {
   isAllDay?: boolean; // explicit all-day flag
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; // explicit frequency flag
   folder?: string; // custom folder/category name
+  tipo?: 'task' | 'abitudine' | 'evento'; // task type
 };
 
 export type DayCompletion = {

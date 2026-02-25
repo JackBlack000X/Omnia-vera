@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import { Habit, HabitsState } from './schema';
 
 const STORAGE_HABITS = 'habitcheck_habits_v1';
@@ -36,7 +36,7 @@ export type HabitsContextType = {
   history: HabitsState['history'];
   lastResetDate: string | null;
   dayResetTime: string;
-  addHabit: (text: string, color?: string, folder?: string) => string;
+  addHabit: (text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento') => string;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
   updateHabitFolder: (id: string, folder: string | undefined) => void;
@@ -64,6 +64,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const [lastResetDate, setLastResetDate] = useState<string | null>(null);
   const [dayResetTime, setDayResetTimeState] = useState<string>('00:00');
   const dateRef = useRef<string>(formatYmd());
+  const habitsRef = useRef<Habit[]>([]);
+  habitsRef.current = habits;
+  const historyRef = useRef<HabitsState['history']>({});
+  historyRef.current = history;
+  const dayResetTimeRef = useRef<string>('00:00');
+  dayResetTimeRef.current = dayResetTime;
 
   // Load persisted state with robust error handling
   useEffect(() => {
@@ -150,11 +156,93 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  const addHabit = useCallback((text: string, color?: string, folder?: string) => {
+  // Auto-complete events when their end time is reached
+  const checkEventAutoComplete = useCallback(() => {
+    const now = new Date();
+    const todayYmd = formatYmd(now);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(now);
+    const currentH = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    const currentM = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+    const currentMins = currentH * 60 + currentM;
+    const todayDow = new Date(todayYmd + 'T12:00:00.000Z').getUTCDay();
+
+    function getEndTime(habit: Habit): string | null {
+      if (habit.isAllDay) {
+        const [rh, rm] = dayResetTimeRef.current.split(':').map(Number);
+        const resetMins = rh * 60 + rm;
+        const endMins = resetMins === 0 ? 23 * 60 + 59 : resetMins - 1;
+        return `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+      }
+      const override = habit.timeOverrides?.[todayYmd];
+      if (override && typeof override === 'object' && 'end' in override) return (override as { start: string; end: string }).end;
+      const weeklyEnd = habit.schedule?.weeklyTimes?.[todayDow]?.end;
+      if (weeklyEnd) return weeklyEnd;
+      if (habit.schedule?.endTime) return habit.schedule.endTime;
+      return null;
+    }
+
+    function isToday(habit: Habit): boolean {
+      const freq = habit.habitFreq;
+      if (freq === 'single') return !!(habit.timeOverrides?.[todayYmd]);
+      if (freq === 'daily') return true;
+      if (freq === 'weekly') return (habit.schedule?.daysOfWeek ?? []).includes(todayDow);
+      if (freq === 'monthly') {
+        const dayNum = parseInt(todayYmd.split('-')[2], 10);
+        return (habit.schedule?.monthDays ?? []).includes(dayNum);
+      }
+      if (freq === 'annual') {
+        const [, m, d] = todayYmd.split('-').map(Number);
+        return habit.schedule?.yearMonth === m && habit.schedule?.yearDay === d;
+      }
+      return !!(habit.timeOverrides?.[todayYmd]) || (habit.schedule?.daysOfWeek?.includes(todayDow) ?? false);
+    }
+
+    for (const habit of habitsRef.current) {
+      if (habit.tipo !== 'evento') continue;
+      if (historyRef.current[todayYmd]?.completedByHabitId[habit.id]) continue;
+      if (!isToday(habit)) continue;
+      const endTime = getEndTime(habit);
+      if (!endTime) continue;
+      const [eh, em] = endTime.split(':').map(Number);
+      if (currentMins >= eh * 60 + em) {
+        setHistory(prev => {
+          const day = prev[todayYmd] || { date: todayYmd, completedByHabitId: {} };
+          if (day.completedByHabitId[habit.id]) return prev;
+          return {
+            ...prev,
+            [todayYmd]: { ...day, completedByHabitId: { ...day.completedByHabitId, [habit.id]: true } },
+          };
+        });
+      }
+    }
+  }, []);
+
+  // Run check after habits load or change (catches newly created events immediately)
+  useEffect(() => {
+    if (habits.length > 0) checkEventAutoComplete();
+  }, [habits, checkEventAutoComplete]);
+
+  // Run check every minute for time-based completion
+  useEffect(() => {
+    const interval = setInterval(checkEventAutoComplete, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [checkEventAutoComplete]);
+
+  // Re-run check when app comes back to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') checkEventAutoComplete();
+    });
+    return () => sub.remove();
+  }, [checkEventAutoComplete]);
+
+  const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento') => {
     const newId = generateUUID();
     setHabits((prev) => [
       ...prev,
-      { id: newId, text, order: prev.length, color: color ?? '#4A148C', createdAt: formatYmd(), folder },
+      { id: newId, text, order: prev.length, color: color ?? '#4A148C', createdAt: formatYmd(), folder, tipo },
     ]);
     return newId;
   }, []);
