@@ -6,7 +6,7 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
-import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { SharedValue, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -90,11 +90,15 @@ export default function IndexScreen() {
   const dragEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDisplayRef = useRef<SectionItem[] | null>(null);
   const isPostDragRef = useRef(false);
+  const commitDragEndRef = useRef<() => void>(() => { });
   const preDragSnapshotRef = useRef<SectionItem[] | null>(null);
   const isMergeHoverSV = useSharedValue(false);
   const dragDirectionSV = useSharedValue(0); // -1 for up, 1 for down
+  const isMergeHoverAtReleaseRef = useRef(false);
+  const dragDirectionAtReleaseRef = useRef(0);
   // No more isMergeHoverNode state here - now using useAnimatedStyle in renderItem for zero flutters.
   const [animVals, setAnimVals] = useState<unknown>(null);
+  const emptyFoldersIndicesSV = useSharedValue<number[]>([]);
 
   const [displayList, setDisplayList] = useState<SectionItem[] | null>(null);
   const [sectionOrder, setSectionOrder] = useState<(string | null)[] | null>(null);
@@ -532,7 +536,7 @@ export default function IndexScreen() {
       const tasks = byFolder.get(folderName) ?? [];
       if (sectionOrder == null && (!tasks || tasks.length === 0)) continue;
       if (isOggiView && tasks.length === 0) continue;
-      const folderId = folderName === null ? 'null' : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
+      const folderId = folderName === null ? TUTTE_KEY : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
       const folderSortMode: SortModeType =
         folderName === null ? (sortModeByFolder[TUTTE_KEY] ?? 'creation') : (sortModeByFolder[folderName] ?? 'creation');
       const sorted = sortHabitsWithMode(tasks, folderSortMode);
@@ -542,14 +546,14 @@ export default function IndexScreen() {
       const prev = prevSectionedListRef.current.find(p => {
         if (p.type !== newItem.type) return false;
         if (p.type === 'folderBlock' && newItem.type === 'folderBlock') {
-          return p.folderId === newItem.folderId && p.tasks.length === newItem.tasks.length;
+          return p.folderId === newItem.folderId;
         }
         if (p.type === 'task' && newItem.type === 'task') {
           return p.habit.id === newItem.habit.id;
         }
         return false;
       });
-      // Basic shallow comparison of critical data to decide reuse
+      // Stabilize object references for folderBlocks and tasks
       if (prev) {
         if (prev.type === 'folderBlock' && newItem.type === 'folderBlock') {
           const tasksMatch = prev.tasks.length === newItem.tasks.length &&
@@ -568,15 +572,29 @@ export default function IndexScreen() {
   }, [habits, habitsAppearingToday, folders, activeFolder, sortMode, sortModeByFolder, sortedHabits, sortHabitsWithMode, sectionOrder]);
 
   useEffect(() => {
+    // Keep the UI thread synchronously updated with which active indices correspond to empty folders
+    emptyFoldersIndicesSV.value = sectionedList.map(x => x.type === 'folderBlock' && x.tasks.length === 0 ? 1 : 0);
+
     if (displayList === null) {
       setDisplayList(sectionedList);
       return;
     }
     if (isPostDragRef.current) {
       if (sectionedListOrderKey(sectionedList) === sectionedListOrderKey(displayList)) {
-        isPostDragRef.current = false;
+        // Convergence! sectionedList now matches the drag result.
+        // Release the guard and let DraggableFlatList continue using
+        // displayList (which is the EXACT array reference from onDragEnd).
+        // A new reference will only be provided when naturally needed.
         pendingDisplayRef.current = null;
+        isPostDragRef.current = false;
+        preDragSnapshotRef.current = null;
+        if (dragEndTimeoutRef.current != null) {
+          clearTimeout(dragEndTimeoutRef.current);
+          dragEndTimeoutRef.current = null;
+        }
+        commitDragEndRef.current();
       }
+      // While guard is up, NEVER update displayList — this prevents the flash.
       return;
     }
     if (sectionedListOrderKey(sectionedList) !== sectionedListOrderKey(displayList)) {
@@ -699,6 +717,7 @@ export default function IndexScreen() {
   const commitDragEnd = useCallback(() => {
     isMergeHoverSV.value = false;
   }, [isMergeHoverSV]);
+  commitDragEndRef.current = commitDragEnd;
 
   const getFolderBlockFromHeaderIndex = useCallback((list: SectionItem[], headerIdx: number) => {
     const header = list[headerIdx];
@@ -736,7 +755,7 @@ export default function IndexScreen() {
     const snapshot = preDragSnapshotRef.current;
     const draggedItem = snapshot ? snapshot[from] : null;
 
-    if (from === to && !isMergeHoverSV.value) {
+    if (from === to && !isMergeHoverAtReleaseRef.current) {
       commitDragEnd();
       return;
     }
@@ -748,16 +767,17 @@ export default function IndexScreen() {
       setDisplayList(data);
       isPostDragRef.current = true;
       const runUpdates = () => {
-        startTransition(() => {
-          updateHabitsOrder(taskItems);
-          if (activeFolder != null) setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
-          else setSortMode('custom');
-          setTimeout(() => {
-            isPostDragRef.current = false;
-            preDragSnapshotRef.current = null;
-            commitDragEnd();
-          }, 150);
-        });
+        updateHabitsOrder(taskItems);
+        if (activeFolder != null) setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
+        else setSortMode('custom');
+        // Safety net: release guard after 2s if convergence never happens
+        if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+        dragEndTimeoutRef.current = setTimeout(() => {
+          isPostDragRef.current = false;
+          pendingDisplayRef.current = null;
+          preDragSnapshotRef.current = null;
+          commitDragEnd();
+        }, 2000);
       };
       if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
       dragEndTimeoutRef.current = setTimeout(runUpdates, 100);
@@ -766,17 +786,38 @@ export default function IndexScreen() {
 
     // FOLDER DRAG LOGIC
     // Determine if we dropped inside the hover radius 
-    if (isMergeHoverSV.value && snapshot) {
-      const direction = dragDirectionSV.value;
-
+    if (isMergeHoverAtReleaseRef.current && snapshot) {
       let actualTarget: FolderBlockItem | null = null;
-      const candidates = [from + direction, from - 1, from + 1];
-      for (const idx of candidates) {
-        if (idx >= 0 && idx < snapshot.length && idx !== from) {
-          const item = snapshot[idx];
-          if (item && item.type === 'folderBlock' && item.folderId !== (draggedItem as FolderBlockItem).folderId) {
-            actualTarget = item as FolderBlockItem;
-            break;
+
+      // If a list reorder actually registered under the hood before drop
+      if (from !== to) {
+        // The item at `to` in the NEW data is where we dropped.
+        // Wait, the item at `to` is the dragged item itself. The item it swapped WITH
+        // is now at some other index depending on direction. 
+        // More reliably, just find the folder in the NEW `data` that is adjacent to `to`
+        // in the direction we were dragging.
+        const direction = dragDirectionAtReleaseRef.current;
+        const targetIdx = to + direction;
+        if (targetIdx >= 0 && targetIdx < data.length) {
+          const potentialTarget = data[targetIdx];
+          if (potentialTarget && potentialTarget.type === 'folderBlock') {
+            actualTarget = potentialTarget;
+          }
+        }
+      }
+
+      // Fallback: If from === to (no swap registered) or target not found,
+      // use the snapshot and direction to guess the adjacent folder.
+      if (!actualTarget) {
+        const direction = dragDirectionAtReleaseRef.current;
+        const candidates = [from + direction, from - 1, from + 1];
+        for (const idx of candidates) {
+          if (idx >= 0 && idx < snapshot.length && idx !== from) {
+            const item = snapshot[idx];
+            if (item && item.type === 'folderBlock' && item.folderId !== (draggedItem as FolderBlockItem).folderId) {
+              actualTarget = item as FolderBlockItem;
+              break;
+            }
           }
         }
       }
@@ -841,11 +882,15 @@ export default function IndexScreen() {
       });
     }
 
-    setTimeout(() => {
+    // Safety net: release guard after 2s if convergence never happens.
+    // Normal release happens in the sync useEffect when sectionedList catches up.
+    if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+    dragEndTimeoutRef.current = setTimeout(() => {
       isPostDragRef.current = false;
+      pendingDisplayRef.current = null;
       preDragSnapshotRef.current = null;
       commitDragEnd();
-    }, 200);
+    }, 2000);
 
   }, [updateHabitsOrder, updateHabitFolder, commitDragEnd, activeFolder, isMergeHoverSV, folders]);
 
@@ -854,16 +899,31 @@ export default function IndexScreen() {
       'worklet';
       const v = animVals as any;
       if (!v || v.activeIndexAnim.value < 0) return null;
+      // ONLY update hover state while the item is actively being dragged.
+      // This makes the value "sticky" at the moment of release so the JS
+      // thread can read the final state in onDragEnd.
+      if (!v.isActiveAnim?.value) return null;
+
+      // Look up if this item is an empty folder directly on the UI thread
+      // to avoid JS bridge delays and visual flashes.
+      const activeIdx = Math.round(v.activeIndexAnim.value);
+      if (emptyFoldersIndicesSV.value[activeIdx] === 1) {
+        return { isHovering: false, direction: 0 };
+      }
+
       const hover = v.hoverAnim?.value ?? 0;
-      dragDirectionSV.value = hover === 0 ? 0 : (hover < 0 ? -1 : 1);
+      const direction = hover === 0 ? 0 : (hover < 0 ? -1 : 1);
       const absHover = Math.abs(hover);
-      // Trigger merge hover icon if the user pulls the folder 40-110px 
-      // away from its current snap position without triggering a swap yet.
-      return absHover > 40 && absHover < 110;
+
+      return {
+        isHovering: absHover > 40 && absHover < 110,
+        direction
+      };
     },
-    (isHovering) => {
-      if (isHovering !== null) {
-        isMergeHoverSV.value = isHovering;
+    (res) => {
+      if (res !== null) {
+        isMergeHoverSV.value = res.isHovering;
+        dragDirectionSV.value = res.direction;
       }
     },
     [animVals]
@@ -874,11 +934,14 @@ export default function IndexScreen() {
       {activeTheme !== 'futuristic' && (
         <View style={styles.header}>
           <Text style={styles.title}>Tasks</Text>
+          <Text style={styles.progressText}>{stats.pct}%</Text>
         </View>
       )}
 
       <View style={[styles.progressSection, activeTheme === 'futuristic' && { marginTop: 55 }]}>
-        <Text style={styles.progressText}>{stats.pct}%</Text>
+        {activeTheme === 'futuristic' && (
+          <Text style={styles.progressText}>{stats.pct}%</Text>
+        )}
         <View style={styles.progressBarContainer}>
           <View style={[
             styles.progressBarBg,
@@ -1090,7 +1153,7 @@ export default function IndexScreen() {
         <View style={styles.listWrap}>
           <DraggableFlatList<SectionItem>
             data={pendingDisplayRef.current ?? displayList ?? sectionedList}
-            keyExtractor={(item) => item.type === 'folderBlock' ? `folder-${item.folderName ?? 'null'}` : `task-${item.habit.id}`}
+            keyExtractor={(item) => item.type === 'folderBlock' ? `folder-${item.folderId}` : `task-${item.habit.id}`}
             renderItem={renderSectionItem}
             contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
             style={[activeTheme === 'futuristic' && { marginHorizontal: -16 }]}
@@ -1098,16 +1161,26 @@ export default function IndexScreen() {
             showsVerticalScrollIndicator={false}
             dragItemOverflow
             autoscrollThreshold={0}
-            windowSize={30}
+            windowSize={60}
+            initialNumToRender={12}
             removeClippedSubviews={false}
             animationConfig={{ damping: 20, stiffness: 200 }}
             onAnimValInit={(v) => setAnimVals(v)}
             onDragBegin={(index) => {
+              isMergeHoverSV.value = false;
+              dragDirectionSV.value = 0;
               isPostDragRef.current = false;
               pendingDisplayRef.current = null;
               const list = displayList ?? sectionedList;
+
               // Save snapshot of the list BEFORE dragging for clean revert
               preDragSnapshotRef.current = [...list];
+            }}
+            onRelease={(index) => {
+              // Capture exactly what the UI thread values are at the moment of finger lift,
+              // BEFORE any snap-back animations destroy the hover state.
+              isMergeHoverAtReleaseRef.current = isMergeHoverSV.value;
+              dragDirectionAtReleaseRef.current = dragDirectionSV.value;
             }}
             onDragEnd={handleSectionedDragEnd}
           />
@@ -1331,7 +1404,10 @@ const styles = StyleSheet.create({
 
   header: {
     marginTop: 8,
-    marginBottom: 15
+    marginBottom: 15,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
   },
   title: {
     fontSize: 28,
@@ -1344,9 +1420,9 @@ const styles = StyleSheet.create({
   },
   progressText: {
     color: THEME.text,
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8
+    fontSize: 26,
+    fontFamily: 'BagelFatOne_400Regular',
+    marginBottom: 4
   },
   progressBarContainer: {
     flexDirection: 'row',
@@ -1355,14 +1431,14 @@ const styles = StyleSheet.create({
   },
   progressBarBg: {
     flex: 1,
-    height: 8,
-    borderRadius: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: '#374151',
     overflow: 'hidden'
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#3b82f6'
+    backgroundColor: '#ffffff'
   },
   progressActions: {
     flexDirection: 'row',
@@ -1420,7 +1496,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 2,
-    gap: 16,
+    gap: 12,
   },
   folderRow: {
     flexDirection: 'row',
@@ -1437,13 +1513,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   folderAddBtn: {
-    width: 34,
+    width: 28,
     height: 34,
-    borderRadius: 17,
-    backgroundColor: '#1f2937',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 4,
+    marginLeft: -4,
   },
   listWrap: {
     flex: 1,
