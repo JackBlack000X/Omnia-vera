@@ -899,10 +899,6 @@ export default function IndexScreen() {
       'worklet';
       const v = animVals as any;
       if (!v || v.activeIndexAnim.value < 0) return null;
-      // ONLY update hover state while the item is actively being dragged.
-      // This makes the value "sticky" at the moment of release so the JS
-      // thread can read the final state in onDragEnd.
-      if (!v.isActiveAnim?.value) return null;
 
       // Look up if this item is an empty folder directly on the UI thread
       // to avoid JS bridge delays and visual flashes.
