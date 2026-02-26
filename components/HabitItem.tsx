@@ -19,6 +19,8 @@ type Props = {
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (habit: Habit) => void;
+  onMenuOpen?: (habit: Habit) => void;
+  onMenuClose?: (habit: Habit) => void;
 };
 
 // Colori delle card come nella foto
@@ -111,7 +113,7 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
   );
 }
 
-export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect }: Props) {
+export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onMenuOpen, onMenuClose }: Props) {
   const { activeTheme } = useAppTheme();
   const { toggleDone, removeHabit } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
@@ -368,11 +370,13 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     : ({ children }: { children: React.ReactNode }) => <>{children}</>;
 
   return (
-    <Swipeable 
+    <Swipeable
       ref={swipeableRef}
       renderRightActions={selectionMode ? () => null : renderRightActions}
       renderLeftActions={selectionMode ? () => null : renderLeftActions}
       overshootFriction={8}
+      onSwipeableOpen={() => onMenuOpen?.(habit)}
+      onSwipeableClose={() => onMenuClose?.(habit)}
     >
       <Wrapper>{cardInner}</Wrapper>
     </Swipeable>

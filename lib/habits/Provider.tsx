@@ -40,6 +40,7 @@ export type HabitsContextType = {
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
   updateHabitFolder: (id: string, folder: string | undefined) => void;
+  updateHabitTipo: (id: string, tipo: 'task' | 'abitudine' | 'evento') => void;
   removeHabit: (id: string) => void;
   toggleDone: (id: string) => void;
   reorder: (id: string, direction: 'up' | 'down') => void;
@@ -160,6 +161,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const checkEventAutoComplete = useCallback(() => {
     const now = new Date();
     const todayYmd = formatYmd(now);
+    // Also check yesterday for cross-midnight single events (app was backgrounded overnight)
+    const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayYmd = formatYmd(yesterdayDate);
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
     }).formatToParts(now);
@@ -167,6 +171,22 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     const currentM = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
     const currentMins = currentH * 60 + currentM;
     const todayDow = new Date(todayYmd + 'T12:00:00.000Z').getUTCDay();
+
+    // Returns the end time from yesterday's timeOverride if it's a cross-midnight event
+    // (end time is before the day reset threshold, meaning it spans into today's early morning)
+    function getYesterdayCrossMidnightEnd(habit: Habit): string | null {
+      if (habit.habitFreq !== 'single') return null;
+      const prevOverride = habit.timeOverrides?.[yesterdayYmd];
+      if (!prevOverride || typeof prevOverride !== 'object' || !('end' in prevOverride)) return null;
+      const et = (prevOverride as { start: string; end: string }).end;
+      const [eh, em] = et.split(':').map(Number);
+      const endMins = eh * 60 + em;
+      const [rh, rm] = dayResetTimeRef.current.split(':').map(Number);
+      const resetMins = rh * 60 + rm;
+      // Threshold: if reset is midnight (0), use 6 AM; otherwise use reset time
+      const threshold = resetMins === 0 ? 360 : resetMins;
+      return endMins < threshold ? et : null;
+    }
 
     function getEndTime(habit: Habit): string | null {
       if (habit.isAllDay) {
@@ -177,6 +197,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       }
       const override = habit.timeOverrides?.[todayYmd];
       if (override && typeof override === 'object' && 'end' in override) return (override as { start: string; end: string }).end;
+      // Cross-midnight: event from yesterday ending in early morning of today
+      const crossMidnightEnd = getYesterdayCrossMidnightEnd(habit);
+      if (crossMidnightEnd) return crossMidnightEnd;
       const weeklyEnd = habit.schedule?.weeklyTimes?.[todayDow]?.end;
       if (weeklyEnd) return weeklyEnd;
       if (habit.schedule?.endTime) return habit.schedule.endTime;
@@ -185,7 +208,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
     function isToday(habit: Habit): boolean {
       const freq = habit.habitFreq;
-      if (freq === 'single') return !!(habit.timeOverrides?.[todayYmd]);
+      if (freq === 'single') {
+        if (habit.timeOverrides?.[todayYmd]) return true;
+        // Cross-midnight: event from yesterday with early-morning end time
+        if (getYesterdayCrossMidnightEnd(habit)) return true;
+        return false;
+      }
       if (freq === 'daily') return true;
       if (freq === 'weekly') return (habit.schedule?.daysOfWeek ?? []).includes(todayDow);
       if (freq === 'monthly') {
@@ -271,6 +299,14 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const updateHabitTipo = useCallback((id: string, tipo: 'task' | 'abitudine' | 'evento') => {
+    setHabits((prev) => {
+      const next = prev.map((h) => (h.id === id ? { ...h, tipo } : h));
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const removeHabit = useCallback((id: string) => {
     setHabits((prev) => prev.filter((h) => h.id !== id));
   }, []);
@@ -335,10 +371,23 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const resetToday = useCallback(async () => {
     const today = formatYmd();
-    setHistory((prev) => ({
-      ...prev,
-      [today]: { date: today, completedByHabitId: {} },
-    }));
+    setHistory((prev) => {
+      // Preserve completions for single habits — they don't recur, so they stay done permanently
+      const preserved: Record<string, boolean> = {};
+      for (const dayEntry of Object.values(prev)) {
+        for (const [habitId, done] of Object.entries(dayEntry.completedByHabitId)) {
+          if (!done) continue;
+          const habit = habitsRef.current.find(h => h.id === habitId);
+          if (habit?.habitFreq === 'single') {
+            preserved[habitId] = true;
+          }
+        }
+      }
+      return {
+        ...prev,
+        [today]: { date: today, completedByHabitId: preserved },
+      };
+    });
     setLastResetDate(today);
     await AsyncStorage.setItem(STORAGE_LASTRESET, today);
   }, []);
@@ -527,9 +576,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime,
-    addHabit, updateHabit, updateHabitColor, updateHabitFolder, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay,
+    addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay,
     setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
-  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
+  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }
