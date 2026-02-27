@@ -108,11 +108,11 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         } else {
           setLastResetDate(rawLast);
         }
-        
+
         if (rawDayResetTime) {
           setDayResetTimeState(rawDayResetTime);
         }
-        
+
         dateRef.current = today;
       } catch (error) {
         console.error('Failed to load data:', error);
@@ -278,7 +278,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabit = useCallback((id: string, text: string) => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, text } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -286,7 +286,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabitColor = useCallback((id: string, color: string) => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, color } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -294,7 +294,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabitFolder = useCallback((id: string, folder: string | undefined) => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, folder: folder?.trim() || undefined } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -302,7 +302,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabitTipo = useCallback((id: string, tipo: 'task' | 'abitudine' | 'evento') => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, tipo } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -428,7 +428,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         if (hhmm) nextOverrides[date] = hhmm; else delete nextOverrides[date];
         return { ...h, timeOverrides: nextOverrides };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -445,7 +445,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         }
         return { ...h, timeOverrides: nextOverrides };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -458,7 +458,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         schedule.time = hhmm ?? null;
         return { ...h, schedule };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -467,11 +467,11 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     setHabits(prev => {
       const next = prev.map(h => {
         if (h.id !== id) return h;
-        
+
         const nextOverrides = { ...(h.timeOverrides ?? {}) } as Record<string, string | { start: string; end: string }>;
         const oldStart = h.schedule?.time ?? null;
         const oldEnd = h.schedule?.endTime ?? null;
-        
+
         // If we have a creation date and an old schedule, freeze the past
         if (h.createdAt && (oldStart || oldEnd)) {
           const startD = parseYmdSafe(h.createdAt);
@@ -490,16 +490,16 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
             curr.setUTCDate(curr.getUTCDate() + 1);
           }
         }
-        
+
         const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as NonNullable<Habit['schedule']>;
         schedule.time = startTime ?? null;
         schedule.endTime = endTime ?? null;
-        
-        const isRecurring = h.habitFreq === 'daily' || h.habitFreq === 'weekly' || h.habitFreq === 'monthly' || h.habitFreq === 'annual' || 
-                           (h.schedule?.daysOfWeek?.length ?? 0) > 0 || 
-                           (h.schedule?.monthDays?.length ?? 0) > 0 || 
-                           !!h.schedule?.yearMonth;
-        
+
+        const isRecurring = h.habitFreq === 'daily' || h.habitFreq === 'weekly' || h.habitFreq === 'monthly' || h.habitFreq === 'annual' ||
+          (h.schedule?.daysOfWeek?.length ?? 0) > 0 ||
+          (h.schedule?.monthDays?.length ?? 0) > 0 ||
+          !!h.schedule?.yearMonth;
+
         // For single/ad-hoc tasks, they ONLY appear on days where they have an explicit override.
         // So we MUST keep the override for fromDate, otherwise the task disappears from today.
         // For recurring tasks, they naturally appear on their scheduled days, so we can clear the
@@ -511,7 +511,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           } else if (startTime) {
             nextOverrides[fromDate] = startTime;
           }
-          
+
           // Since it's "Da oggi in poi" mode, we should also update any future overrides 
           // this ad-hoc task might have, so they match the new time.
           for (const dateKey of Object.keys(nextOverrides)) {
@@ -526,10 +526,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         } else {
           delete nextOverrides[fromDate];
         }
-        
+
         return { ...h, schedule, timeOverrides: nextOverrides };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -541,7 +541,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         const existingSchedule = h.schedule ?? { daysOfWeek: [] };
         return { ...h, schedule: { ...existingSchedule, daysOfWeek, time: hhmm ?? null } };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -553,12 +553,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const resetStorage = useCallback(async () => {
     try {
-      await Promise.all([
-        AsyncStorage.removeItem(STORAGE_HABITS),
-        AsyncStorage.removeItem(STORAGE_HISTORY),
-        AsyncStorage.removeItem(STORAGE_LASTRESET),
-        AsyncStorage.removeItem(STORAGE_DAYRESETTIME),
-      ]);
+      await AsyncStorage.clear();
       setHabits([]);
       setHistory({});
       setLastResetDate(null);

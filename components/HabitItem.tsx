@@ -2,10 +2,10 @@ import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 
 type Props = {
   habit: Habit;
@@ -42,7 +42,7 @@ const NOISE_INTENSITY = 35.0; // Increased to make noise more visible
 function getNoiseColor(hex: string): [number, number, number, number] {
   const c = (hex || '').toLowerCase();
   let r: number, g: number, b: number;
-  
+
   if (c.startsWith('#') && c.length === 7) {
     r = parseInt(c.slice(1, 3), 16);
     g = parseInt(c.slice(3, 5), 16);
@@ -54,12 +54,12 @@ function getNoiseColor(hex: string): [number, number, number, number] {
   } else {
     return [0.2, 0.2, 0.2, 1.0]; // Default dark grey
   }
-  
+
   // Very slight darken for noise effect (reduce by only 5-10% to keep color very visible)
   r = Math.max(0, Math.floor(r * 0.92));
   g = Math.max(0, Math.floor(g * 0.92));
   b = Math.max(0, Math.floor(b * 0.92));
-  
+
   // Convert to 0-1 range for shader
   return [r / 255, g / 255, b / 255, 1.0];
 }
@@ -98,14 +98,14 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
     <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]} pointerEvents="none">
       <Canvas style={{ width: width + 2, height: height + 2 }}>
         <Fill>
-          <Shader 
-            source={noiseShader} 
-            uniforms={{ 
-              threshold: NOISE_INTENSITY, 
+          <Shader
+            source={noiseShader}
+            uniforms={{
+              threshold: NOISE_INTENSITY,
               resolution: [width + 2, height + 2],
               noiseColor: darkColor,
               backgroundColor: [0.0, 0.0, 0.0, 0.0], // Transparent background
-            }} 
+            }}
           />
         </Fill>
       </Canvas>
@@ -130,17 +130,17 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const renderRightActions = () => (
     <View style={[styles.rightActions, styles.actionsTall]}>
       {onMoveToFolder && (
-        <TouchableOpacity 
-          accessibilityRole="button" 
-          onPress={() => onMoveToFolder(habit)} 
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => onMoveToFolder(habit)}
           style={[styles.actionBtnTallRight, styles.moveBtn]}
         >
           <Ionicons name="folder-open" size={24} color="white" />
         </TouchableOpacity>
       )}
-      <TouchableOpacity 
-        accessibilityRole="button" 
-        onPress={() => removeHabit(habit.id)} 
+      <TouchableOpacity
+        accessibilityRole="button"
+        onPress={() => removeHabit(habit.id)}
         style={[styles.actionBtnTallRight, styles.deleteBtn]}
       >
         <Ionicons name="trash" size={24} color="white" />
@@ -171,7 +171,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const textPrimaryColor = isWhiteBg ? '#111111' : 'white';
   const textSecondaryColor = isWhiteBg ? '#111111' : 'rgba(255, 255, 255, 0.9)';
   const textTertiaryColor = isWhiteBg ? '#222222' : 'rgba(255, 255, 255, 0.7)';
-  
+
   // Determine time display text (preserve minutes; map 23:59 to 24:00)
   const getTimeText = () => {
     const startRaw = habit.schedule?.time ?? null;
@@ -187,7 +187,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     if (endNorm) return `- ${endNorm}`;
     return 'Tutto il giorno';
   };
-  
+
   const isSingle = habit.habitFreq === 'single' || (
     !habit.habitFreq &&
     (Object.keys(habit.timeOverrides ?? {}).length > 0) &&
@@ -201,12 +201,12 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     if (isSingle) return 'Singola';
 
     if (!habit.schedule) return 'Ogni giorno';
-    
+
     const { daysOfWeek, monthDays, yearMonth, yearDay } = habit.schedule;
     if (yearMonth && yearDay) {
       return `Annuale ${String(yearDay)} / ${String(yearMonth)}`;
     }
-    
+
     // Check if it's monthly
     if (monthDays && monthDays.length > 0) {
       if (monthDays.length === 1) {
@@ -215,23 +215,23 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
       const sortedDays = [...monthDays].sort((a, b) => a - b);
       return `Giorni ${sortedDays.join(', ')}`;
     }
-    
+
     // Weekly logic
     if (daysOfWeek.length === 0) return 'Ogni giorno';
     if (daysOfWeek.length === 7) return 'Ogni giorno';
-    
+
     // daysOfWeek uses 0 = Domenica ... 6 = Sabato
     const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-    
+
     if (daysOfWeek.length === 1) {
       return dayNames[daysOfWeek[0]];
     }
-    
+
     // For multiple days, show the specific day names
     const selectedDays = daysOfWeek.map(dayIndex => dayNames[dayIndex]);
     return selectedDays.join(', ');
   };
-  
+
   const timeText = getTimeText();
   const frequencyText = getFrequencyText();
 
@@ -246,16 +246,16 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     !s.time &&
     !s.endTime
   ));
-  
+
   // Don't show frequency text for daily tasks since white circle already indicates this
   const shouldShowFrequency = !isDaily;
 
   const cardInner = (
-    <View 
+    <View
       style={[
-        styles.card, 
+        styles.card,
         { backgroundColor: cardColor },
-        activeTheme === 'futuristic' && { 
+        activeTheme === 'futuristic' && {
           borderRadius: 0,
           transform: [{ skewX: '-30deg' }],
           paddingHorizontal: 0,
@@ -289,84 +289,86 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
           activeTheme === 'futuristic' && { marginLeft: 10 }
         ]}
       >
-          <View 
-            style={[
-              styles.check,
-              isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
-              (selectionMode ? isSelected : isDone) && styles.checkDone,
-              activeTheme === 'futuristic' && { 
-                borderRadius: 0,
-                aspectRatio: 1,
-                transform: [{ skewX: '-2deg' }]
-              }
-            ]}
-            onLayout={(e) => {
-              if (activeTheme === 'futuristic' && !(selectionMode ? isSelected : isDone)) {
-                const { width, height } = e.nativeEvent.layout;
-                setCheckDimensions({ width, height });
-              }
-            }}
-          >
-            {activeTheme === 'futuristic' && !(selectionMode ? isSelected : isDone) && checkDimensions.width > 0 && checkDimensions.height > 0 && (
-              <View style={{ position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, overflow: 'hidden', borderRadius: 10 }}>
-                <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
-              </View>
-            )}
-            {(selectionMode ? isSelected : isDone) && (
-              <Ionicons 
-                name="checkmark" 
-                size={16} 
-                color="white" 
-              />
-            )}
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.content}>
-          <Text style={[styles.habitText, { color: textPrimaryColor }, isDone && styles.habitDone]} numberOfLines={1}>
-            {habit.text}
-          </Text>
-          <Text style={[styles.habitSubtext, { color: textSecondaryColor }]} numberOfLines={1}> 
-            {timeText}
-          </Text>
-          {shouldShowFrequency && (
-            <Text style={[styles.frequencyText, { color: textTertiaryColor }]} numberOfLines={1}> 
-              {frequencyText}
-            </Text>
+        <View
+          style={[
+            styles.check,
+            isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
+            (selectionMode ? isSelected : isDone) && styles.checkDone,
+            activeTheme === 'futuristic' && {
+              borderRadius: 0,
+              aspectRatio: 1,
+              transform: [{ skewX: '-2deg' }]
+            }
+          ]}
+          onLayout={(e) => {
+            if (activeTheme === 'futuristic' && !(selectionMode ? isSelected : isDone)) {
+              const { width, height } = e.nativeEvent.layout;
+              setCheckDimensions({ width, height });
+            }
+          }}
+        >
+          {activeTheme === 'futuristic' && !(selectionMode ? isSelected : isDone) && checkDimensions.width > 0 && checkDimensions.height > 0 && (
+            <View style={{ position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, overflow: 'hidden', borderRadius: 10 }}>
+              <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
+            </View>
+          )}
+          {(selectionMode ? isSelected : isDone) && (
+            <Ionicons
+              name="checkmark"
+              size={16}
+              color="white"
+            />
           )}
         </View>
-        
-        {isDaily && (
-          <View style={[
-            styles.dailyIndicator,
-            activeTheme === 'futuristic' && { marginLeft: 2, left: -10 }
-          ]}>
-            <View style={[
-              styles.dailyCircle,
-              isWhiteBg
-                ? { backgroundColor: '#111111', borderColor: 'rgba(0,0,0,0.3)' }
-                : null,
-              activeTheme === 'futuristic' && {
-                borderRadius: 0,
-                aspectRatio: 1,
-                transform: [{ skewX: '-2deg' }]
-              }
-            ]} />
-          </View>
+      </TouchableOpacity>
+
+      <View style={[styles.content, timeText === 'Tutto il giorno' && { justifyContent: 'center' }]}>
+        <Text style={[styles.habitText, { color: textPrimaryColor }, isDone && styles.habitDone]} numberOfLines={1}>
+          {habit.text}
+        </Text>
+        {timeText !== 'Tutto il giorno' && (
+          <Text style={[styles.habitSubtext, { color: textSecondaryColor }]} numberOfLines={1}>
+            {timeText}
+          </Text>
+        )}
+        {shouldShowFrequency && timeText !== 'Tutto il giorno' && (
+          <Text style={[styles.frequencyText, { color: textTertiaryColor }]} numberOfLines={1}>
+            {frequencyText}
+          </Text>
         )}
       </View>
+
+      {isDaily && (
+        <View style={[
+          styles.dailyIndicator,
+          activeTheme === 'futuristic' && { marginLeft: 2, left: -10 }
+        ]}>
+          <View style={[
+            styles.dailyCircle,
+            isWhiteBg
+              ? { backgroundColor: '#111111', borderColor: 'rgba(0,0,0,0.3)' }
+              : null,
+            activeTheme === 'futuristic' && {
+              borderRadius: 0,
+              aspectRatio: 1,
+              transform: [{ skewX: '-2deg' }]
+            }
+          ]} />
+        </View>
+      )}
+    </View>
   );
 
   const Wrapper = selectionMode
     ? ({ children }: { children: React.ReactNode }) => (
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => onToggleSelect?.(habit)}
-          style={{ width: '100%' }}
-        >
-          {children}
-        </TouchableOpacity>
-      )
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => onToggleSelect?.(habit)}
+        style={{ width: '100%' }}
+      >
+        {children}
+      </TouchableOpacity>
+    )
     : ({ children }: { children: React.ReactNode }) => <>{children}</>;
 
   return (
@@ -393,62 +395,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 75
   },
-  
+
   checkContainer: {
     marginRight: 16
   },
-  
-  check: { 
-    width: 24, 
-    height: 24, 
+
+  check: {
+    width: 24,
+    height: 24,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.8)',
     alignItems: 'center',
     justifyContent: 'center'
   },
-  
-  checkDone: { 
+
+  checkDone: {
     backgroundColor: '#10b981',
     borderColor: '#10b981'
   },
-  
+
   content: {
     flex: 1
   },
-  
-  habitText: { 
+
+  habitText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4
   },
-  
-  habitDone: { 
+
+  habitDone: {
     opacity: 0.8,
     textDecorationLine: 'line-through',
     textDecorationColor: 'black',
     textDecorationStyle: 'solid'
   },
-  
+
   habitSubtext: {
     color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 14,
     marginBottom: 2
   },
-  
+
   frequencyText: {
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 12
   },
-  
+
   dailyIndicator: {
     marginLeft: 12,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative'
   },
-  
+
   dailyCircle: {
     width: 24,
     height: 24,
@@ -458,23 +460,23 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.3)'
   },
 
-  leftActions: { 
-    flexDirection: 'row', 
-    alignItems: 'stretch', 
-    justifyContent: 'flex-start', 
-    paddingLeft: 8 
+  leftActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
+    paddingLeft: 8
   },
-  
-  rightActions: { 
-    flexDirection: 'row', 
-    alignItems: 'stretch', 
-    justifyContent: 'flex-end', 
-    paddingRight: 8 
+
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
+    paddingRight: 8
   },
   actionsTall: {
     height: '100%'
   },
-  
+
   actionBtn: {
     paddingHorizontal: 16,
     paddingVertical: 12,

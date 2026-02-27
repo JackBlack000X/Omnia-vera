@@ -8,7 +8,7 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import React, { useCallback } from 'react';
-import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,6 +25,20 @@ const MergeIcon = ({ isActive, isMergeHoverSV }: { isActive: boolean; isMergeHov
   return (
     <Animated.View style={[styles.mergePlusIcon, animatedStyle]}>
       <Ionicons name="add" size={24} color={THEME.success} />
+    </Animated.View>
+  );
+};
+
+const ChevronIcon = ({ isCollapsed, folderColor }: { isCollapsed: boolean; folderColor: string }) => {
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: withTiming(isCollapsed ? '90deg' : '0deg', { duration: 250 }) }]
+    };
+  });
+
+  return (
+    <Animated.View style={[{ marginRight: 4 }, animatedStyle]}>
+      <Ionicons name="chevron-down" size={18} color={folderColor} />
     </Animated.View>
   );
 };
@@ -91,10 +105,13 @@ export default function IndexScreen() {
     handleMenuOpen,
     handleMenuClose,
     toggleSelect,
+    toggleFolderCollapsed,
     updateFoldersScrollEnabled,
     handleSectionedDragEnd,
     preDragSnapshotRef,
     isPostDragRef,
+    resetStorage,
+    collapsedFolderIds,
   } = useIndexLogic();
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
@@ -102,6 +119,7 @@ export default function IndexScreen() {
       const folderMeta = folders.find(f => (f.name ?? '').trim() === (item.folderName ?? '').trim());
       const folderColor = folderMeta?.color ?? THEME.textMuted;
       const label = typeof item.folderName === 'string' ? item.folderName : 'Tutte';
+      const isCollapsed = collapsedFolderIds.has(item.folderId);
 
       return (
         <ScaleDecorator activeScale={1}>
@@ -110,8 +128,12 @@ export default function IndexScreen() {
             <View style={styles.folderSeparator}>
               <TouchableOpacity
                 onLongPress={selectionMode ? undefined : drag}
-                disabled={isActive || selectionMode}
-                activeOpacity={0.9}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  toggleFolderCollapsed(item.folderId);
+                }}
+                disabled={isActive}
+                activeOpacity={0.7}
                 delayLongPress={200}
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}
               >
@@ -123,31 +145,38 @@ export default function IndexScreen() {
                   {label}
                 </Text>
 
-                <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} />
+                  {!isActive && (
+                    <ChevronIcon isCollapsed={isCollapsed} folderColor={folderColor} />
+                  )}
+                </View>
               </TouchableOpacity>
             </View>
             {/* The Folder Tasks */}
-            <View style={styles.folderTaskGroup}>
-              {item.tasks.map((h) => (
-                <View key={h.id} style={styles.taskInFolder}>
-                  <HabitItem
-                    habit={h}
-                    index={0}
-                    isDone={Boolean(completedByHabitId[h.id])}
-                    onRename={handleSchedule}
-                    onSchedule={handleSchedule}
-                    onColor={handleSchedule}
-                    shouldCloseMenu={closingMenuId === h.id || closingMenuId === 'all'}
-                    onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                    selectionMode={selectionMode}
-                    isSelected={selectedIds.has(h.id)}
-                    onToggleSelect={toggleSelect}
-                    onMenuOpen={handleMenuOpen}
-                    onMenuClose={handleMenuClose}
-                  />
-                </View>
-              ))}
-            </View>
+            {!isCollapsed && (
+              <View style={styles.folderTaskGroup}>
+                {item.tasks.map((h) => (
+                  <View key={h.id} style={styles.taskInFolder}>
+                    <HabitItem
+                      habit={h}
+                      index={0}
+                      isDone={Boolean(completedByHabitId[h.id])}
+                      onRename={handleSchedule}
+                      onSchedule={handleSchedule}
+                      onColor={handleSchedule}
+                      shouldCloseMenu={closingMenuId === h.id || closingMenuId === 'all'}
+                      onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                      selectionMode={selectionMode}
+                      isSelected={selectedIds.has(h.id)}
+                      onToggleSelect={toggleSelect}
+                      onMenuOpen={handleMenuOpen}
+                      onMenuClose={handleMenuClose}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         </ScaleDecorator>
       );
@@ -182,7 +211,7 @@ export default function IndexScreen() {
       );
     }
     return null;
-  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, handleMenuOpen, handleMenuClose, isFolderModeWithSections, selectionMode, selectedIds, toggleSelect, isMergeHoverSV]);
+  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, handleMenuOpen, handleMenuClose, isFolderModeWithSections, selectionMode, selectedIds, toggleSelect, isMergeHoverSV, collapsedFolderIds, toggleFolderCollapsed]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -410,6 +439,7 @@ export default function IndexScreen() {
             data={pendingDisplayRef.current ?? displayList ?? sectionedList}
             keyExtractor={(item) => item.type === 'folderBlock' ? `folder-${item.folderId}` : `task-${item.habit.id}`}
             renderItem={renderSectionItem}
+            extraData={collapsedFolderIds}
             contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
             style={[activeTheme === 'futuristic' && { marginHorizontal: -16 }]}
             containerStyle={styles.dragListContainer}

@@ -14,11 +14,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
-import { useSharedValue, useAnimatedReaction } from 'react-native-reanimated';
+import { useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 
 export function useIndexLogic() {
   const router = useRouter();
-  const { habits, history, getDay, toggleDone, removeHabit, updateHabit, addHabit, reorder, updateHabitsOrder, updateHabitFolder, setHabits, resetToday, dayResetTime, setDayResetTime } = useHabits();
+  const { habits, history, getDay, toggleDone, removeHabit, updateHabit, addHabit, reorder, updateHabitsOrder, updateHabitFolder, setHabits, resetToday, dayResetTime, setDayResetTime, resetStorage: providerResetStorage } = useHabits();
   const [input, setInput] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -57,6 +57,7 @@ export function useIndexLogic() {
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
   const today = getDay(new Date());
 
   const prevSectionedListRef = useRef<SectionItem[]>([]);
@@ -138,12 +139,30 @@ export function useIndexLogic() {
     });
   }, []);
 
+  const toggleFolderCollapsed = useCallback((folderId: string) => {
+    setCollapsedFolderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  }, []);
+
   const handleAddFolder = useCallback(() => {
     setNewFolderName('');
     setNewFolderColor(FOLDER_COLORS[3]);
     setNewFolderIcon(FOLDER_ICONS[0].name);
     setCreateFolderVisible(true);
   }, []);
+
+  const resetStorage = useCallback(async () => {
+    await providerResetStorage();
+    setFolders([]);
+    setSectionOrder(null);
+    setSortMode('creation');
+    setSortModeByFolder({});
+    setActiveFolder('__oggi__');
+  }, [providerResetStorage]);
 
   const handleCreateFolder = useCallback(() => {
     const name = newFolderName.trim();
@@ -701,7 +720,7 @@ export function useIndexLogic() {
         if (primaryIdx >= 0 && primaryIdx < snapshot.length) {
           const candidate = snapshot[primaryIdx];
           if (candidate && candidate.type === 'folderBlock' &&
-              candidate.folderId !== (draggedItem as FolderBlockItem).folderId) {
+            candidate.folderId !== (draggedItem as FolderBlockItem).folderId) {
             actualTarget = candidate as FolderBlockItem;
           }
         }
@@ -710,7 +729,7 @@ export function useIndexLogic() {
         if (!actualTarget) {
           const displaced = snapshot[to];
           if (displaced && displaced.type === 'folderBlock' &&
-              displaced.folderId !== (draggedItem as FolderBlockItem).folderId) {
+            displaced.folderId !== (draggedItem as FolderBlockItem).folderId) {
             actualTarget = displaced as FolderBlockItem;
           }
         }
@@ -821,7 +840,7 @@ export function useIndexLogic() {
       if (direction !== 0) {
         const neighborIdx = activeIdx + direction;
         if (neighborIdx >= 0 && neighborIdx < emptyFoldersIndicesSV.value.length &&
-            emptyFoldersIndicesSV.value[neighborIdx] === 1) {
+          emptyFoldersIndicesSV.value[neighborIdx] === 1) {
           return { isHovering: false, direction };
         }
       }
@@ -905,6 +924,7 @@ export function useIndexLogic() {
     setSelectionMode,
     selectedIds,
     setSelectedIds,
+    collapsedFolderIds,
     today,
     // computed
     stats,
@@ -928,11 +948,13 @@ export function useIndexLogic() {
     handleMenuOpen,
     handleMenuClose,
     toggleSelect,
+    toggleFolderCollapsed,
     updateFoldersScrollEnabled,
     handleSectionedDragEnd,
     getFolderBlockFromHeaderIndex,
     validFolderDropIndices,
     folderIndicesArray,
     sortHabitsWithMode,
+    resetStorage,
   };
 }
