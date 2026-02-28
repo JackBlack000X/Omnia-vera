@@ -1,8 +1,8 @@
-[agent]
-expertMode = true
-
 run = "bash start-dev.sh main"
 entrypoint = "start-dev.sh"
+
+[agent]
+expertMode = true
 
 [nix]
 channel = "stable-24_05"
