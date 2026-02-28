@@ -1,0 +1,12 @@
+run = "bash start-dev.sh main"
+entrypoint = "start-dev.sh"
+
+[nix]
+channel = "stable-24_05"
+
+[env]
+EXPO_NO_DOTENV = "1"
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
