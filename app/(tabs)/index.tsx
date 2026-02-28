@@ -117,13 +117,19 @@ export default function IndexScreen() {
     collapsedFolderIds,
   } = useIndexLogic();
 
+  const [isDragging, setIsDragging] = useState(false);
+
   const listData = useMemo(() => {
-    const base = pendingDisplayRef.current ?? displayList ?? sectionedList;
-    if (!isFolderModeWithSections && selectionMode && selectedIds.size > 1) {
+    const base = isDragging
+      ? (preDragSnapshotRef.current ?? displayList ?? sectionedList)
+      : (pendingDisplayRef.current ?? displayList ?? sectionedList);
+    // Collapse when 2+ selected (not only when dragging) so the list doesn't change mid-drag
+    // and the block can be dragged; otherwise changing data in onDragBegin breaks the drag.
+    if (!isFolderModeWithSections && selectedIds.size > 1) {
       return buildCollapsedListIfMultiSelect(base, selectedIds);
     }
     return base;
-  }, [displayList, sectionedList, isFolderModeWithSections, selectionMode, selectedIds, buildCollapsedListIfMultiSelect]);
+  }, [displayList, sectionedList, isFolderModeWithSections, isDragging, selectedIds, buildCollapsedListIfMultiSelect]);
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
     if (item.type === 'folderBlock') {
@@ -522,6 +528,7 @@ export default function IndexScreen() {
             animationConfig={{ damping: 20, stiffness: 200 }}
             onAnimValInit={(v) => setAnimVals(v)}
             onDragBegin={(index) => {
+              setIsDragging(true);
               isMergeHoverSV.value = false;
               dragDirectionSV.value = 0;
               isPostDragRef.current = false;
@@ -539,7 +546,10 @@ export default function IndexScreen() {
               dragDirectionAtReleaseRef.current =
                 mergeDirectionRef.current !== 0 ? mergeDirectionRef.current : dragDirectionSV.value;
             }}
-            onDragEnd={handleSectionedDragEnd}
+            onDragEnd={(params) => {
+              setIsDragging(false);
+              handleSectionedDragEnd(params);
+            }}
           />
         </View>
       )}

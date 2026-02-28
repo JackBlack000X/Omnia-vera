@@ -694,9 +694,10 @@ export function useIndexLogic() {
     const first = Math.min(...indices);
     const last = Math.max(...indices);
     const before = list.slice(0, first);
+    const middle = list.slice(first + 1, last).filter((item) => item.type === 'task' && !selectedIds.has(item.habit.id));
     const after = list.slice(last + 1);
     const block: MultiDragBlockItem = { type: 'multiDragBlock', habits: selectedHabits };
-    return [...before, block, ...after];
+    return [...before, block, ...middle, ...after];
   }, []);
 
   const handleSectionedDragEnd = useCallback(({ data, from, to }: { data: SectionItem[]; from: number; to: number }) => {
