@@ -64,6 +64,8 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    zIndex: 1000,
+    elevation: 1000,
   },
   fabTrash: {
     backgroundColor: '#ef4444',
@@ -173,6 +175,45 @@ export const styles = StyleSheet.create({
   },
   taskInFolder: {
     marginVertical: 2,
+  },
+  multiDragPlaceholder: {
+    height: 83,
+    marginVertical: 4,
+  },
+  multiDragBlockRow: {
+    marginVertical: 4,
+  },
+  multiDragBlockCard: {
+    height: 75,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  multiDragBlockCardLast: {
+    marginBottom: 0,
+  },
+  multiDragBlockCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  multiDragBlockCheckSelected: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderColor: 'rgba(255, 255, 255, 0.95)',
+  },
+  multiDragBlockCardText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
   },
   folderSeparatorText: {
     paddingLeft: 3,

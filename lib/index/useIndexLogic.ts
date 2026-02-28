@@ -5,6 +5,7 @@ import {
   FOLDER_ICONS,
   FolderBlockItem,
   FolderItem,
+  MultiDragBlockItem,
   OGGI_TODAY_KEY,
   SectionItem,
   SortModeType,
@@ -57,6 +58,8 @@ export function useIndexLogic() {
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIdsAtDragStartRef = useRef<Set<string>>(new Set());
+  const [draggingSelectionCount, setDraggingSelectionCount] = useState(0);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
   const today = getDay(new Date());
 
@@ -65,6 +68,7 @@ export function useIndexLogic() {
   const sectionedListOrderKey = useCallback((list: SectionItem[]) => {
     return list.map(i => {
       if (i.type === 'folderBlock') return `f-${i.folderId}-${i.tasks.map(t => `${t.id}:${t.text}:${t.folder ?? ''}:${t.color ?? ''}`).join('|')}`;
+      if (i.type === 'multiDragBlock') return `m-${i.habits.map(h => h.id).join(',')}`;
       return `t-${i.habit.id}-${i.habit.text}-${i.habit.folder ?? ''}-${i.habit.color ?? ''}`;
     }).join(',');
   }, []);
@@ -671,26 +675,101 @@ export function useIndexLogic() {
     [validFolderDropIndices]
   );
 
+  const recordDragStartSelection = useCallback((ids: Set<string>) => {
+    selectedIdsAtDragStartRef.current = new Set(ids);
+    setDraggingSelectionCount(ids.size);
+  }, []);
+
+  const buildCollapsedListIfMultiSelect = useCallback((list: SectionItem[], selectedIds: Set<string>): SectionItem[] => {
+    if (selectedIds.size <= 1 || !list.length || list.some((x) => x.type !== 'task')) return list;
+    const indices: number[] = [];
+    const selectedHabits: Habit[] = [];
+    list.forEach((item, i) => {
+      if (item.type === 'task' && selectedIds.has(item.habit.id)) {
+        indices.push(i);
+        selectedHabits.push(item.habit);
+      }
+    });
+    if (indices.length === 0) return list;
+    const first = Math.min(...indices);
+    const last = Math.max(...indices);
+    const before = list.slice(0, first);
+    const after = list.slice(last + 1);
+    const block: MultiDragBlockItem = { type: 'multiDragBlock', habits: selectedHabits };
+    return [...before, block, ...after];
+  }, []);
+
   const handleSectionedDragEnd = useCallback(({ data, from, to }: { data: SectionItem[]; from: number; to: number }) => {
+    setDraggingSelectionCount(0);
     const snapshot = preDragSnapshotRef.current;
     const draggedItem = snapshot ? snapshot[from] : null;
 
+    const hasMultiDragBlock = data.some((x) => x.type === 'multiDragBlock');
     if (from === to && !isMergeHoverAtReleaseRef.current) {
+      if (hasMultiDragBlock) {
+        const taskItems = data.flatMap((x): Habit[] =>
+          x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : x.type === 'multiDragBlock' ? x.habits : []
+        );
+        const expanded: SectionItem[] = taskItems.map(h => ({ type: 'task' as const, habit: h }));
+        pendingDisplayRef.current = expanded;
+        setDisplayList(expanded);
+      }
       commitDragEnd();
       return;
     }
 
-    if (!draggedItem || draggedItem.type !== 'folderBlock') {
-      // It's a task drag
-      const taskItems = data.flatMap((x): Habit[] => x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : []);
-      pendingDisplayRef.current = data;
-      setDisplayList(data);
+    if (hasMultiDragBlock) {
+      const taskItems = data.flatMap((x): Habit[] =>
+        x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : x.type === 'multiDragBlock' ? x.habits : []
+      );
+      selectedIdsAtDragStartRef.current = new Set();
+      const newData: SectionItem[] = taskItems.map(h => ({ type: 'task' as const, habit: h }));
+      pendingDisplayRef.current = newData;
+      setDisplayList(newData);
       isPostDragRef.current = true;
       const runUpdates = () => {
         updateHabitsOrder(taskItems);
         if (activeFolder != null) setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
         else setSortMode('custom');
-        // Safety net: release guard after 2s if convergence never happens
+        if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+        dragEndTimeoutRef.current = setTimeout(() => {
+          isPostDragRef.current = false;
+          pendingDisplayRef.current = null;
+          preDragSnapshotRef.current = null;
+          commitDragEnd();
+        }, 2000);
+      };
+      if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+      dragEndTimeoutRef.current = setTimeout(runUpdates, 100);
+      return;
+    }
+
+    if (!draggedItem || draggedItem.type !== 'folderBlock') {
+      // It's a task drag (no collapsed block)
+      let taskItems = data.flatMap((x): Habit[] => x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : []);
+      const selectedSet = selectedIdsAtDragStartRef.current;
+
+      if (selectedSet.size > 1) {
+        const draggedId = draggedItem.type === 'task' ? draggedItem.habit.id : '';
+        const draggedHabit = taskItems.find(h => h.id === draggedId) ?? (draggedItem.type === 'task' ? draggedItem.habit : null);
+        if (draggedHabit) {
+          const selectedInOrder = taskItems.filter(h => selectedSet.has(h.id));
+          const selectedBlock = [draggedHabit, ...selectedInOrder.filter(h => h.id !== draggedHabit.id)];
+          const before = taskItems.slice(0, to).filter(h => !selectedSet.has(h.id));
+          const after = taskItems.slice(to).filter(h => !selectedSet.has(h.id));
+          taskItems = [...before, ...selectedBlock, ...after];
+        }
+        selectedIdsAtDragStartRef.current = new Set();
+      }
+
+      const newData: SectionItem[] = taskItems.map(h => ({ type: 'task' as const, habit: h }));
+      pendingDisplayRef.current = newData;
+      setDisplayList(newData);
+      isPostDragRef.current = true;
+      const runUpdates = () => {
+        updateHabitsOrder(taskItems);
+        if (activeFolder != null) setSortModeByFolder(prev => ({ ...prev, [activeFolder.trim()]: 'custom' }));
+        else setSortMode('custom');
         if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
         dragEndTimeoutRef.current = setTimeout(() => {
           isPostDragRef.current = false;
@@ -924,6 +1003,7 @@ export function useIndexLogic() {
     setSelectionMode,
     selectedIds,
     setSelectedIds,
+    draggingSelectionCount,
     collapsedFolderIds,
     today,
     // computed
@@ -948,6 +1028,8 @@ export function useIndexLogic() {
     handleMenuOpen,
     handleMenuClose,
     toggleSelect,
+    recordDragStartSelection,
+    buildCollapsedListIfMultiSelect,
     toggleFolderCollapsed,
     updateFoldersScrollEnabled,
     handleSectionedDragEnd,

@@ -19,6 +19,9 @@ type Props = {
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (habit: Habit) => void;
+  onLongPress?: () => void;
+  /** When dragging with multiple selected, show this count as a badge on the card */
+  dragBadgeCount?: number;
   onMenuOpen?: (habit: Habit) => void;
   onMenuClose?: (habit: Habit) => void;
 };
@@ -113,7 +116,7 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
   );
 }
 
-export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onMenuOpen, onMenuClose }: Props) {
+export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onLongPress, dragBadgeCount, onMenuOpen, onMenuClose }: Props) {
   const { activeTheme } = useAppTheme();
   const { toggleDone, removeHabit } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
@@ -271,6 +274,11 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
         setCardDimensions({ width, height });
       }}
     >
+      {dragBadgeCount != null && dragBadgeCount > 1 && (
+        <View style={styles.dragBadge} pointerEvents="none">
+          <Text style={styles.dragBadgeText}>{dragBadgeCount}</Text>
+        </View>
+      )}
       {activeTheme === 'futuristic' && cardDimensions.width > 0 && cardDimensions.height > 0 && (
         <NoiseOverlay width={cardDimensions.width} height={cardDimensions.height} darkColor={noiseColor} />
       )}
@@ -293,7 +301,8 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
           style={[
             styles.check,
             isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
-            (selectionMode ? isSelected : isDone) && styles.checkDone,
+            isDone && styles.checkDone,
+            selectionMode && isSelected && !isDone && styles.checkSelected,
             activeTheme === 'futuristic' && {
               borderRadius: 0,
               aspectRatio: 1,
@@ -301,18 +310,18 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
             }
           ]}
           onLayout={(e) => {
-            if (activeTheme === 'futuristic' && !(selectionMode ? isSelected : isDone)) {
+            if (activeTheme === 'futuristic' && !isDone) {
               const { width, height } = e.nativeEvent.layout;
               setCheckDimensions({ width, height });
             }
           }}
         >
-          {activeTheme === 'futuristic' && !(selectionMode ? isSelected : isDone) && checkDimensions.width > 0 && checkDimensions.height > 0 && (
+          {activeTheme === 'futuristic' && !isDone && checkDimensions.width > 0 && checkDimensions.height > 0 && (
             <View style={{ position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, overflow: 'hidden', borderRadius: 10 }}>
               <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
             </View>
           )}
-          {(selectionMode ? isSelected : isDone) && (
+          {isDone && (
             <Ionicons
               name="checkmark"
               size={16}
@@ -364,6 +373,8 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => onToggleSelect?.(habit)}
+        onLongPress={onLongPress}
+        delayLongPress={200}
         style={{ width: '100%' }}
       >
         {children}
@@ -386,6 +397,24 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
 });
 
 const styles = StyleSheet.create({
+  dragBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    zIndex: 10,
+  },
+  dragBadgeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   card: {
     borderRadius: 16,
     paddingVertical: 16,
@@ -413,6 +442,10 @@ const styles = StyleSheet.create({
   checkDone: {
     backgroundColor: '#10b981',
     borderColor: '#10b981'
+  },
+  checkSelected: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderColor: 'rgba(255, 255, 255, 0.95)'
   },
 
   content: {

@@ -4,7 +4,9 @@ export type FolderItem = { id: string; name: string; color: string; icon?: strin
 
 export type FolderBlockItem = { type: 'folderBlock'; folderName: string | null; folderId: string; tasks: Habit[] };
 export type TaskItem = { type: 'task'; habit: Habit };
-export type SectionItem = FolderBlockItem | TaskItem;
+/** Used during multi-drag: one row that represents N selected tasks so the list shifts by N slots */
+export type MultiDragBlockItem = { type: 'multiDragBlock'; habits: Habit[] };
+export type SectionItem = FolderBlockItem | TaskItem | MultiDragBlockItem;
 
 export type SortModeType = 'creation' | 'alphabetical' | 'custom' | 'time' | 'color' | 'folder';
 

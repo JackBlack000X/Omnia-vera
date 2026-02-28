@@ -7,10 +7,10 @@ import { useIndexLogic } from '@/lib/index/useIndexLogic';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import Animated, { SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { FadeInDown, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const MergeIcon = ({ isActive, isMergeHoverSV }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean> }) => {
@@ -90,6 +90,7 @@ export default function IndexScreen() {
     setSelectionMode,
     selectedIds,
     setSelectedIds,
+    draggingSelectionCount,
     stats,
     completedByHabitId,
     isFolderModeWithSections,
@@ -105,6 +106,8 @@ export default function IndexScreen() {
     handleMenuOpen,
     handleMenuClose,
     toggleSelect,
+    recordDragStartSelection,
+    buildCollapsedListIfMultiSelect,
     toggleFolderCollapsed,
     updateFoldersScrollEnabled,
     handleSectionedDragEnd,
@@ -113,6 +116,14 @@ export default function IndexScreen() {
     resetStorage,
     collapsedFolderIds,
   } = useIndexLogic();
+
+  const listData = useMemo(() => {
+    const base = pendingDisplayRef.current ?? displayList ?? sectionedList;
+    if (!isFolderModeWithSections && selectionMode && selectedIds.size > 1) {
+      return buildCollapsedListIfMultiSelect(base, selectedIds);
+    }
+    return base;
+  }, [displayList, sectionedList, isFolderModeWithSections, selectionMode, selectedIds, buildCollapsedListIfMultiSelect]);
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
     if (item.type === 'folderBlock') {
@@ -126,38 +137,49 @@ export default function IndexScreen() {
           <View style={[isActive && styles.dragActiveFolderBlock]}>
             {/* The Folder Header */}
             <View style={styles.folderSeparator}>
-              <TouchableOpacity
-                onLongPress={selectionMode ? undefined : drag}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  toggleFolderCollapsed(item.folderId);
-                }}
-                disabled={isActive}
-                activeOpacity={0.7}
-                delayLongPress={200}
-                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}
-              >
-                <Text style={[
-                  styles.folderSeparatorText,
-                  { color: folderColor },
-                  isActive && { transform: [{ scale: 1.35 }], transformOrigin: '0% 50%' }
-                ]}>
-                  {label}
-                </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+                <TouchableOpacity
+                  onLongPress={selectionMode ? undefined : drag}
+                  disabled={isActive}
+                  activeOpacity={0.7}
+                  delayLongPress={200}
+                  style={{ flex: 1 }}
+                >
+                  <Text style={[
+                    styles.folderSeparatorText,
+                    { color: folderColor },
+                    isActive && { transform: [{ scale: 1.35 }], transformOrigin: '0% 50%' }
+                  ]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} />
                   {!isActive && (
-                    <ChevronIcon isCollapsed={isCollapsed} folderColor={folderColor} />
+                    <TouchableOpacity
+                      onPress={() => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        toggleFolderCollapsed(item.folderId);
+                      }}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      activeOpacity={0.7}
+                    >
+                      <ChevronIcon isCollapsed={isCollapsed} folderColor={folderColor} />
+                    </TouchableOpacity>
                   )}
                 </View>
-              </TouchableOpacity>
+              </View>
             </View>
             {/* The Folder Tasks */}
             {!isCollapsed && (
               <View style={styles.folderTaskGroup}>
-                {item.tasks.map((h) => (
-                  <View key={h.id} style={styles.taskInFolder}>
+                {item.tasks.map((h, index) => (
+                  <Animated.View
+                    key={h.id}
+                    style={styles.taskInFolder}
+                    entering={FadeInDown.duration(260).delay(index * 60)}
+                  >
                     <HabitItem
                       habit={h}
                       index={0}
@@ -173,7 +195,7 @@ export default function IndexScreen() {
                       onMenuOpen={handleMenuOpen}
                       onMenuClose={handleMenuClose}
                     />
-                  </View>
+                  </Animated.View>
                 ))}
               </View>
             )}
@@ -181,13 +203,56 @@ export default function IndexScreen() {
         </ScaleDecorator>
       );
     }
+    if (item.type === 'multiDragBlock') {
+      const rowHeight = 75;
+      const gap = 4;
+      const blockHeight = item.habits.length * rowHeight + (item.habits.length - 1) * gap;
+      return (
+        <ScaleDecorator>
+          <View style={[styles.multiDragBlockRow, { height: blockHeight }]}>
+            {item.habits.map((habit, i) => (
+              <TouchableOpacity
+                key={habit.id}
+                onPress={() => toggleSelect(habit)}
+                onLongPress={drag}
+                disabled={isActive}
+                activeOpacity={0.9}
+                delayLongPress={200}
+                style={[
+                  styles.multiDragBlockCard,
+                  { backgroundColor: habit.color ?? '#6b7280' },
+                  i === item.habits.length - 1 && styles.multiDragBlockCardLast,
+                ]}
+              >
+                <View style={[styles.multiDragBlockCheck, styles.multiDragBlockCheckSelected]} />
+                <Text style={styles.multiDragBlockCardText} numberOfLines={1}>
+                  {habit.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScaleDecorator>
+      );
+    }
     if (item.type === 'task') {
+      const isMultiDragPlaceholder =
+        draggingSelectionCount > 1 && selectedIds.has(item.habit.id);
+      if (isMultiDragPlaceholder) {
+        return (
+          <ScaleDecorator>
+            <View style={styles.multiDragPlaceholder} />
+          </ScaleDecorator>
+        );
+      }
       const canDragTask = !isFolderModeWithSections;
+      const canStartDrag =
+        canDragTask &&
+        (!selectionMode || selectedIds.size === 0 || selectedIds.has(item.habit.id));
       return (
         <ScaleDecorator>
           <TouchableOpacity
-            onLongPress={canDragTask ? drag : undefined}
-            disabled={isActive || !canDragTask}
+            onLongPress={canStartDrag ? drag : undefined}
+            disabled={isActive || !canStartDrag}
             activeOpacity={0.9}
             delayLongPress={200}
           >
@@ -203,6 +268,8 @@ export default function IndexScreen() {
               selectionMode={selectionMode}
               isSelected={selectedIds.has(item.habit.id)}
               onToggleSelect={toggleSelect}
+              onLongPress={canStartDrag ? drag : undefined}
+              dragBadgeCount={isActive && draggingSelectionCount > 1 ? draggingSelectionCount : undefined}
               onMenuOpen={handleMenuOpen}
               onMenuClose={handleMenuClose}
             />
@@ -211,7 +278,7 @@ export default function IndexScreen() {
       );
     }
     return null;
-  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, handleMenuOpen, handleMenuClose, isFolderModeWithSections, selectionMode, selectedIds, toggleSelect, isMergeHoverSV, collapsedFolderIds, toggleFolderCollapsed]);
+  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, handleMenuOpen, handleMenuClose, isFolderModeWithSections, selectionMode, selectedIds, draggingSelectionCount, toggleSelect, isMergeHoverSV, collapsedFolderIds, toggleFolderCollapsed]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -436,8 +503,11 @@ export default function IndexScreen() {
       ) : (
         <View style={styles.listWrap}>
           <DraggableFlatList<SectionItem>
-            data={pendingDisplayRef.current ?? displayList ?? sectionedList}
-            keyExtractor={(item) => item.type === 'folderBlock' ? `folder-${item.folderId}` : `task-${item.habit.id}`}
+            data={listData}
+            keyExtractor={(item) =>
+              item.type === 'folderBlock' ? `folder-${item.folderId}` :
+              item.type === 'multiDragBlock' ? `task-${item.habits[0].id}` :
+              `task-${item.habit.id}`}
             renderItem={renderSectionItem}
             extraData={collapsedFolderIds}
             contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
@@ -455,13 +525,11 @@ export default function IndexScreen() {
               isMergeHoverSV.value = false;
               dragDirectionSV.value = 0;
               isPostDragRef.current = false;
-              pendingDisplayRef.current = null;
               lastMergeHoverTimeRef.current = 0;
               mergeDirectionRef.current = 0;
               const list = displayList ?? sectionedList;
-
-              // Save snapshot of the list BEFORE dragging for clean revert
               preDragSnapshotRef.current = [...list];
+              recordDragStartSelection(selectedIds);
             }}
             onRelease={(index) => {
               // Capture exactly what the UI thread values are at the moment of finger lift,
