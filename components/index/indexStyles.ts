@@ -181,7 +181,7 @@ export const styles = StyleSheet.create({
     marginVertical: 4,
   },
   multiDragBlockRow: {
-    marginVertical: 4,
+    marginVertical: 0,
   },
   multiDragBlockCard: {
     height: 75,
@@ -190,10 +190,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
-  },
-  multiDragBlockCardLast: {
-    marginBottom: 0,
+    marginVertical: 4,
   },
   multiDragBlockCheck: {
     width: 24,

@@ -210,12 +210,9 @@ export default function IndexScreen() {
       );
     }
     if (item.type === 'multiDragBlock') {
-      const rowHeight = 75;
-      const gap = 4;
-      const blockHeight = item.habits.length * rowHeight + (item.habits.length - 1) * gap;
       return (
         <ScaleDecorator>
-          <View style={[styles.multiDragBlockRow, { height: blockHeight }]}>
+          <View style={styles.multiDragBlockRow}>
             {item.habits.map((habit, i) => (
               <TouchableOpacity
                 key={habit.id}
@@ -227,7 +224,6 @@ export default function IndexScreen() {
                 style={[
                   styles.multiDragBlockCard,
                   { backgroundColor: habit.color ?? '#6b7280' },
-                  i === item.habits.length - 1 && styles.multiDragBlockCardLast,
                 ]}
               >
                 <View style={[styles.multiDragBlockCheck, styles.multiDragBlockCheckSelected]} />
