@@ -213,24 +213,24 @@ export default function IndexScreen() {
       return (
         <ScaleDecorator>
           <View style={styles.multiDragBlockRow}>
-            {item.habits.map((habit, i) => (
-              <TouchableOpacity
+            {item.habits.map((habit) => (
+              <HabitItem
                 key={habit.id}
-                onPress={() => toggleSelect(habit)}
+                habit={habit}
+                index={0}
+                isDone={Boolean(completedByHabitId[habit.id])}
+                onRename={handleSchedule}
+                onSchedule={handleSchedule}
+                onColor={handleSchedule}
+                shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
+                onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                selectionMode={selectionMode}
+                isSelected={selectedIds.has(habit.id)}
+                onToggleSelect={toggleSelect}
                 onLongPress={drag}
-                disabled={isActive}
-                activeOpacity={0.9}
-                delayLongPress={200}
-                style={[
-                  styles.multiDragBlockCard,
-                  { backgroundColor: habit.color ?? '#6b7280' },
-                ]}
-              >
-                <View style={[styles.multiDragBlockCheck, styles.multiDragBlockCheckSelected]} />
-                <Text style={styles.multiDragBlockCardText} numberOfLines={1}>
-                  {habit.text}
-                </Text>
-              </TouchableOpacity>
+                onMenuOpen={handleMenuOpen}
+                onMenuClose={handleMenuClose}
+              />
             ))}
           </View>
         </ScaleDecorator>

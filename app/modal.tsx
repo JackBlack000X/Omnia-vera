@@ -180,7 +180,7 @@ export default function ModalScreen() {
 
               {m.freq === 'annual' && (
                 <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Giorno dell'anno</Text>
+                  <Text style={styles.subtle}>Giorno dell&apos;anno</Text>
                   <View style={[
                     { flexDirection: 'row', gap: 12, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
                     m.isToday && { borderWidth: 2, borderColor: '#ff3b30', borderRadius: 12, padding: 8 }
