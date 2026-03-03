@@ -394,16 +394,46 @@ export default function CalendarScreen() {
           const lastDate = new Date(currentStreak[currentStreak.length - 1]);
           const diffDays = Math.floor((new Date(date).getTime() - lastDate.getTime()) / 86400000);
           if (diffDays === 1) { currentStreak.push(date); }
-          else { if (currentStreak.length >= 7) registerStreak(currentStreak); currentStreak = [date]; }
+          else { if (currentStreak.length >= 2) registerStreak(currentStreak); currentStreak = [date]; }
         }
       } else {
-        if (currentStreak.length >= 7) registerStreak(currentStreak);
+        if (currentStreak.length >= 2) registerStreak(currentStreak);
         currentStreak = [];
       }
     }
-    if (currentStreak.length >= 7) registerStreak(currentStreak);
+    if (currentStreak.length >= 2) registerStreak(currentStreak);
     return streakMap;
   }, [recentHistory, testCompletions, habits.length]);
+
+  const currentPerfectStreak = useMemo(() => {
+    // Per ora usiamo SOLO i dati di test (testCompletions),
+    // così quello che imposti dal calendario coincide esattamente con la streak.
+    const perfectDates = Object.entries(testCompletions)
+      .filter(([ymd, t]) => ymd <= logicalTodayYmd && t.total > 0 && t.completed === t.total)
+      .map(([ymd]) => ymd)
+      .sort()
+      .reverse();
+
+    if (perfectDates.length === 0) return 0;
+
+    let streak = 0;
+    let prevDate: Date | null = null;
+
+    for (const ymd of perfectDates) {
+      const d = new Date(ymd + 'T12:00:00Z');
+      if (!prevDate) {
+        streak = 1;
+        prevDate = d;
+        continue;
+      }
+      const diffDays = Math.round((prevDate.getTime() - d.getTime()) / 86400000);
+      if (diffDays !== 1) break;
+      streak += 1;
+      prevDate = d;
+    }
+
+    return streak;
+  }, [testCompletions, logicalTodayYmd]);
 
   const handleDayPress = useCallback((day: { date: Date; isCurrentMonth: boolean; ymd: string }) => {
     const total = habits.length;
@@ -447,13 +477,16 @@ export default function CalendarScreen() {
               </View>
             )}
           </View>
-          {activeTheme === 'futuristic' && (
-            <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
-              <View style={styles.infoCircle}>
-                <Text style={styles.infoText}>i</Text>
-              </View>
-            </TouchableOpacity>
-          )}
+          <View style={styles.headerRight}>
+            <Text style={styles.streakValue}>{currentPerfectStreak}</Text>
+            {activeTheme === 'futuristic' && (
+              <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
+                <View style={styles.infoCircle}>
+                  <Text style={styles.infoText}>i</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
 
@@ -522,6 +555,7 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold', letterSpacing: -1 },
   infoButton: { marginLeft: 12, marginTop: 4 },
   infoButtonInline: { marginLeft: 2 },
@@ -555,6 +589,11 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  streakValue: {
+    color: '#FFD700',
+    fontSize: 26,
+    fontFamily: 'BagelFatOne_400Regular',
   },
 
   monthNav: { justifyContent: 'center', marginBottom: 14, width: '100%' },

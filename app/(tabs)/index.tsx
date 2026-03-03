@@ -534,11 +534,33 @@ export default function IndexScreen() {
             removeClippedSubviews={false}
             animationConfig={{ damping: 20, stiffness: 200 }}
             onAnimValInit={(v) => setAnimVals(v)}
+            // @ts-ignore — patched prop: override cell measurements inside drag()
+            onCellMeasureOverride={(index: number, _key: string, cellData: any, cellDataMap: Map<string, any>) => {
+              const item = listData[index];
+              if (item?.type !== 'multiDragBlock') return null;
+              const size = item.habits.length * 83;
+              // Compute offset: use measurement of previous cell if available
+              let offset = cellData?.measurements?.offset;
+              if (offset == null || offset < 0) {
+                // Try to get offset from the cell just before this one
+                for (let i = index - 1; i >= 0; i--) {
+                  const prevItem = listData[i];
+                  const prevKey =
+                    prevItem.type === 'folderBlock' ? `folder-${prevItem.folderId}` :
+                    prevItem.type === 'multiDragBlock' ? `task-${prevItem.habits[0].id}` :
+                    `task-${prevItem.habit.id}`;
+                  const prevData = cellDataMap.get(prevKey);
+                  if (prevData?.measurements?.offset >= 0) {
+                    offset = prevData.measurements.offset + prevData.measurements.size;
+                    break;
+                  }
+                }
+                if (offset == null || offset < 0) offset = index * 83;
+              }
+              return { size, offset };
+            }}
             onDragBegin={(idx) => {
               isDraggingRef.current = true;
-              // Block any pending InteractionManager.runAfterInteractions callbacks
-              // (the library schedules reset() when data changes, which sets
-              // activeCellSize = -1). The handle keeps it pending until drag ends.
               dragInteractionHandleRef.current = InteractionManager.createInteractionHandle();
               isMergeHoverSV.value = false;
               dragDirectionSV.value = 0;
@@ -548,34 +570,6 @@ export default function IndexScreen() {
               const list = displayList ?? sectionedList;
               preDragSnapshotRef.current = [...list];
               recordDragStartSelection(selectedIds);
-              // Override activeCellSize AND activeCellOffset for multiDragBlock.
-              // The library's drag() reads cellDataRef which may have stale or
-              // missing measurements for the collapsed block. activeCellSize must
-              // reflect the full block height, and activeCellOffset must be the
-              // actual position — otherwise hoverOffset (= hoverAnim + activeCellOffset)
-              // is wrong and items below never shift.
-              const draggedItem = listData[idx];
-              if (draggedItem?.type === 'multiDragBlock' && animVals) {
-                const av = animVals as {
-                  activeCellSize: { value: number };
-                  activeCellOffset: { value: number };
-                };
-                const size = draggedItem.habits.length * 83;
-                av.activeCellSize.value = size;
-                // Compute the correct offset: sum of heights of all items before the block
-                let offset = 0;
-                for (let i = 0; i < idx; i++) {
-                  const it = listData[i];
-                  if (it.type === 'folderBlock') {
-                    // folder separator height (approximate)
-                    offset += 40;
-                  } else {
-                    offset += 83;
-                  }
-                }
-                av.activeCellOffset.value = offset;
-                console.log('[DRAG] override: size=', size, 'offset=', offset);
-              }
             }}
             onRelease={(index) => {
               // Capture exactly what the UI thread values are at the moment of finger lift,
