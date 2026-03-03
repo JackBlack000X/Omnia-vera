@@ -330,12 +330,14 @@ export default function IndexScreen() {
                     key: 'sort', icon: 'swap-vertical-outline' as const, onPress: () => {
                       setOptionsMenuVisible(false);
                       const folderNameNow = activeFolder?.trim() ?? null;
-                      const inFolder = folderNameNow !== null;
-                      const current: typeof sortMode = inFolder
-                        ? (sortModeByFolder[folderNameNow] ?? 'creation')
-                        : sortMode;
+                      const isOggi = folderNameNow === OGGI_TODAY_KEY;
+                      const baseFallback: typeof sortMode = isOggi ? sortMode : 'creation';
+                      const current: typeof sortMode =
+                        folderNameNow !== null
+                          ? (sortModeByFolder[folderNameNow] ?? baseFallback)
+                          : sortMode;
                       const setCurrent = (mode: typeof sortMode) => {
-                        if (inFolder && folderNameNow) {
+                        if (folderNameNow !== null) {
                           setSortModeByFolder(prev => ({ ...prev, [folderNameNow]: mode }));
                         } else {
                           setSortMode(mode);
@@ -351,7 +353,7 @@ export default function IndexScreen() {
                         alphabetical: 'Ordine alfabetico',
                         custom: 'Ordine libero (Trascina)',
                       };
-                      const isRealFolder = inFolder && folderNameNow !== OGGI_TODAY_KEY;
+                      const isRealFolder = folderNameNow !== null && folderNameNow !== OGGI_TODAY_KEY;
                       const options: any[] = [
                         { text: 'Annulla', style: 'cancel' },
                         { text: sel('Data di creazione', 'creation'), onPress: () => setCurrent('creation') },

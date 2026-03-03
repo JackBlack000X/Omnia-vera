@@ -398,9 +398,11 @@ export function useIndexLogic() {
   }, [habitsAppearingToday, history, today]);
 
   const effectiveSortMode: SortModeType =
-    activeFolder === null || activeFolder === OGGI_TODAY_KEY
+    activeFolder === null
       ? sortMode
-      : (sortModeByFolder[activeFolder.trim()] ?? 'creation');
+      : activeFolder === OGGI_TODAY_KEY
+        ? (sortModeByFolder[OGGI_TODAY_KEY] ?? sortMode)
+        : (sortModeByFolder[activeFolder.trim()] ?? 'creation');
 
   const sortHabitsWithMode = useCallback((list: Habit[], mode: SortModeType) => {
     if (mode === 'alphabetical') {
@@ -511,7 +513,8 @@ export function useIndexLogic() {
 
   const sectionedList = useMemo((): SectionItem[] => {
     const isOggiView = activeFolder === OGGI_TODAY_KEY;
-    const isFolderStructureView = isOggiView || (activeFolder === null && sortMode === 'folder');
+    const isFolderStructureView =
+      (activeFolder === null || isOggiView) && effectiveSortMode === 'folder';
 
     if (!isFolderStructureView) {
       return sortedHabits.map(h => ({ type: 'task' as const, habit: h }));
@@ -633,7 +636,7 @@ export function useIndexLogic() {
   );
 
   const isFolderModeWithSections =
-    (activeFolder === null && sortMode === 'folder') || activeFolder === OGGI_TODAY_KEY;
+    (activeFolder === null || activeFolder === OGGI_TODAY_KEY) && effectiveSortMode === 'folder';
 
   const folderTabsOrder = useMemo(() => {
     const folderNames = new Set(folders.map(f => (f.name ?? '').trim()));
