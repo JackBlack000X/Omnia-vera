@@ -7,10 +7,10 @@ import { useIndexLogic } from '@/lib/index/useIndexLogic';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Alert, InteractionManager, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import Animated, { FadeInDown, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { FadeInDown, Layout, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const MergeIcon = ({ isActive, isMergeHoverSV }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean> }) => {
@@ -82,6 +82,7 @@ export default function IndexScreen() {
     dragDirectionAtReleaseRef,
     lastMergeHoverTimeRef,
     mergeDirectionRef,
+    animVals,
     setAnimVals,
     displayList,
     optionsMenuVisible,
@@ -117,19 +118,18 @@ export default function IndexScreen() {
     collapsedFolderIds,
   } = useIndexLogic();
 
-  const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
+  const dragInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.createInteractionHandle> | null>(null);
 
   const listData = useMemo(() => {
-    const base = isDragging
-      ? (preDragSnapshotRef.current ?? displayList ?? sectionedList)
-      : (pendingDisplayRef.current ?? displayList ?? sectionedList);
+    const base = pendingDisplayRef.current ?? displayList ?? sectionedList;
     // Collapse when 2+ selected (not only when dragging) so the list doesn't change mid-drag
     // and the block can be dragged; otherwise changing data in onDragBegin breaks the drag.
     if (!isFolderModeWithSections && selectedIds.size > 1) {
       return buildCollapsedListIfMultiSelect(base, selectedIds);
     }
     return base;
-  }, [displayList, sectionedList, isFolderModeWithSections, isDragging, selectedIds, buildCollapsedListIfMultiSelect]);
+  }, [displayList, sectionedList, isFolderModeWithSections, selectedIds, buildCollapsedListIfMultiSelect]);
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
     if (item.type === 'folderBlock') {
@@ -139,6 +139,7 @@ export default function IndexScreen() {
       const isCollapsed = collapsedFolderIds.has(item.folderId);
 
       return (
+        <Animated.View layout={Layout}>
         <ScaleDecorator activeScale={1}>
           <View style={[isActive && styles.dragActiveFolderBlock]}>
             {/* The Folder Header */}
@@ -207,10 +208,17 @@ export default function IndexScreen() {
             )}
           </View>
         </ScaleDecorator>
+        </Animated.View>
       );
     }
     if (item.type === 'multiDragBlock') {
       return (
+        // No layout={Layout} here: the Reanimated layout animation keeps the native
+        // frame at the old size (83px) during its ~300ms run. Since long-press fires
+        // after only 200ms, drag would start with a stale activeCellSize = 83 instead
+        // of N*83, causing items below the block to not shift. Removing the animation
+        // makes the native frame update immediately, so measurements are correct.
+        <Animated.View>
         <ScaleDecorator>
           <View style={styles.multiDragBlockRow}>
             {item.habits.map((habit) => (
@@ -234,6 +242,7 @@ export default function IndexScreen() {
             ))}
           </View>
         </ScaleDecorator>
+        </Animated.View>
       );
     }
     if (item.type === 'task') {
@@ -251,6 +260,7 @@ export default function IndexScreen() {
         canDragTask &&
         (!selectionMode || selectedIds.size === 0 || selectedIds.has(item.habit.id));
       return (
+        <Animated.View layout={Layout}>
         <ScaleDecorator>
           <TouchableOpacity
             onLongPress={canStartDrag ? drag : undefined}
@@ -277,6 +287,7 @@ export default function IndexScreen() {
             />
           </TouchableOpacity>
         </ScaleDecorator>
+        </Animated.View>
       );
     }
     return null;
@@ -523,8 +534,12 @@ export default function IndexScreen() {
             removeClippedSubviews={false}
             animationConfig={{ damping: 20, stiffness: 200 }}
             onAnimValInit={(v) => setAnimVals(v)}
-            onDragBegin={(index) => {
-              setIsDragging(true);
+            onDragBegin={(idx) => {
+              isDraggingRef.current = true;
+              // Block any pending InteractionManager.runAfterInteractions callbacks
+              // (the library schedules reset() when data changes, which sets
+              // activeCellSize = -1). The handle keeps it pending until drag ends.
+              dragInteractionHandleRef.current = InteractionManager.createInteractionHandle();
               isMergeHoverSV.value = false;
               dragDirectionSV.value = 0;
               isPostDragRef.current = false;
@@ -533,6 +548,34 @@ export default function IndexScreen() {
               const list = displayList ?? sectionedList;
               preDragSnapshotRef.current = [...list];
               recordDragStartSelection(selectedIds);
+              // Override activeCellSize AND activeCellOffset for multiDragBlock.
+              // The library's drag() reads cellDataRef which may have stale or
+              // missing measurements for the collapsed block. activeCellSize must
+              // reflect the full block height, and activeCellOffset must be the
+              // actual position — otherwise hoverOffset (= hoverAnim + activeCellOffset)
+              // is wrong and items below never shift.
+              const draggedItem = listData[idx];
+              if (draggedItem?.type === 'multiDragBlock' && animVals) {
+                const av = animVals as {
+                  activeCellSize: { value: number };
+                  activeCellOffset: { value: number };
+                };
+                const size = draggedItem.habits.length * 83;
+                av.activeCellSize.value = size;
+                // Compute the correct offset: sum of heights of all items before the block
+                let offset = 0;
+                for (let i = 0; i < idx; i++) {
+                  const it = listData[i];
+                  if (it.type === 'folderBlock') {
+                    // folder separator height (approximate)
+                    offset += 40;
+                  } else {
+                    offset += 83;
+                  }
+                }
+                av.activeCellOffset.value = offset;
+                console.log('[DRAG] override: size=', size, 'offset=', offset);
+              }
             }}
             onRelease={(index) => {
               // Capture exactly what the UI thread values are at the moment of finger lift,
@@ -543,7 +586,13 @@ export default function IndexScreen() {
                 mergeDirectionRef.current !== 0 ? mergeDirectionRef.current : dragDirectionSV.value;
             }}
             onDragEnd={(params) => {
-              setIsDragging(false);
+              isDraggingRef.current = false;
+              // Release the interaction handle so any pending reset() can fire
+              // now that the drag is over.
+              if (dragInteractionHandleRef.current !== null) {
+                InteractionManager.clearInteractionHandle(dragInteractionHandleRef.current);
+                dragInteractionHandleRef.current = null;
+              }
               handleSectionedDragEnd(params);
             }}
           />

@@ -125,10 +125,14 @@ const MonthView = React.memo(function MonthView({
   }, [days, testCompletions, recentHistory, habitsLength]);
 
   return (
-    <View style={[styles.calendarMonth, isFirst && { marginTop: 16 }]}>
+    <View style={[styles.calendarMonth, isFirst && { marginTop: 4 }]}>
       <View style={styles.monthNav}>
         <View style={[styles.monthLabel, isCurrentMonthActive && styles.monthLabelActive]}>
-          <Text style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}>
+          <Text
+            style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
             {getMonthName(month)} {year}
           </Text>
         </View>
@@ -252,14 +256,38 @@ function getNumWeeksInMonth(year: number, month: number): number {
 }
 
 export default function CalendarScreen() {
-  const { habits, history } = useHabits();
+  const { habits, history, getDay } = useHabits();
   const { activeTheme } = useAppTheme();
   const { width: screenWidth } = useWindowDimensions();
   const today = new Date();
   const { year: currentYear, month: currentMonth } = getMonthYear(today);
 
+  const earliestMonthWithHistory = useMemo(() => {
+    const dates = Object.keys(history);
+    if (dates.length === 0) {
+      return { year: currentYear, month: currentMonth };
+    }
+    const sorted = dates.slice().sort();
+    const first = sorted[0];
+    const [yStr, mStr] = first.split('-');
+    const year = Number(yStr);
+    const month = Number(mStr);
+    if (!year || !month) {
+      return { year: currentYear, month: currentMonth };
+    }
+    if (year > currentYear || (year === currentYear && month > currentMonth)) {
+      return { year: currentYear, month: currentMonth };
+    }
+    return { year, month };
+  }, [history, currentYear, currentMonth]);
+
   const [testCompletions, setTestCompletions] = useState<Record<string, TestCompletion>>({});
   const [showLegend, setShowLegend] = useState(false);
+
+  const logicalTodayYmd = useMemo(
+    () => getDay(new Date()),
+    [getDay]
+  );
 
   React.useEffect(() => {
     if (habits.length === 0) return;
@@ -279,14 +307,14 @@ export default function CalendarScreen() {
 
   const allMonths = useMemo((): MonthData[] => {
     const months: MonthData[] = [];
-    const startDate = new Date(currentYear, currentMonth - 1, 1);
+    const startDate = new Date(earliestMonthWithHistory.year, earliestMonthWithHistory.month - 1, 1);
     const endDate = new Date(currentYear + 10, currentMonth - 1, 1);
     for (let d = new Date(startDate); d <= endDate; d.setMonth(d.getMonth() + 1)) {
       const { year, month } = getMonthYear(d);
       months.push({ year, month, date: new Date(d), numWeeks: getNumWeeksInMonth(year, month) });
     }
     return months;
-  }, [currentYear, currentMonth]);
+  }, [earliestMonthWithHistory, currentYear, currentMonth]);
 
   // Compute accurate per-month heights based on screen width for getItemLayout
   const dayCellHeight = useMemo(() => (screenWidth / 7) / 1.3, [screenWidth]);
@@ -311,6 +339,11 @@ export default function CalendarScreen() {
     index,
   }), [monthHeights, monthOffsets, dayCellHeight]);
 
+  const initialMonthIndex = useMemo(
+    () => allMonths.findIndex(m => m.year === currentYear && m.month === currentMonth),
+    [allMonths, currentYear, currentMonth]
+  );
+
   // Keep only last 90 days of history
   const recentHistory = useMemo(() => {
     const cutoff = new Date();
@@ -318,10 +351,10 @@ export default function CalendarScreen() {
     const cutoffStr = cutoff.toISOString().split('T')[0];
     const filtered: typeof history = {};
     for (const [date, completion] of Object.entries(history)) {
-      if (date >= cutoffStr) filtered[date] = completion;
+      if (date >= cutoffStr && date < logicalTodayYmd) filtered[date] = completion;
     }
     return filtered;
-  }, [history]);
+  }, [history, logicalTodayYmd]);
 
   const streakInfo = useMemo(() => {
     const streakMap = new Map<string, 'start' | 'middle' | 'end' | 'single'>();
@@ -403,13 +436,24 @@ export default function CalendarScreen() {
       <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 60 }]}>
         <View style={styles.headerTop}>
           <View style={styles.headerText}>
-            {activeTheme !== 'futuristic' && <Text style={styles.title}>Calendario Abitudini</Text>}
+            {activeTheme !== 'futuristic' && (
+              <View style={styles.headerTitleRow}>
+                <Text style={styles.title}>Calendario Abitudini</Text>
+                <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButtonInline}>
+                  <View style={styles.infoCircleSmall}>
+                    <Text style={styles.infoTextSmall}>i</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-          <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
-            <View style={styles.infoCircle}>
-              <Text style={styles.infoText}>i</Text>
-            </View>
-          </TouchableOpacity>
+          {activeTheme === 'futuristic' && (
+            <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
+              <View style={styles.infoCircle}>
+                <Text style={styles.infoText}>i</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -418,7 +462,7 @@ export default function CalendarScreen() {
         keyExtractor={(item) => `${item.year}-${item.month}`}
         renderItem={renderItem}
         getItemLayout={getItemLayout}
-        initialScrollIndex={0}
+        initialScrollIndex={initialMonthIndex >= 0 ? initialMonthIndex : 0}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true}
@@ -474,11 +518,13 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: 0 },
-  header: { marginTop: 16, marginBottom: 24, paddingHorizontal: 16 },
+  header: { marginTop: 16, marginBottom: 8, paddingHorizontal: 16 },
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1 },
-  title: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold', fontStyle: 'italic', letterSpacing: -1 },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  title: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold', letterSpacing: -1 },
   infoButton: { marginLeft: 12, marginTop: 4 },
+  infoButtonInline: { marginLeft: 2 },
   infoCircle: {
     width: 28,
     height: 28,
@@ -492,6 +538,22 @@ const styles = StyleSheet.create({
   infoText: {
     color: '#9CA3AF',
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  infoCircleSmall: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#9CA3AF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    transform: [{ translateY: 2 }],
+  },
+  infoTextSmall: {
+    color: '#9CA3AF',
+    fontSize: 10,
     fontWeight: 'bold',
   },
 
@@ -511,7 +573,6 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     letterSpacing: -1,
     alignSelf: 'stretch',
-    transform: [{ skewX: '-24deg' }, { scaleX: 0.7 }, { scaleY: 1.2 }],
     textShadowColor: '#FFFFFF',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 0,

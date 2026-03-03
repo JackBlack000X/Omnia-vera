@@ -31,6 +31,32 @@ function generateUUID(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
+function getLogicalDayKey(date: Date | string, dayResetTime: string): string {
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+
+  const d = typeof date === 'string' ? parseYmdSafe(date) : date;
+
+  if (dayResetTime !== '00:00') {
+    const [resetHour, resetMinute] = dayResetTime.split(':').map(Number);
+    const resetMinutes = resetHour * 60 + resetMinute;
+
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(d);
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+    const currentMinutes = hour * 60 + minute;
+
+    if (currentMinutes < resetMinutes) {
+      const prevDay = new Date(d);
+      prevDay.setUTCDate(prevDay.getUTCDate() - 1);
+      return formatYmd(prevDay);
+    }
+  }
+
+  return formatYmd(d);
+}
+
 export type HabitsContextType = {
   habits: Habit[];
   history: HabitsState['history'];
@@ -101,7 +127,8 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        const today = formatYmd();
+        const effectiveResetTime = rawDayResetTime || '00:00';
+        const today = getLogicalDayKey(new Date(), effectiveResetTime);
         if (rawLast !== today) {
           setLastResetDate(today);
           await AsyncStorage.setItem(STORAGE_LASTRESET, today);
@@ -146,7 +173,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkMidnight = () => {
       const now = new Date();
-      const currentYmd = formatYmd(now);
+      const currentYmd = getLogicalDayKey(now, dayResetTimeRef.current);
       if (currentYmd !== dateRef.current) {
         resetToday();
         dateRef.current = currentYmd;
@@ -313,7 +340,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const toggleDone = useCallback((id: string) => {
     setHistory((prev) => {
-      const today = formatYmd();
+      const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
       const dayCompletion = prev[today] || { date: today, completedByHabitId: {} };
       const isCompleted = !dayCompletion.completedByHabitId[id];
       return {
@@ -370,7 +397,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetToday = useCallback(async () => {
-    const today = formatYmd();
+    const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
     setHistory((prev) => {
       // Preserve completions for single habits — they don't recur, so they stay done permanently
       const preserved: Record<string, boolean> = {};
@@ -393,31 +420,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const getDay = useCallback((date: Date | string) => {
-    // YYYY-MM-DD string: return as-is (already a day key)
-    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-
-    const d = typeof date === 'string' ? parseYmdSafe(date) : date;
-
-    // If day reset time is not midnight, use time in Zurich for the check
-    if (dayResetTime !== '00:00') {
-      const [resetHour, resetMinute] = dayResetTime.split(':').map(Number);
-      const resetMinutes = resetHour * 60 + resetMinute;
-
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
-      }).formatToParts(d);
-      const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
-      const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
-      const currentMinutes = hour * 60 + minute;
-
-      if (currentMinutes < resetMinutes) {
-        const prevDay = new Date(d);
-        prevDay.setUTCDate(prevDay.getUTCDate() - 1);
-        return formatYmd(prevDay);
-      }
-    }
-
-    return formatYmd(d);
+    return getLogicalDayKey(date, dayResetTime);
   }, [dayResetTime]);
 
   const setTimeOverride = useCallback((id: string, date: string, hhmm: string | null) => {

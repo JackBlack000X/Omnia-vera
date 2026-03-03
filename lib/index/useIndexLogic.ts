@@ -58,6 +58,7 @@ export function useIndexLogic() {
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectionOrder, setSelectionOrder] = useState<string[]>([]);
   const selectedIdsAtDragStartRef = useRef<Set<string>>(new Set());
   const [draggingSelectionCount, setDraggingSelectionCount] = useState(0);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
@@ -336,11 +337,25 @@ export function useIndexLogic() {
   }, []);
 
   const toggleSelect = useCallback((habit: Habit) => {
+    // NOTE: Do NOT use LayoutAnimation.configureNext here.
+    // It animates native frames gradually, which causes DraggableFlatList's
+    // cellDataRef to receive intermediate (too-small) heights for the
+    // multiDragBlock cell during the animation. If drag starts before the
+    // animation ends, activeCellSize is wrong → items below the block don't
+    // shift. Reanimated's layout={Layout} on each rendered item already
+    // handles smooth visual transitions without this problem.
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(habit.id)) next.delete(habit.id);
       else next.add(habit.id);
       return next;
+    });
+    setSelectionOrder(prev => {
+      const exists = prev.includes(habit.id);
+      if (exists) {
+        return prev.filter(id => id !== habit.id);
+      }
+      return [...prev, habit.id];
     });
   }, []);
 
@@ -682,23 +697,66 @@ export function useIndexLogic() {
 
   const buildCollapsedListIfMultiSelect = useCallback((list: SectionItem[], selectedIds: Set<string>): SectionItem[] => {
     if (selectedIds.size <= 1 || !list.length || list.some((x) => x.type !== 'task')) return list;
+
+    // Collect indices and habits for all selected tasks
     const indices: number[] = [];
-    const selectedHabits: Habit[] = [];
-    list.forEach((item, i) => {
+    const selectedInfos: { index: number; habit: Habit }[] = [];
+    list.forEach((item, index) => {
       if (item.type === 'task' && selectedIds.has(item.habit.id)) {
-        indices.push(i);
-        selectedHabits.push(item.habit);
+        indices.push(index);
+        selectedInfos.push({ index, habit: item.habit });
       }
     });
-    if (indices.length === 0) return list;
+    if (!indices.length) return list;
+
     const first = Math.min(...indices);
     const last = Math.max(...indices);
+
+    // Decide anchor: first selected id in selection order that is still selected
+    const activeOrder = selectionOrder.filter(id => selectedIds.has(id));
+    const anchorId = activeOrder[0] ?? selectedInfos[0].habit.id;
+    const anchorInfo = selectedInfos.find(info => info.habit.id === anchorId) ?? selectedInfos[0];
+    const anchorIndex = anchorInfo.index;
+
+    // Non-selected items between first and last stay fuori dal blocco (middle),
+    // items before "first" and after "last" restano fuori come before/after.
     const before = list.slice(0, first);
-    const middle = list.slice(first + 1, last).filter((item) => item.type === 'task' && !selectedIds.has(item.habit.id));
+    const middle = list.slice(first + 1, last).filter(
+      (item) => item.type === 'task' && !selectedIds.has(item.habit.id)
+    );
     const after = list.slice(last + 1);
-    const block: MultiDragBlockItem = { type: 'multiDragBlock', habits: selectedHabits };
+
+    // Internal order of the block:
+    // - anchor stays as reference
+    // - each later selection:
+    //   - if it was above anchor → moves towards the top border of the block
+    //   - if it was below anchor → moves towards the bottom border of the block
+    let blockHabits: Habit[] = [anchorInfo.habit];
+
+    activeOrder.slice(1).forEach(id => {
+      const info = selectedInfos.find(si => si.habit.id === id);
+      if (!info || info.habit.id === anchorInfo.habit.id) return;
+      if (info.index < anchorIndex) {
+        blockHabits = [info.habit, ...blockHabits];
+      } else if (info.index > anchorIndex) {
+        blockHabits = [...blockHabits, info.habit];
+      }
+    });
+
+    // Ensure any selected not in activeOrder (e.g. legacy selections) are still included,
+    // keeping their relative position around the anchor.
+    selectedInfos.forEach(info => {
+      if (blockHabits.some(h => h.id === info.habit.id)) return;
+      if (info.index < anchorIndex) {
+        blockHabits = [info.habit, ...blockHabits];
+      } else if (info.index > anchorIndex) {
+        blockHabits = [...blockHabits, info.habit];
+      }
+    });
+
+    const block: MultiDragBlockItem = { type: 'multiDragBlock', habits: blockHabits };
     return [...before, block, ...middle, ...after];
-  }, []);
+  }, [selectionOrder]);
 
   const handleSectionedDragEnd = useCallback(({ data, from, to }: { data: SectionItem[]; from: number; to: number }) => {
     setDraggingSelectionCount(0);
