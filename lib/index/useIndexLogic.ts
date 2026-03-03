@@ -27,6 +27,7 @@ export function useIndexLogic() {
   const [openMenuHabitId, setOpenMenuHabitId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortModeType>('creation');
   const [sortModeByFolder, setSortModeByFolder] = useState<Record<string, SortModeType>>({});
+  const [oggiCustomOrder, setOggiCustomOrder] = useState<string[] | null>(null);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [activeFolder, setActiveFolder] = useState<string | null>('__oggi__');
   const [createFolderVisible, setCreateFolderVisible] = useState(false);
@@ -60,6 +61,8 @@ export function useIndexLogic() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionOrder, setSelectionOrder] = useState<string[]>([]);
   const selectedIdsAtDragStartRef = useRef<Set<string>>(new Set());
+  const selectionByFolderRef = useRef<Record<string, Set<string>>>({});
+  const prevActiveFolderRef = useRef<string | null>(activeFolder);
   const [draggingSelectionCount, setDraggingSelectionCount] = useState(0);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
   const today = getDay(new Date());
@@ -80,11 +83,33 @@ export function useIndexLogic() {
     setFoldersScrollEnabled(tw > 0 && cw > tw);
   }, []);
 
+  const selectionKeyForFolder = useCallback(
+    (folder: string | null) => (folder === null ? TUTTE_KEY : folder),
+    []
+  );
+
   useEffect(() => {
     return () => {
       if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
     };
   }, []);
+
+  // Persist selection separately per folder so switching tabs (Oggi / Tutte / cartelle custom)
+  // non copia la selezione nella nuova cartella ma la salva su quella precedente.
+  useEffect(() => {
+    const prevKey = selectionKeyForFolder(prevActiveFolderRef.current);
+    selectionByFolderRef.current[prevKey] = new Set(selectedIds);
+    prevActiveFolderRef.current = activeFolder;
+  }, [activeFolder, selectedIds, selectionKeyForFolder]);
+
+  // Quando cambi cartella in modalità selezione, ripristina SOLO la selezione
+  // salvata per quella cartella (altrimenti in "Tutte" vedi tutto deselezionato).
+  useEffect(() => {
+    if (!selectionMode) return;
+    const key = selectionKeyForFolder(activeFolder);
+    const saved = selectionByFolderRef.current[key];
+    setSelectedIds(saved ? new Set(saved) : new Set());
+  }, [activeFolder, selectionMode, selectionKeyForFolder]);
 
   useEffect(() => {
     AsyncStorage.getItem('tasks_custom_folders_v2').then((data) => {
@@ -272,12 +297,29 @@ export function useIndexLogic() {
     }).catch(() => { });
   }, []);
 
+  // Per la tab "Oggi" manteniamo un ordine custom indipendente da "Tutte".
+  useEffect(() => {
+    AsyncStorage.getItem('tasks_oggi_custom_order_v1').then((data) => {
+      if (!data) return;
+      try {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+          setOggiCustomOrder(parsed as string[]);
+        }
+      } catch { }
+    }).catch(() => { });
+  }, []);
+
   useEffect(() => {
     AsyncStorage.setItem('tasks_sort_mode_v1', sortMode).catch(() => { });
   }, [sortMode]);
   useEffect(() => {
     AsyncStorage.setItem('tasks_sort_mode_per_folder_v1', JSON.stringify(sortModeByFolder)).catch(() => { });
   }, [sortModeByFolder]);
+  useEffect(() => {
+    if (!oggiCustomOrder) return;
+    AsyncStorage.setItem('tasks_oggi_custom_order_v1', JSON.stringify(oggiCustomOrder)).catch(() => { });
+  }, [oggiCustomOrder]);
 
   // Reset closing menu state after a short delay
   useEffect(() => {
@@ -502,6 +544,23 @@ export function useIndexLogic() {
     let list: Habit[];
     if (activeFolder === OGGI_TODAY_KEY) {
       list = habitsAppearingToday.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
+
+      // Se in "Oggi" siamo in ordine personalizzato, usiamo l'ordine locale
+      // invece del campo globale `order`, così gli spostamenti qui non
+      // influenzano la vista "Tutte".
+      if (effectiveSortMode === 'custom' && oggiCustomOrder && oggiCustomOrder.length) {
+        const idToIndex = new Map<string, number>();
+        oggiCustomOrder.forEach((id, idx) => idToIndex.set(id, idx));
+        return [...list].sort((a, b) => {
+          const ia = idToIndex.get(a.id);
+          const ib = idToIndex.get(b.id);
+          if (ia != null && ib != null) return ia - ib;
+          if (ia != null) return -1;
+          if (ib != null) return 1;
+          // fallback sul vecchio ordinamento
+          return (a.order ?? 0) - (b.order ?? 0);
+        });
+      }
     } else if (activeFolder) {
       const target = activeFolder.trim();
       list = habits.filter(h => (h.folder ?? '').trim() === target && !singleHabitsHiddenAfterReset.has(h.id));
@@ -509,7 +568,7 @@ export function useIndexLogic() {
       list = habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
     }
     return sortHabitsList(list);
-  }, [habits, habitsAppearingToday, sortMode, today, activeFolder, sortHabitsList, singleHabitsHiddenAfterReset]);
+  }, [habits, habitsAppearingToday, sortMode, today, activeFolder, sortHabitsList, singleHabitsHiddenAfterReset, effectiveSortMode, oggiCustomOrder]);
 
   const sectionedList = useMemo((): SectionItem[] => {
     const isOggiView = activeFolder === OGGI_TODAY_KEY;
@@ -767,6 +826,51 @@ export function useIndexLogic() {
     const draggedItem = snapshot ? snapshot[from] : null;
 
     const hasMultiDragBlock = data.some((x) => x.type === 'multiDragBlock');
+    const isOggiSimpleList = activeFolder === OGGI_TODAY_KEY && !isFolderModeWithSections;
+
+    // Caso speciale: tab "Oggi" (lista semplice, non per cartelle).
+    // Qui vogliamo che lo spostamento delle task sia LOCALE a "Oggi"
+    // e non cambi l'ordine globale usato da "Tutte".
+    if (isOggiSimpleList) {
+      if (from === to && !isMergeHoverAtReleaseRef.current) {
+        if (hasMultiDragBlock) {
+          const taskItems = data.flatMap((x): Habit[] =>
+            x.type === 'task' ? [x.habit] : x.type === 'multiDragBlock' ? x.habits : []
+          );
+          const expanded: SectionItem[] = taskItems.map(h => ({ type: 'task' as const, habit: h }));
+          pendingDisplayRef.current = expanded;
+          setDisplayList(expanded);
+        }
+        commitDragEnd();
+        return;
+      }
+
+      const taskItems = data.flatMap((x): Habit[] =>
+        x.type === 'task' ? [x.habit] : x.type === 'multiDragBlock' ? x.habits : []
+      );
+      const newData: SectionItem[] = taskItems.map(h => ({ type: 'task' as const, habit: h }));
+      pendingDisplayRef.current = newData;
+      setDisplayList(newData);
+      isPostDragRef.current = true;
+
+      // Salviamo l'ordine locale per "Oggi"
+      setOggiCustomOrder(taskItems.map(h => h.id));
+
+      const runUpdates = () => {
+        setSortModeByFolder(prev => ({ ...prev, [OGGI_TODAY_KEY]: 'custom' }));
+        if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+        dragEndTimeoutRef.current = setTimeout(() => {
+          isPostDragRef.current = false;
+          pendingDisplayRef.current = null;
+          preDragSnapshotRef.current = null;
+          commitDragEnd();
+        }, 2000);
+      };
+      if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+      dragEndTimeoutRef.current = setTimeout(runUpdates, 100);
+      return;
+    }
+
     if (from === to && !isMergeHoverAtReleaseRef.current) {
       if (hasMultiDragBlock) {
         const taskItems = data.flatMap((x): Habit[] =>
@@ -811,16 +915,14 @@ export function useIndexLogic() {
       let taskItems = data.flatMap((x): Habit[] => x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : []);
       const selectedSet = selectedIdsAtDragStartRef.current;
 
-      if (selectedSet.size > 1) {
-        const draggedId = draggedItem.type === 'task' ? draggedItem.habit.id : '';
-        const draggedHabit = taskItems.find(h => h.id === draggedId) ?? (draggedItem.type === 'task' ? draggedItem.habit : null);
-        if (draggedHabit) {
-          const selectedInOrder = taskItems.filter(h => selectedSet.has(h.id));
-          const selectedBlock = [draggedHabit, ...selectedInOrder.filter(h => h.id !== draggedHabit.id)];
-          const before = taskItems.slice(0, to).filter(h => !selectedSet.has(h.id));
-          const after = taskItems.slice(to).filter(h => !selectedSet.has(h.id));
-          taskItems = [...before, ...selectedBlock, ...after];
-        }
+      if (selectedSet.size > 1 && draggedItem && draggedItem.type === 'task') {
+        const draggedId = draggedItem.habit.id;
+        const draggedHabit = taskItems.find(h => h.id === draggedId) ?? draggedItem.habit;
+        const selectedInOrder = taskItems.filter(h => selectedSet.has(h.id));
+        const selectedBlock = [draggedHabit, ...selectedInOrder.filter(h => h.id !== draggedHabit.id)];
+        const before = taskItems.slice(0, to).filter(h => !selectedSet.has(h.id));
+        const after = taskItems.slice(to).filter(h => !selectedSet.has(h.id));
+        taskItems = [...before, ...selectedBlock, ...after];
         selectedIdsAtDragStartRef.current = new Set();
       }
 
@@ -1066,6 +1168,7 @@ export function useIndexLogic() {
     selectedIds,
     setSelectedIds,
     draggingSelectionCount,
+    selectionOrder,
     collapsedFolderIds,
     today,
     // computed

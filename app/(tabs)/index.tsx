@@ -7,7 +7,7 @@ import { useIndexLogic } from '@/lib/index/useIndexLogic';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { Alert, InteractionManager, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { FadeInDown, Layout, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
@@ -109,6 +109,7 @@ export default function IndexScreen() {
     toggleSelect,
     recordDragStartSelection,
     buildCollapsedListIfMultiSelect,
+    selectionOrder,
     toggleFolderCollapsed,
     updateFoldersScrollEnabled,
     handleSectionedDragEnd,
@@ -121,15 +122,48 @@ export default function IndexScreen() {
   const isDraggingRef = useRef(false);
   const dragInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.createInteractionHandle> | null>(null);
 
+  // Never collapse the list data. Changing keys triggers the library's reset()
+  // which freezes shared values, breaking multi-drag. Instead, we keep the same
+  // keys and handle the visual collapse in renderItem.
   const listData = useMemo(() => {
-    const base = pendingDisplayRef.current ?? displayList ?? sectionedList;
-    // Collapse when 2+ selected (not only when dragging) so the list doesn't change mid-drag
-    // and the block can be dragged; otherwise changing data in onDragBegin breaks the drag.
-    if (!isFolderModeWithSections && selectedIds.size > 1) {
-      return buildCollapsedListIfMultiSelect(base, selectedIds);
-    }
-    return base;
-  }, [displayList, sectionedList, isFolderModeWithSections, selectedIds, buildCollapsedListIfMultiSelect]);
+    return pendingDisplayRef.current ?? displayList ?? sectionedList;
+  }, [displayList, sectionedList]);
+
+  // Determine the anchor task for multi-drag (first selected in selection order)
+  const multiDragAnchorId = useMemo(() => {
+    if (selectedIds.size <= 1 || isFolderModeWithSections) return null;
+    const active = selectionOrder.filter(id => selectedIds.has(id));
+    return active[0] ?? null;
+  }, [selectedIds, selectionOrder, isFolderModeWithSections]);
+
+  // Collect habits for the anchor block (ordered like buildCollapsedListIfMultiSelect)
+  const multiDragHabits = useMemo(() => {
+    if (!multiDragAnchorId) return [];
+    const allHabits: { id: string; habit: any; index: number }[] = [];
+    listData.forEach((item, i) => {
+      if (item.type === 'task' && selectedIds.has(item.habit.id)) {
+        allHabits.push({ id: item.habit.id, index: i, habit: item.habit });
+      }
+    });
+    const anchorInfo = allHabits.find(h => h.id === multiDragAnchorId);
+    if (!anchorInfo) return [];
+    const anchorIndex = anchorInfo.index;
+    const ordered = selectionOrder.filter(id => selectedIds.has(id));
+    let result = [anchorInfo.habit];
+    ordered.slice(1).forEach(id => {
+      const info = allHabits.find(h => h.id === id);
+      if (!info || info.id === multiDragAnchorId) return;
+      if (info.index < anchorIndex) result = [info.habit, ...result];
+      else result = [...result, info.habit];
+    });
+    // Add any selected not in ordered
+    allHabits.forEach(info => {
+      if (result.some(h => h.id === info.id)) return;
+      if (info.index < anchorIndex) result = [info.habit, ...result];
+      else result = [...result, info.habit];
+    });
+    return result;
+  }, [multiDragAnchorId, selectedIds, selectionOrder, listData]);
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
     if (item.type === 'folderBlock') {
@@ -211,47 +245,47 @@ export default function IndexScreen() {
         </Animated.View>
       );
     }
-    if (item.type === 'multiDragBlock') {
-      return (
-        // No layout={Layout} here: the Reanimated layout animation keeps the native
-        // frame at the old size (83px) during its ~300ms run. Since long-press fires
-        // after only 200ms, drag would start with a stale activeCellSize = 83 instead
-        // of N*83, causing items below the block to not shift. Removing the animation
-        // makes the native frame update immediately, so measurements are correct.
-        <Animated.View>
-        <ScaleDecorator>
-          <View style={styles.multiDragBlockRow}>
-            {item.habits.map((habit) => (
-              <HabitItem
-                key={habit.id}
-                habit={habit}
-                index={0}
-                isDone={Boolean(completedByHabitId[habit.id])}
-                onRename={handleSchedule}
-                onSchedule={handleSchedule}
-                onColor={handleSchedule}
-                shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
-                onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                selectionMode={selectionMode}
-                isSelected={selectedIds.has(habit.id)}
-                onToggleSelect={toggleSelect}
-                onLongPress={drag}
-                onMenuOpen={handleMenuOpen}
-                onMenuClose={handleMenuClose}
-              />
-            ))}
-          </View>
-        </ScaleDecorator>
-        </Animated.View>
-      );
-    }
     if (item.type === 'task') {
-      const isMultiDragPlaceholder =
-        draggingSelectionCount > 1 && selectedIds.has(item.habit.id);
-      if (isMultiDragPlaceholder) {
+      const isSelected = selectedIds.has(item.habit.id);
+      const isAnchor = item.habit.id === multiDragAnchorId;
+      const isNonAnchorSelected = isSelected && multiDragAnchorId && !isAnchor;
+
+      // Anchor task: render the multi-drag block (all selected habits stacked)
+      if (isAnchor && multiDragHabits.length > 1) {
+        return (
+          <Animated.View>
+          <ScaleDecorator>
+            <View style={styles.multiDragBlockRow}>
+              {multiDragHabits.map((habit) => (
+                <HabitItem
+                  key={habit.id}
+                  habit={habit}
+                  index={0}
+                  isDone={Boolean(completedByHabitId[habit.id])}
+                  onRename={handleSchedule}
+                  onSchedule={handleSchedule}
+                  onColor={handleSchedule}
+                  shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
+                  onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIds.has(habit.id)}
+                  onToggleSelect={toggleSelect}
+                  onLongPress={drag}
+                  onMenuOpen={handleMenuOpen}
+                  onMenuClose={handleMenuClose}
+                />
+              ))}
+            </View>
+          </ScaleDecorator>
+          </Animated.View>
+        );
+      }
+
+      // Non-anchor selected tasks: render at 0 height (hidden, not draggable)
+      if (isNonAnchorSelected) {
         return (
           <ScaleDecorator>
-            <View style={styles.multiDragPlaceholder} />
+            <View style={{ height: 0, overflow: 'hidden' }} />
           </ScaleDecorator>
         );
       }
@@ -291,7 +325,7 @@ export default function IndexScreen() {
       );
     }
     return null;
-  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, handleMenuOpen, handleMenuClose, isFolderModeWithSections, selectionMode, selectedIds, draggingSelectionCount, toggleSelect, isMergeHoverSV, collapsedFolderIds, toggleFolderCollapsed]);
+  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, handleMenuOpen, handleMenuClose, isFolderModeWithSections, selectionMode, selectedIds, draggingSelectionCount, toggleSelect, isMergeHoverSV, collapsedFolderIds, toggleFolderCollapsed, multiDragAnchorId, multiDragHabits]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -537,29 +571,16 @@ export default function IndexScreen() {
             animationConfig={{ damping: 20, stiffness: 200 }}
             onAnimValInit={(v) => setAnimVals(v)}
             // @ts-ignore — patched prop: override cell measurements inside drag()
-            onCellMeasureOverride={(index: number, _key: string, cellData: any, cellDataMap: Map<string, any>) => {
+            onCellMeasureOverride={(index: number, _key: string, cellData: any, _cellDataMap: Map<string, any>) => {
+              // When the anchor task renders the multi-drag block, the library
+              // may have a stale single-task measurement (83px). Override with
+              // the actual block size. The cell's offset from cellDataRef is
+              // still correct since the key didn't change.
               const item = listData[index];
-              if (item?.type !== 'multiDragBlock') return null;
-              const size = item.habits.length * 83;
-              // Compute offset: use measurement of previous cell if available
-              let offset = cellData?.measurements?.offset;
-              if (offset == null || offset < 0) {
-                // Try to get offset from the cell just before this one
-                for (let i = index - 1; i >= 0; i--) {
-                  const prevItem = listData[i];
-                  const prevKey =
-                    prevItem.type === 'folderBlock' ? `folder-${prevItem.folderId}` :
-                    prevItem.type === 'multiDragBlock' ? `task-${prevItem.habits[0].id}` :
-                    `task-${prevItem.habit.id}`;
-                  const prevData = cellDataMap.get(prevKey);
-                  if (prevData?.measurements?.offset >= 0) {
-                    offset = prevData.measurements.offset + prevData.measurements.size;
-                    break;
-                  }
-                }
-                if (offset == null || offset < 0) offset = index * 83;
+              if (item?.type === 'task' && item.habit.id === multiDragAnchorId && multiDragHabits.length > 1) {
+                return { size: multiDragHabits.length * 83 };
               }
-              return { size, offset };
+              return null;
             }}
             onDragBegin={(idx) => {
               isDraggingRef.current = true;
