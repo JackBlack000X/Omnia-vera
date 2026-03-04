@@ -301,8 +301,8 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
           style={[
             styles.check,
             isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
-            isDone && styles.checkDone,
-            selectionMode && isSelected && !isDone && styles.checkSelected,
+            !selectionMode && isDone && styles.checkDone,
+            selectionMode && isSelected && styles.checkSelected,
             activeTheme === 'futuristic' && {
               borderRadius: 0,
               aspectRatio: 1,
@@ -321,7 +321,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
               <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
             </View>
           )}
-          {isDone && (
+          {!selectionMode && isDone && (
             <Ionicons
               name="checkmark"
               size={16}

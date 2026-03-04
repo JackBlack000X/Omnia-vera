@@ -60,6 +60,7 @@ export function useIndexLogic() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionOrder, setSelectionOrder] = useState<string[]>([]);
+  const selectionOrderRef = useRef<string[]>([]);
   const selectedIdsAtDragStartRef = useRef<Set<string>>(new Set());
   const selectionByFolderRef = useRef<Record<string, Set<string>>>({});
   const prevActiveFolderRef = useRef<string | null>(activeFolder);
@@ -110,6 +111,22 @@ export function useIndexLogic() {
     const saved = selectionByFolderRef.current[key];
     setSelectedIds(saved ? new Set(saved) : new Set());
   }, [activeFolder, selectionMode, selectionKeyForFolder]);
+
+  // Quando esci dalla modalità selezione ("annullo"), azzera completamente
+  // lo stato di selezione corrente e salvata per la cartella attiva, così
+  // la prossima volta che riattivi la selezione parti da zero e l'anchor
+  // viene calcolato solo in base alle nuove scelte.
+  useEffect(() => {
+    selectionOrderRef.current = selectionOrder;
+  }, [selectionOrder]);
+
+  useEffect(() => {
+    if (selectionMode) return;
+    setSelectionOrder([]);
+    selectedIdsAtDragStartRef.current = new Set();
+    const key = selectionKeyForFolder(activeFolder);
+    selectionByFolderRef.current[key] = new Set();
+  }, [selectionMode, activeFolder, selectionKeyForFolder]);
 
   useEffect(() => {
     AsyncStorage.getItem('tasks_custom_folders_v2').then((data) => {
@@ -845,9 +862,47 @@ export function useIndexLogic() {
         return;
       }
 
-      const taskItems = data.flatMap((x): Habit[] =>
+      let taskItems = data.flatMap((x): Habit[] =>
         x.type === 'task' ? [x.habit] : x.type === 'multiDragBlock' ? x.habits : []
       );
+
+      // Ricostruiamo il blocco multi-drag come nel path non-Oggi: la libreria
+      // sposta solo la cella ancora, le altre task selezionate restano alle
+      // loro posizioni originali in data. Usiamo lo snapshot pre-drag per
+      // determinare l'ordine interno del blocco e poi inseriamo tutto a `to`.
+      const selectedSet = selectedIdsAtDragStartRef.current;
+      if (selectedSet.size > 1 && draggedItem && draggedItem.type === 'task') {
+        const baseList: Habit[] = (snapshot ?? data).flatMap((x): Habit[] =>
+          x.type === 'task' ? [x.habit] : []
+        );
+        const selectedInfos: { index: number; habit: Habit }[] = [];
+        baseList.forEach((h, index) => {
+          if (selectedSet.has(h.id)) selectedInfos.push({ index, habit: h });
+        });
+        if (selectedInfos.length > 0) {
+          const activeOrder = selectionOrderRef.current.filter(id => selectedSet.has(id));
+          const anchorId = activeOrder[0] ?? selectedInfos[0].habit.id;
+          const anchorInfo = selectedInfos.find(info => info.habit.id === anchorId) ?? selectedInfos[0];
+          const anchorIndex = anchorInfo.index;
+          let blockHabits: Habit[] = [anchorInfo.habit];
+          activeOrder.slice(1).forEach(id => {
+            const info = selectedInfos.find(si => si.habit.id === id);
+            if (!info || info.habit.id === anchorInfo.habit.id) return;
+            if (info.index < anchorIndex) blockHabits = [info.habit, ...blockHabits];
+            else if (info.index > anchorIndex) blockHabits = [...blockHabits, info.habit];
+          });
+          selectedInfos.forEach(info => {
+            if (blockHabits.some(h => h.id === info.habit.id)) return;
+            if (info.index < anchorIndex) blockHabits = [info.habit, ...blockHabits];
+            else if (info.index > anchorIndex) blockHabits = [...blockHabits, info.habit];
+          });
+          const before = taskItems.slice(0, to).filter(h => !selectedSet.has(h.id));
+          const after = taskItems.slice(to).filter(h => !selectedSet.has(h.id));
+          taskItems = [...before, ...blockHabits, ...after];
+          selectedIdsAtDragStartRef.current = new Set();
+        }
+      }
+
       const newData: SectionItem[] = taskItems.map(h => ({ type: 'task' as const, habit: h }));
       pendingDisplayRef.current = newData;
       setDisplayList(newData);
@@ -912,18 +967,60 @@ export function useIndexLogic() {
 
     if (!draggedItem || draggedItem.type !== 'folderBlock') {
       // It's a task drag (no collapsed block)
-      let taskItems = data.flatMap((x): Habit[] => x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : []);
+      let taskItems = data.flatMap((x): Habit[] =>
+        x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : []
+      );
       const selectedSet = selectedIdsAtDragStartRef.current;
 
-      if (selectedSet.size > 1 && draggedItem && draggedItem.type === 'task') {
-        const draggedId = draggedItem.habit.id;
-        const draggedHabit = taskItems.find(h => h.id === draggedId) ?? draggedItem.habit;
-        const selectedInOrder = taskItems.filter(h => selectedSet.has(h.id));
-        const selectedBlock = [draggedHabit, ...selectedInOrder.filter(h => h.id !== draggedHabit.id)];
-        const before = taskItems.slice(0, to).filter(h => !selectedSet.has(h.id));
-        const after = taskItems.slice(to).filter(h => !selectedSet.has(h.id));
-        taskItems = [...before, ...selectedBlock, ...after];
-        selectedIdsAtDragStartRef.current = new Set();
+      if (selectedSet.size > 1 && (!draggedItem || draggedItem.type === 'task')) {
+        // Ricostruiamo il blocco multi‑drag usando la disposizione
+        // PRIMA del drag (snapshot), così l'ordine interno del blocco
+        // dopo il drop rimane esattamente quello che avevi in selezione.
+        const baseList: Habit[] = (snapshot ?? data).flatMap((x): Habit[] =>
+          x.type === 'folderBlock' ? x.tasks : x.type === 'task' ? [x.habit] : []
+        );
+
+        const selectedInfos: { index: number; habit: Habit }[] = [];
+        baseList.forEach((h, index) => {
+          if (selectedSet.has(h.id)) {
+            selectedInfos.push({ index, habit: h });
+          }
+        });
+
+        if (selectedInfos.length > 0) {
+          const activeOrder = selectionOrderRef.current.filter(id => selectedSet.has(id));
+          const anchorId = activeOrder[0] ?? selectedInfos[0].habit.id;
+          const anchorInfo = selectedInfos.find(info => info.habit.id === anchorId) ?? selectedInfos[0];
+          const anchorIndex = anchorInfo.index;
+
+          let blockHabits: Habit[] = [anchorInfo.habit];
+
+          activeOrder.slice(1).forEach(id => {
+            const info = selectedInfos.find(si => si.habit.id === id);
+            if (!info || info.habit.id === anchorInfo.habit.id) return;
+            if (info.index < anchorIndex) {
+              blockHabits = [info.habit, ...blockHabits];
+            } else if (info.index > anchorIndex) {
+              blockHabits = [...blockHabits, info.habit];
+            }
+          });
+
+          // Qualsiasi selezionata non presente in activeOrder viene comunque
+          // inclusa, mantenendo lato sopra/sotto rispetto all'anchor.
+          selectedInfos.forEach(info => {
+            if (blockHabits.some(h => h.id === info.habit.id)) return;
+            if (info.index < anchorIndex) {
+              blockHabits = [info.habit, ...blockHabits];
+            } else if (info.index > anchorIndex) {
+              blockHabits = [...blockHabits, info.habit];
+            }
+          });
+
+          const before = taskItems.slice(0, to).filter(h => !selectedSet.has(h.id));
+          const after = taskItems.slice(to).filter(h => !selectedSet.has(h.id));
+          taskItems = [...before, ...blockHabits, ...after];
+          selectedIdsAtDragStartRef.current = new Set();
+        }
       }
 
       const newData: SectionItem[] = taskItems.map(h => ({ type: 'task' as const, habit: h }));

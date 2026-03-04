@@ -16,39 +16,6 @@ const STREAK_EDGE_CLIP = DAY_BORDER_RADIUS - 1;
 
 type CompletionLevel = 'perfect' | 'good' | 'medium' | 'low';
 
-const TEST_STREAK_DATES = [
-  '2025-11-01',
-  '2025-11-02',
-  '2025-11-03',
-  '2025-11-04',
-  '2025-11-05',
-  '2025-11-06',
-  '2025-11-07',
-  '2025-11-08',
-  '2025-11-09',
-  '2025-11-10',
-  '2025-11-11',
-  '2025-11-12',
-  '2025-11-13',
-  '2025-11-14',
-  '2025-11-15',
-  '2025-11-16',
-  '2025-11-17',
-  '2025-11-18',
-  '2025-11-19',
-  '2025-11-20',
-  '2025-11-21',
-  '2025-11-22',
-  '2025-11-23',
-  '2025-11-24',
-  '2025-11-25',
-  '2025-11-26',
-  '2025-11-27',
-  '2025-11-28',
-  '2025-11-29',
-  '2025-11-30',
-];
-
 function getCompletionLevel(completed: number, total: number): CompletionLevel {
   if (total === 0) return 'low';
   const pct = (completed / total) * 100;
@@ -288,22 +255,6 @@ export default function CalendarScreen() {
     () => getDay(new Date()),
     [getDay]
   );
-
-  React.useEffect(() => {
-    if (habits.length === 0) return;
-    setTestCompletions(prev => {
-      let changed = false;
-      const next = { ...prev };
-      TEST_STREAK_DATES.forEach(date => {
-        const existing = next[date];
-        if (!existing || existing.completed !== habits.length || existing.total !== habits.length) {
-          next[date] = { completed: habits.length, total: habits.length };
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [habits.length]);
 
   const allMonths = useMemo((): MonthData[] => {
     const months: MonthData[] = [];

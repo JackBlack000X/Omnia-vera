@@ -564,7 +564,10 @@ export default function IndexScreen() {
             containerStyle={styles.dragListContainer}
             showsVerticalScrollIndicator={false}
             dragItemOverflow
-            autoscrollThreshold={0}
+            autoscrollThreshold={83}
+            autoscrollSpeed={100}
+            // @ts-ignore — patched prop for separate top threshold
+            autoscrollTopThreshold={1}
             windowSize={60}
             initialNumToRender={12}
             removeClippedSubviews={false}
