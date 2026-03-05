@@ -1,120 +1,299 @@
+diff --git a/node_modules/react-native-draggable-flatlist/lib/commonjs/components/DraggableFlatList.js b/node_modules/react-native-draggable-flatlist/lib/commonjs/components/DraggableFlatList.js
+index 94b6623..ec3df84 100644
+--- a/node_modules/react-native-draggable-flatlist/lib/commonjs/components/DraggableFlatList.js
++++ b/node_modules/react-native-draggable-flatlist/lib/commonjs/components/DraggableFlatList.js
+@@ -1,2 +1,2 @@
+-var _interopRequireDefault=require("@babel/runtime/helpers/interopRequireDefault");Object.defineProperty(exports,"__esModule",{value:true});exports.default=void 0;var _extends2=_interopRequireDefault(require("@babel/runtime/helpers/extends"));var _toConsumableArray2=_interopRequireDefault(require("@babel/runtime/helpers/toConsumableArray"));var _slicedToArray2=_interopRequireDefault(require("@babel/runtime/helpers/slicedToArray"));var _react=_interopRequireWildcard(require("react"));var _reactNative=require("react-native");var _reactNativeGestureHandler=require("react-native-gesture-handler");var _reactNativeReanimated=_interopRequireWildcard(require("react-native-reanimated"));var _CellRendererComponent=_interopRequireDefault(require("./CellRendererComponent"));var _constants=require("../constants");var _PlaceholderItem=_interopRequireDefault(require("./PlaceholderItem"));var _RowItem=_interopRequireDefault(require("./RowItem"));var _propsContext=_interopRequireDefault(require("../context/propsContext"));var _animatedValueContext=_interopRequireWildcard(require("../context/animatedValueContext"));var _refContext=_interopRequireWildcard(require("../context/refContext"));var _draggableFlatListContext=_interopRequireDefault(require("../context/draggableFlatListContext"));var _useAutoScroll=require("../hooks/useAutoScroll");var _useStableCallback=require("../hooks/useStableCallback");var _ScrollOffsetListener=_interopRequireDefault(require("./ScrollOffsetListener"));var _utils=require("../utils");var _jsxFileName="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx";function _getRequireWildcardCache(nodeInterop){if(typeof WeakMap!=="function")return null;var cacheBabelInterop=new WeakMap();var cacheNodeInterop=new WeakMap();return(_getRequireWildcardCache=function _getRequireWildcardCache(nodeInterop){return nodeInterop?cacheNodeInterop:cacheBabelInterop;})(nodeInterop);}function _interopRequireWildcard(obj,nodeInterop){if(!nodeInterop&&obj&&obj.__esModule){return obj;}if(obj===null||typeof obj!=="object"&&typeof obj!=="function"){return{default:obj};}var cache=_getRequireWildcardCache(nodeInterop);if(cache&&cache.has(obj)){return cache.get(obj);}var newObj={};var hasPropertyDescriptor=Object.defineProperty&&Object.getOwnPropertyDescriptor;for(var key in obj){if(key!=="default"&&Object.prototype.hasOwnProperty.call(obj,key)){var desc=hasPropertyDescriptor?Object.getOwnPropertyDescriptor(obj,key):null;if(desc&&(desc.get||desc.set)){Object.defineProperty(newObj,key,desc);}else{newObj[key]=obj[key];}}}newObj.default=obj;if(cache){cache.set(obj,newObj);}return newObj;}var AnimatedFlatList=_reactNativeReanimated.default.createAnimatedComponent(_reactNativeGestureHandler.FlatList);function DraggableFlatListInner(props){var _this=this;var _useRefs=(0,_refContext.useRefs)(),cellDataRef=_useRefs.cellDataRef,containerRef=_useRefs.containerRef,flatlistRef=_useRefs.flatlistRef,keyToIndexRef=_useRefs.keyToIndexRef,propsRef=_useRefs.propsRef,animationConfigRef=_useRefs.animationConfigRef;var _useAnimatedValues=(0,_animatedValueContext.useAnimatedValues)(),activeCellOffset=_useAnimatedValues.activeCellOffset,activeCellSize=_useAnimatedValues.activeCellSize,activeIndexAnim=_useAnimatedValues.activeIndexAnim,containerSize=_useAnimatedValues.containerSize,scrollOffset=_useAnimatedValues.scrollOffset,scrollViewSize=_useAnimatedValues.scrollViewSize,spacerIndexAnim=_useAnimatedValues.spacerIndexAnim,horizontalAnim=_useAnimatedValues.horizontalAnim,placeholderOffset=_useAnimatedValues.placeholderOffset,touchTranslate=_useAnimatedValues.touchTranslate,autoScrollDistance=_useAnimatedValues.autoScrollDistance,panGestureState=_useAnimatedValues.panGestureState,isTouchActiveNative=_useAnimatedValues.isTouchActiveNative,viewableIndexMin=_useAnimatedValues.viewableIndexMin,viewableIndexMax=_useAnimatedValues.viewableIndexMax,disabled=_useAnimatedValues.disabled;var reset=(0,_useStableCallback.useStableCallback)(function(){activeIndexAnim.value=-1;spacerIndexAnim.value=-1;touchTranslate.value=0;activeCellSize.value=-1;activeCellOffset.value=-1;setActiveKey(null);});var _props$dragHitSlop=props.dragHitSlop,dragHitSlop=_props$dragHitSlop===void 0?_constants.DEFAULT_PROPS.dragHitSlop:_props$dragHitSlop,_props$scrollEnabled=props.scrollEnabled,scrollEnabled=_props$scrollEnabled===void 0?_constants.DEFAULT_PROPS.scrollEnabled:_props$scrollEnabled,_props$activationDist=props.activationDistance,activationDistanceProp=_props$activationDist===void 0?_constants.DEFAULT_PROPS.activationDistance:_props$activationDist;var _useState=(0,_react.useState)(null),_useState2=(0,_slicedToArray2.default)(_useState,2),activeKey=_useState2[0],setActiveKey=_useState2[1];var _useState3=(0,_react.useState)(!propsRef.current.enableLayoutAnimationExperimental),_useState4=(0,_slicedToArray2.default)(_useState3,2),layoutAnimationDisabled=_useState4[0],setLayoutAnimationDisabled=_useState4[1];var keyExtractor=(0,_useStableCallback.useStableCallback)(function(item,index){if(!props.keyExtractor){throw new Error("You must provide a keyExtractor to DraggableFlatList");}return props.keyExtractor(item,index);});var dataRef=(0,_react.useRef)(props.data);var dataHasChanged=dataRef.current.map(keyExtractor).join("")!==props.data.map(keyExtractor).join("");dataRef.current=props.data;if(dataHasChanged){activeKey=null;_reactNative.InteractionManager.runAfterInteractions(function(){reset();});}(0,_react.useEffect)(function(){if(!propsRef.current.enableLayoutAnimationExperimental)return;if(activeKey){setLayoutAnimationDisabled(true);}else{setTimeout(function(){setLayoutAnimationDisabled(false);},100);}},[activeKey]);(0,_react.useLayoutEffect)(function(){props.data.forEach(function(d,i){var key=keyExtractor(d,i);keyToIndexRef.current.set(key,i);});},[props.data,keyExtractor,keyToIndexRef]);var drag=(0,_useStableCallback.useStableCallback)(function(activeKey){if(disabled.value)return;var index=keyToIndexRef.current.get(activeKey);var cellData=cellDataRef.current.get(activeKey);if(cellData){activeCellOffset.value=cellData.measurements.offset;activeCellSize.value=cellData.measurements.size;}var onDragBegin=propsRef.current.onDragBegin;if(index!==undefined){spacerIndexAnim.value=index;activeIndexAnim.value=index;setActiveKey(activeKey);onDragBegin==null?void 0:onDragBegin(index);}});var onContainerLayout=function onContainerLayout(_ref){var layout=_ref.nativeEvent.layout;var width=layout.width,height=layout.height;containerSize.value=props.horizontal?width:height;props.onContainerLayout==null?void 0:props.onContainerLayout({layout:layout,containerRef:containerRef});};var onListContentSizeChange=function onListContentSizeChange(w,h){scrollViewSize.value=props.horizontal?w:h;props.onContentSizeChange==null?void 0:props.onContentSizeChange(w,h);};var onContainerTouchStart=function onContainerTouchStart(){if(!disabled.value){isTouchActiveNative.value=true;}return false;};var onContainerTouchEnd=function onContainerTouchEnd(){isTouchActiveNative.value=false;};var extraData=(0,_react.useMemo)(function(){return{activeKey:activeKey,extraData:props.extraData};},[activeKey,props.extraData]);var renderItem=(0,_react.useCallback)(function(_ref2){var item=_ref2.item,index=_ref2.index;var key=keyExtractor(item,index);if(index!==keyToIndexRef.current.get(key)){keyToIndexRef.current.set(key,index);}return _react.default.createElement(_RowItem.default,{item:item,itemKey:key,renderItem:props.renderItem,drag:drag,extraData:props.extraData,__self:_this,__source:{fileName:_jsxFileName,lineNumber:205,columnNumber:9}});},[props.renderItem,props.extraData,drag,keyExtractor]);var onRelease=(0,_useStableCallback.useStableCallback)(function(index){props.onRelease==null?void 0:props.onRelease(index);});var onDragEnd=(0,_useStableCallback.useStableCallback)(function(_ref3){var from=_ref3.from,to=_ref3.to;var onDragEnd=props.onDragEnd,data=props.data;var newData=(0,_toConsumableArray2.default)(data);if(from!==to){newData.splice(from,1);newData.splice(to,0,data[from]);}onDragEnd==null?void 0:onDragEnd({from:from,to:to,data:newData});setActiveKey(null);});var onPlaceholderIndexChange=(0,_useStableCallback.useStableCallback)(function(index){props.onPlaceholderIndexChange==null?void 0:props.onPlaceholderIndexChange(index);});(0,_reactNativeReanimated.useAnimatedReaction)(function(){var _f=function _f(){return isTouchActiveNative.value;};_f._closure={isTouchActiveNative:isTouchActiveNative};_f.asString="function _f(){const{isTouchActiveNative}=jsThis._closure;{return isTouchActiveNative.value;}}";_f.__workletHash=14702024657843;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (243:4)";return _f;}(),function(){var _f=function _f(cur,prev){if(cur!==prev&&!cur){var hasMoved=!!touchTranslate.value;if(!hasMoved&&activeIndexAnim.value>=0&&!disabled.value){(0,_reactNativeReanimated.runOnJS)(onRelease)(activeIndexAnim.value);(0,_reactNativeReanimated.runOnJS)(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});}}};_f._closure={touchTranslate:touchTranslate,activeIndexAnim:activeIndexAnim,disabled:disabled,runOnJS:_reactNativeReanimated.runOnJS,onRelease:onRelease,onDragEnd:onDragEnd,spacerIndexAnim:spacerIndexAnim};_f.asString="function _f(cur,prev){const{touchTranslate,activeIndexAnim,disabled,runOnJS,onRelease,onDragEnd,spacerIndexAnim}=jsThis._closure;{if(cur!==prev&&!cur){const hasMoved=!!touchTranslate.value;if(!hasMoved&&activeIndexAnim.value>=0&&!disabled.value){runOnJS(onRelease)(activeIndexAnim.value);runOnJS(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});}}}}";_f.__workletHash=5951241873481;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (246:4)";return _f;}(),[isTouchActiveNative,onDragEnd,onRelease]);(0,_reactNativeReanimated.useAnimatedReaction)(function(){var _f=function _f(){return spacerIndexAnim.value;};_f._closure={spacerIndexAnim:spacerIndexAnim};_f.asString="function _f(){const{spacerIndexAnim}=jsThis._closure;{return spacerIndexAnim.value;}}";_f.__workletHash=2960108028947;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (262:4)";return _f;}(),function(){var _f=function _f(cur,prev){if(prev!==null&&cur!==prev&&cur>=0&&prev>=0){(0,_reactNativeReanimated.runOnJS)(onPlaceholderIndexChange)(cur);}};_f._closure={runOnJS:_reactNativeReanimated.runOnJS,onPlaceholderIndexChange:onPlaceholderIndexChange};_f.asString="function _f(cur,prev){const{runOnJS,onPlaceholderIndexChange}=jsThis._closure;{if(prev!==null&&cur!==prev&&cur>=0&&prev>=0){runOnJS(onPlaceholderIndexChange)(cur);}}}";_f.__workletHash=16965253726735;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (265:4)";return _f;}(),[spacerIndexAnim]);var gestureDisabled=(0,_reactNativeReanimated.useSharedValue)(false);var panGesture=_reactNativeGestureHandler.Gesture.Pan().onBegin(function(){var _f=function _f(evt){gestureDisabled.value=disabled.value;if(gestureDisabled.value)return;panGestureState.value=evt.state;};_f._closure={gestureDisabled:gestureDisabled,disabled:disabled,panGestureState:panGestureState};_f.asString="function _f(evt){const{gestureDisabled,disabled,panGestureState}=jsThis._closure;{gestureDisabled.value=disabled.value;if(gestureDisabled.value)return;panGestureState.value=evt.state;}}";_f.__workletHash=17574034116918;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (276:13)";return _f;}()).onUpdate(function(){var _f=function _f(evt){if(gestureDisabled.value)return;panGestureState.value=evt.state;var translation=horizontalAnim.value?evt.translationX:evt.translationY;touchTranslate.value=translation;};_f._closure={gestureDisabled:gestureDisabled,panGestureState:panGestureState,horizontalAnim:horizontalAnim,touchTranslate:touchTranslate};_f.asString="function _f(evt){const{gestureDisabled,panGestureState,horizontalAnim,touchTranslate}=jsThis._closure;{if(gestureDisabled.value)return;panGestureState.value=evt.state;const translation=horizontalAnim.value?evt.translationX:evt.translationY;touchTranslate.value=translation;}}";_f.__workletHash=5455568984874;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (281:14)";return _f;}()).onEnd(function(){var _f=function _f(evt){if(gestureDisabled.value)return;isTouchActiveNative.value=false;var translation=horizontalAnim.value?evt.translationX:evt.translationY;touchTranslate.value=translation+autoScrollDistance.value;panGestureState.value=evt.state;if(activeIndexAnim.value===-1||disabled.value)return;disabled.value=true;(0,_reactNativeReanimated.runOnJS)(onRelease)(activeIndexAnim.value);var springTo=placeholderOffset.value-activeCellOffset.value;touchTranslate.value=(0,_reactNativeReanimated.withSpring)(springTo,animationConfigRef.value,function(){var _f=function _f(){(0,_reactNativeReanimated.runOnJS)(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});disabled.value=false;};_f._closure={runOnJS:_reactNativeReanimated.runOnJS,onDragEnd:onDragEnd,activeIndexAnim:activeIndexAnim,spacerIndexAnim:spacerIndexAnim,disabled:disabled};_f.asString="function _f(){const{runOnJS,onDragEnd,activeIndexAnim,spacerIndexAnim,disabled}=jsThis._closure;{runOnJS(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});disabled.value=false;}}";_f.__workletHash=1618704508901;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (308:8)";return _f;}());};_f._closure={gestureDisabled:gestureDisabled,isTouchActiveNative:isTouchActiveNative,horizontalAnim:horizontalAnim,touchTranslate:touchTranslate,autoScrollDistance:autoScrollDistance,panGestureState:panGestureState,activeIndexAnim:activeIndexAnim,disabled:disabled,runOnJS:_reactNativeReanimated.runOnJS,onRelease:onRelease,placeholderOffset:placeholderOffset,activeCellOffset:activeCellOffset,withSpring:_reactNativeReanimated.withSpring,animationConfigRef:animationConfigRef,onDragEnd:onDragEnd,spacerIndexAnim:spacerIndexAnim};_f.asString="function _f(evt){const{gestureDisabled,isTouchActiveNative,horizontalAnim,touchTranslate,autoScrollDistance,panGestureState,activeIndexAnim,disabled,runOnJS,onRelease,placeholderOffset,activeCellOffset,withSpring,animationConfigRef,onDragEnd,spacerIndexAnim}=jsThis._closure;{if(gestureDisabled.value)return;isTouchActiveNative.value=false;const translation=horizontalAnim.value?evt.translationX:evt.translationY;touchTranslate.value=translation+autoScrollDistance.value;panGestureState.value=evt.state;if(activeIndexAnim.value===-1||disabled.value)return;disabled.value=true;runOnJS(onRelease)(activeIndexAnim.value);const springTo=placeholderOffset.value-activeCellOffset.value;touchTranslate.value=withSpring(springTo,animationConfigRef.value,function(){runOnJS(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});disabled.value=false;});}}";_f.__workletHash=7842863214419;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (289:11)";return _f;}()).onTouchesDown(function(){var _f=function _f(){(0,_reactNativeReanimated.runOnJS)(onContainerTouchStart)();};_f._closure={runOnJS:_reactNativeReanimated.runOnJS,onContainerTouchStart:onContainerTouchStart};_f.asString="function _f(){const{runOnJS,onContainerTouchStart}=jsThis._closure;{runOnJS(onContainerTouchStart)();}}";_f.__workletHash=4756906064016;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (317:19)";return _f;}()).onTouchesUp(function(){var _f=function _f(){(0,_reactNativeReanimated.runOnJS)(onContainerTouchEnd)();};_f._closure={runOnJS:_reactNativeReanimated.runOnJS,onContainerTouchEnd:onContainerTouchEnd};_f.asString="function _f(){const{runOnJS,onContainerTouchEnd}=jsThis._closure;{runOnJS(onContainerTouchEnd)();}}";_f.__workletHash=9596402198608;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (320:17)";return _f;}());if(dragHitSlop)panGesture.hitSlop(dragHitSlop);if(activationDistanceProp){var activeOffset=[-activationDistanceProp,activationDistanceProp];if(props.horizontal){panGesture.activeOffsetX(activeOffset);}else{panGesture.activeOffsetY(activeOffset);}}var onScroll=(0,_useStableCallback.useStableCallback)(function(scrollOffset){props.onScrollOffsetChange==null?void 0:props.onScrollOffsetChange(scrollOffset);});var scrollHandler=(0,_reactNativeReanimated.useAnimatedScrollHandler)({onScroll:function(){var _f=function _f(evt){scrollOffset.value=horizontalAnim.value?evt.contentOffset.x:evt.contentOffset.y;(0,_reactNativeReanimated.runOnJS)(onScroll)(scrollOffset.value);};_f._closure={scrollOffset:scrollOffset,horizontalAnim:horizontalAnim,runOnJS:_reactNativeReanimated.runOnJS,onScroll:onScroll};_f.asString="function _f(evt){const{scrollOffset,horizontalAnim,runOnJS,onScroll}=jsThis._closure;{scrollOffset.value=horizontalAnim.value?evt.contentOffset.x:evt.contentOffset.y;runOnJS(onScroll)(scrollOffset.value);}}";_f.__workletHash=5653789960368;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (342:16)";return _f;}()},[horizontalAnim]);(0,_useAutoScroll.useAutoScroll)();var onViewableItemsChanged=(0,_useStableCallback.useStableCallback)(function(info){var viewableIndices=info.viewableItems.filter(function(item){return item.isViewable;}).map(function(item){return item.index;}).filter(function(index){return typeof index==="number";});var min=Math.min.apply(Math,(0,_toConsumableArray2.default)(viewableIndices));var max=Math.max.apply(Math,(0,_toConsumableArray2.default)(viewableIndices));viewableIndexMin.value=min;viewableIndexMax.value=max;props.onViewableItemsChanged==null?void 0:props.onViewableItemsChanged(info);});return _react.default.createElement(_draggableFlatListContext.default,{activeKey:activeKey,keyExtractor:keyExtractor,horizontal:!!props.horizontal,layoutAnimationDisabled:layoutAnimationDisabled,__self:this,__source:{fileName:_jsxFileName,lineNumber:370,columnNumber:5}},_react.default.createElement(_reactNativeGestureHandler.GestureDetector,{gesture:panGesture,__self:this,__source:{fileName:_jsxFileName,lineNumber:376,columnNumber:7}},_react.default.createElement(_reactNativeReanimated.default.View,{style:props.containerStyle,ref:containerRef,onLayout:onContainerLayout,__self:this,__source:{fileName:_jsxFileName,lineNumber:377,columnNumber:9}},props.renderPlaceholder&&_react.default.createElement(_PlaceholderItem.default,{renderPlaceholder:props.renderPlaceholder,__self:this,__source:{fileName:_jsxFileName,lineNumber:383,columnNumber:13}}),_react.default.createElement(AnimatedFlatList,(0,_extends2.default)({},props,{data:props.data,onViewableItemsChanged:onViewableItemsChanged,CellRendererComponent:_CellRendererComponent.default,ref:flatlistRef,onContentSizeChange:onListContentSizeChange,scrollEnabled:!activeKey&&scrollEnabled,renderItem:renderItem,extraData:extraData,keyExtractor:keyExtractor,onScroll:scrollHandler,scrollEventThrottle:16,simultaneousHandlers:props.simultaneousHandlers,removeClippedSubviews:false,__self:this,__source:{fileName:_jsxFileName,lineNumber:385,columnNumber:11}})),!!props.onScrollOffsetChange&&_react.default.createElement(_ScrollOffsetListener.default,{onScrollOffsetChange:props.onScrollOffsetChange,scrollOffset:scrollOffset,__self:this,__source:{fileName:_jsxFileName,lineNumber:402,columnNumber:13}}))));}function DraggableFlatList(props,ref){return _react.default.createElement(_propsContext.default,(0,_extends2.default)({},props,{__self:this,__source:{fileName:_jsxFileName,lineNumber:418,columnNumber:5}}),_react.default.createElement(_animatedValueContext.default,{__self:this,__source:{fileName:_jsxFileName,lineNumber:419,columnNumber:7}},_react.default.createElement(_refContext.default,{flatListRef:ref,__self:this,__source:{fileName:_jsxFileName,lineNumber:420,columnNumber:9}},_react.default.createElement(MemoizedInner,(0,_extends2.default)({},props,{__self:this,__source:{fileName:_jsxFileName,lineNumber:421,columnNumber:11}})))));}var MemoizedInner=(0,_utils.typedMemo)(DraggableFlatListInner);var _default=_react.default.forwardRef(DraggableFlatList);exports.default=_default;
++var _interopRequireDefault=require("@babel/runtime/helpers/interopRequireDefault");Object.defineProperty(exports,"__esModule",{value:true});exports.default=void 0;var _extends2=_interopRequireDefault(require("@babel/runtime/helpers/extends"));var _toConsumableArray2=_interopRequireDefault(require("@babel/runtime/helpers/toConsumableArray"));var _slicedToArray2=_interopRequireDefault(require("@babel/runtime/helpers/slicedToArray"));var _react=_interopRequireWildcard(require("react"));var _reactNative=require("react-native");var _reactNativeGestureHandler=require("react-native-gesture-handler");var _reactNativeReanimated=_interopRequireWildcard(require("react-native-reanimated"));var _CellRendererComponent=_interopRequireDefault(require("./CellRendererComponent"));var _constants=require("../constants");var _PlaceholderItem=_interopRequireDefault(require("./PlaceholderItem"));var _RowItem=_interopRequireDefault(require("./RowItem"));var _propsContext=_interopRequireDefault(require("../context/propsContext"));var _animatedValueContext=_interopRequireWildcard(require("../context/animatedValueContext"));var _refContext=_interopRequireWildcard(require("../context/refContext"));var _draggableFlatListContext=_interopRequireDefault(require("../context/draggableFlatListContext"));var _useAutoScroll=require("../hooks/useAutoScroll");var _useStableCallback=require("../hooks/useStableCallback");var _ScrollOffsetListener=_interopRequireDefault(require("./ScrollOffsetListener"));var _utils=require("../utils");var _jsxFileName="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx";function _getRequireWildcardCache(nodeInterop){if(typeof WeakMap!=="function")return null;var cacheBabelInterop=new WeakMap();var cacheNodeInterop=new WeakMap();return(_getRequireWildcardCache=function _getRequireWildcardCache(nodeInterop){return nodeInterop?cacheNodeInterop:cacheBabelInterop;})(nodeInterop);}function _interopRequireWildcard(obj,nodeInterop){if(!nodeInterop&&obj&&obj.__esModule){return obj;}if(obj===null||typeof obj!=="object"&&typeof obj!=="function"){return{default:obj};}var cache=_getRequireWildcardCache(nodeInterop);if(cache&&cache.has(obj)){return cache.get(obj);}var newObj={};var hasPropertyDescriptor=Object.defineProperty&&Object.getOwnPropertyDescriptor;for(var key in obj){if(key!=="default"&&Object.prototype.hasOwnProperty.call(obj,key)){var desc=hasPropertyDescriptor?Object.getOwnPropertyDescriptor(obj,key):null;if(desc&&(desc.get||desc.set)){Object.defineProperty(newObj,key,desc);}else{newObj[key]=obj[key];}}}newObj.default=obj;if(cache){cache.set(obj,newObj);}return newObj;}var AnimatedFlatList=_reactNativeReanimated.default.createAnimatedComponent(_reactNativeGestureHandler.FlatList);function DraggableFlatListInner(props){var _this=this;var _useRefs=(0,_refContext.useRefs)(),cellDataRef=_useRefs.cellDataRef,containerRef=_useRefs.containerRef,flatlistRef=_useRefs.flatlistRef,keyToIndexRef=_useRefs.keyToIndexRef,propsRef=_useRefs.propsRef,animationConfigRef=_useRefs.animationConfigRef;var _useAnimatedValues=(0,_animatedValueContext.useAnimatedValues)(),activeCellOffset=_useAnimatedValues.activeCellOffset,activeCellSize=_useAnimatedValues.activeCellSize,activeIndexAnim=_useAnimatedValues.activeIndexAnim,containerSize=_useAnimatedValues.containerSize,scrollOffset=_useAnimatedValues.scrollOffset,scrollViewSize=_useAnimatedValues.scrollViewSize,spacerIndexAnim=_useAnimatedValues.spacerIndexAnim,horizontalAnim=_useAnimatedValues.horizontalAnim,placeholderOffset=_useAnimatedValues.placeholderOffset,touchTranslate=_useAnimatedValues.touchTranslate,autoScrollDistance=_useAnimatedValues.autoScrollDistance,panGestureState=_useAnimatedValues.panGestureState,isTouchActiveNative=_useAnimatedValues.isTouchActiveNative,viewableIndexMin=_useAnimatedValues.viewableIndexMin,viewableIndexMax=_useAnimatedValues.viewableIndexMax,disabled=_useAnimatedValues.disabled;var reset=(0,_useStableCallback.useStableCallback)(function(){activeIndexAnim.value=-1;spacerIndexAnim.value=-1;touchTranslate.value=0;activeCellSize.value=-1;activeCellOffset.value=-1;setActiveKey(null);});var _props$dragHitSlop=props.dragHitSlop,dragHitSlop=_props$dragHitSlop===void 0?_constants.DEFAULT_PROPS.dragHitSlop:_props$dragHitSlop,_props$scrollEnabled=props.scrollEnabled,scrollEnabled=_props$scrollEnabled===void 0?_constants.DEFAULT_PROPS.scrollEnabled:_props$scrollEnabled,_props$activationDist=props.activationDistance,activationDistanceProp=_props$activationDist===void 0?_constants.DEFAULT_PROPS.activationDistance:_props$activationDist;var _useState=(0,_react.useState)(null),_useState2=(0,_slicedToArray2.default)(_useState,2),activeKey=_useState2[0],setActiveKey=_useState2[1];var _useState3=(0,_react.useState)(!propsRef.current.enableLayoutAnimationExperimental),_useState4=(0,_slicedToArray2.default)(_useState3,2),layoutAnimationDisabled=_useState4[0],setLayoutAnimationDisabled=_useState4[1];var keyExtractor=(0,_useStableCallback.useStableCallback)(function(item,index){if(!props.keyExtractor){throw new Error("You must provide a keyExtractor to DraggableFlatList");}return props.keyExtractor(item,index);});var dataRef=(0,_react.useRef)(props.data);var dataHasChanged=dataRef.current.map(keyExtractor).join("")!==props.data.map(keyExtractor).join("");dataRef.current=props.data;if(dataHasChanged){activeKey=null;_reactNative.InteractionManager.runAfterInteractions(function(){reset();});}(0,_react.useEffect)(function(){if(!propsRef.current.enableLayoutAnimationExperimental)return;if(activeKey){setLayoutAnimationDisabled(true);}else{setTimeout(function(){setLayoutAnimationDisabled(false);},100);}},[activeKey]);(0,_react.useLayoutEffect)(function(){props.data.forEach(function(d,i){var key=keyExtractor(d,i);keyToIndexRef.current.set(key,i);});},[props.data,keyExtractor,keyToIndexRef]);var drag=(0,_useStableCallback.useStableCallback)(function(activeKey){if(disabled.value)return;var index=keyToIndexRef.current.get(activeKey);var cellData=cellDataRef.current.get(activeKey);if(cellData){activeCellOffset.value=cellData.measurements.offset;activeCellSize.value=cellData.measurements.size;}var overrideFn=propsRef.current.onCellMeasureOverride;if(overrideFn&&index!==undefined){var override=overrideFn(index,activeKey,cellData,cellDataRef.current);if(override){if(override.size!==undefined)activeCellSize.value=override.size;if(override.offset!==undefined)activeCellOffset.value=override.offset;}}var onDragBegin=propsRef.current.onDragBegin;if(index!==undefined){spacerIndexAnim.value=index;activeIndexAnim.value=index;setActiveKey(activeKey);onDragBegin==null?void 0:onDragBegin(index);}});var onContainerLayout=function onContainerLayout(_ref){var layout=_ref.nativeEvent.layout;var width=layout.width,height=layout.height;containerSize.value=props.horizontal?width:height;props.onContainerLayout==null?void 0:props.onContainerLayout({layout:layout,containerRef:containerRef});};var onListContentSizeChange=function onListContentSizeChange(w,h){scrollViewSize.value=props.horizontal?w:h;props.onContentSizeChange==null?void 0:props.onContentSizeChange(w,h);};var onContainerTouchStart=function onContainerTouchStart(){if(!disabled.value){isTouchActiveNative.value=true;}return false;};var onContainerTouchEnd=function onContainerTouchEnd(){isTouchActiveNative.value=false;};var extraData=(0,_react.useMemo)(function(){return{activeKey:activeKey,extraData:props.extraData};},[activeKey,props.extraData]);var renderItem=(0,_react.useCallback)(function(_ref2){var item=_ref2.item,index=_ref2.index;var key=keyExtractor(item,index);if(index!==keyToIndexRef.current.get(key)){keyToIndexRef.current.set(key,index);}return _react.default.createElement(_RowItem.default,{item:item,itemKey:key,renderItem:props.renderItem,drag:drag,extraData:props.extraData,__self:_this,__source:{fileName:_jsxFileName,lineNumber:205,columnNumber:9}});},[props.renderItem,props.extraData,drag,keyExtractor]);var onRelease=(0,_useStableCallback.useStableCallback)(function(index){props.onRelease==null?void 0:props.onRelease(index);});var onDragEnd=(0,_useStableCallback.useStableCallback)(function(_ref3){var from=_ref3.from,to=_ref3.to;var onDragEnd=props.onDragEnd,data=props.data;var newData=(0,_toConsumableArray2.default)(data);if(from!==to){newData.splice(from,1);newData.splice(to,0,data[from]);}onDragEnd==null?void 0:onDragEnd({from:from,to:to,data:newData});setActiveKey(null);});var onPlaceholderIndexChange=(0,_useStableCallback.useStableCallback)(function(index){props.onPlaceholderIndexChange==null?void 0:props.onPlaceholderIndexChange(index);});(0,_reactNativeReanimated.useAnimatedReaction)(function(){var _f=function _f(){return isTouchActiveNative.value;};_f._closure={isTouchActiveNative:isTouchActiveNative};_f.asString="function _f(){const{isTouchActiveNative}=jsThis._closure;{return isTouchActiveNative.value;}}";_f.__workletHash=14702024657843;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (243:4)";return _f;}(),function(){var _f=function _f(cur,prev){if(cur!==prev&&!cur){var hasMoved=!!touchTranslate.value;if(!hasMoved&&activeIndexAnim.value>=0&&!disabled.value){(0,_reactNativeReanimated.runOnJS)(onRelease)(activeIndexAnim.value);(0,_reactNativeReanimated.runOnJS)(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});}}};_f._closure={touchTranslate:touchTranslate,activeIndexAnim:activeIndexAnim,disabled:disabled,runOnJS:_reactNativeReanimated.runOnJS,onRelease:onRelease,onDragEnd:onDragEnd,spacerIndexAnim:spacerIndexAnim};_f.asString="function _f(cur,prev){const{touchTranslate,activeIndexAnim,disabled,runOnJS,onRelease,onDragEnd,spacerIndexAnim}=jsThis._closure;{if(cur!==prev&&!cur){const hasMoved=!!touchTranslate.value;if(!hasMoved&&activeIndexAnim.value>=0&&!disabled.value){runOnJS(onRelease)(activeIndexAnim.value);runOnJS(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});}}}}";_f.__workletHash=5951241873481;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (246:4)";return _f;}(),[isTouchActiveNative,onDragEnd,onRelease]);(0,_reactNativeReanimated.useAnimatedReaction)(function(){var _f=function _f(){return spacerIndexAnim.value;};_f._closure={spacerIndexAnim:spacerIndexAnim};_f.asString="function _f(){const{spacerIndexAnim}=jsThis._closure;{return spacerIndexAnim.value;}}";_f.__workletHash=2960108028947;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (262:4)";return _f;}(),function(){var _f=function _f(cur,prev){if(prev!==null&&cur!==prev&&cur>=0&&prev>=0){(0,_reactNativeReanimated.runOnJS)(onPlaceholderIndexChange)(cur);}};_f._closure={runOnJS:_reactNativeReanimated.runOnJS,onPlaceholderIndexChange:onPlaceholderIndexChange};_f.asString="function _f(cur,prev){const{runOnJS,onPlaceholderIndexChange}=jsThis._closure;{if(prev!==null&&cur!==prev&&cur>=0&&prev>=0){runOnJS(onPlaceholderIndexChange)(cur);}}}";_f.__workletHash=16965253726735;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (265:4)";return _f;}(),[spacerIndexAnim]);var gestureDisabled=(0,_reactNativeReanimated.useSharedValue)(false);var panGesture=_reactNativeGestureHandler.Gesture.Pan().onBegin(function(){var _f=function _f(evt){gestureDisabled.value=disabled.value;if(gestureDisabled.value)return;panGestureState.value=evt.state;};_f._closure={gestureDisabled:gestureDisabled,disabled:disabled,panGestureState:panGestureState};_f.asString="function _f(evt){const{gestureDisabled,disabled,panGestureState}=jsThis._closure;{gestureDisabled.value=disabled.value;if(gestureDisabled.value)return;panGestureState.value=evt.state;}}";_f.__workletHash=17574034116918;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (276:13)";return _f;}()).onUpdate(function(){var _f=function _f(evt){if(gestureDisabled.value)return;panGestureState.value=evt.state;var translation=horizontalAnim.value?evt.translationX:evt.translationY;touchTranslate.value=translation;};_f._closure={gestureDisabled:gestureDisabled,panGestureState:panGestureState,horizontalAnim:horizontalAnim,touchTranslate:touchTranslate};_f.asString="function _f(evt){const{gestureDisabled,panGestureState,horizontalAnim,touchTranslate}=jsThis._closure;{if(gestureDisabled.value)return;panGestureState.value=evt.state;const translation=horizontalAnim.value?evt.translationX:evt.translationY;touchTranslate.value=translation;}}";_f.__workletHash=5455568984874;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (281:14)";return _f;}()).onEnd(function(){var _f=function _f(evt){if(gestureDisabled.value)return;isTouchActiveNative.value=false;var translation=horizontalAnim.value?evt.translationX:evt.translationY;touchTranslate.value=translation+autoScrollDistance.value;panGestureState.value=evt.state;if(activeIndexAnim.value===-1||disabled.value)return;disabled.value=true;(0,_reactNativeReanimated.runOnJS)(onRelease)(activeIndexAnim.value);var springTo=placeholderOffset.value-activeCellOffset.value;touchTranslate.value=(0,_reactNativeReanimated.withSpring)(springTo,animationConfigRef.value,function(){var _f=function _f(){(0,_reactNativeReanimated.runOnJS)(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});disabled.value=false;};_f._closure={runOnJS:_reactNativeReanimated.runOnJS,onDragEnd:onDragEnd,activeIndexAnim:activeIndexAnim,spacerIndexAnim:spacerIndexAnim,disabled:disabled};_f.asString="function _f(){const{runOnJS,onDragEnd,activeIndexAnim,spacerIndexAnim,disabled}=jsThis._closure;{runOnJS(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});disabled.value=false;}}";_f.__workletHash=1618704508901;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (308:8)";return _f;}());};_f._closure={gestureDisabled:gestureDisabled,isTouchActiveNative:isTouchActiveNative,horizontalAnim:horizontalAnim,touchTranslate:touchTranslate,autoScrollDistance:autoScrollDistance,panGestureState:panGestureState,activeIndexAnim:activeIndexAnim,disabled:disabled,runOnJS:_reactNativeReanimated.runOnJS,onRelease:onRelease,placeholderOffset:placeholderOffset,activeCellOffset:activeCellOffset,withSpring:_reactNativeReanimated.withSpring,animationConfigRef:animationConfigRef,onDragEnd:onDragEnd,spacerIndexAnim:spacerIndexAnim};_f.asString="function _f(evt){const{gestureDisabled,isTouchActiveNative,horizontalAnim,touchTranslate,autoScrollDistance,panGestureState,activeIndexAnim,disabled,runOnJS,onRelease,placeholderOffset,activeCellOffset,withSpring,animationConfigRef,onDragEnd,spacerIndexAnim}=jsThis._closure;{if(gestureDisabled.value)return;isTouchActiveNative.value=false;const translation=horizontalAnim.value?evt.translationX:evt.translationY;touchTranslate.value=translation+autoScrollDistance.value;panGestureState.value=evt.state;if(activeIndexAnim.value===-1||disabled.value)return;disabled.value=true;runOnJS(onRelease)(activeIndexAnim.value);const springTo=placeholderOffset.value-activeCellOffset.value;touchTranslate.value=withSpring(springTo,animationConfigRef.value,function(){runOnJS(onDragEnd)({from:activeIndexAnim.value,to:spacerIndexAnim.value});disabled.value=false;});}}";_f.__workletHash=7842863214419;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (289:11)";return _f;}()).onTouchesDown(function(){var _f=function _f(){(0,_reactNativeReanimated.runOnJS)(onContainerTouchStart)();};_f._closure={runOnJS:_reactNativeReanimated.runOnJS,onContainerTouchStart:onContainerTouchStart};_f.asString="function _f(){const{runOnJS,onContainerTouchStart}=jsThis._closure;{runOnJS(onContainerTouchStart)();}}";_f.__workletHash=4756906064016;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (317:19)";return _f;}()).onTouchesUp(function(){var _f=function _f(){(0,_reactNativeReanimated.runOnJS)(onContainerTouchEnd)();};_f._closure={runOnJS:_reactNativeReanimated.runOnJS,onContainerTouchEnd:onContainerTouchEnd};_f.asString="function _f(){const{runOnJS,onContainerTouchEnd}=jsThis._closure;{runOnJS(onContainerTouchEnd)();}}";_f.__workletHash=9596402198608;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (320:17)";return _f;}());if(dragHitSlop)panGesture.hitSlop(dragHitSlop);if(activationDistanceProp){var activeOffset=[-activationDistanceProp,activationDistanceProp];if(props.horizontal){panGesture.activeOffsetX(activeOffset);}else{panGesture.activeOffsetY(activeOffset);}}var onScroll=(0,_useStableCallback.useStableCallback)(function(scrollOffset){props.onScrollOffsetChange==null?void 0:props.onScrollOffsetChange(scrollOffset);});var scrollHandler=(0,_reactNativeReanimated.useAnimatedScrollHandler)({onScroll:function(){var _f=function _f(evt){scrollOffset.value=horizontalAnim.value?evt.contentOffset.x:evt.contentOffset.y;(0,_reactNativeReanimated.runOnJS)(onScroll)(scrollOffset.value);};_f._closure={scrollOffset:scrollOffset,horizontalAnim:horizontalAnim,runOnJS:_reactNativeReanimated.runOnJS,onScroll:onScroll};_f.asString="function _f(evt){const{scrollOffset,horizontalAnim,runOnJS,onScroll}=jsThis._closure;{scrollOffset.value=horizontalAnim.value?evt.contentOffset.x:evt.contentOffset.y;runOnJS(onScroll)(scrollOffset.value);}}";_f.__workletHash=5653789960368;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx (342:16)";return _f;}()},[horizontalAnim]);(0,_useAutoScroll.useAutoScroll)();var onViewableItemsChanged=(0,_useStableCallback.useStableCallback)(function(info){var viewableIndices=info.viewableItems.filter(function(item){return item.isViewable;}).map(function(item){return item.index;}).filter(function(index){return typeof index==="number";});var min=Math.min.apply(Math,(0,_toConsumableArray2.default)(viewableIndices));var max=Math.max.apply(Math,(0,_toConsumableArray2.default)(viewableIndices));viewableIndexMin.value=min;viewableIndexMax.value=max;props.onViewableItemsChanged==null?void 0:props.onViewableItemsChanged(info);});return _react.default.createElement(_draggableFlatListContext.default,{activeKey:activeKey,keyExtractor:keyExtractor,horizontal:!!props.horizontal,layoutAnimationDisabled:layoutAnimationDisabled,__self:this,__source:{fileName:_jsxFileName,lineNumber:370,columnNumber:5}},_react.default.createElement(_reactNativeGestureHandler.GestureDetector,{gesture:panGesture,__self:this,__source:{fileName:_jsxFileName,lineNumber:376,columnNumber:7}},_react.default.createElement(_reactNativeReanimated.default.View,{style:props.containerStyle,ref:containerRef,onLayout:onContainerLayout,__self:this,__source:{fileName:_jsxFileName,lineNumber:377,columnNumber:9}},props.renderPlaceholder&&_react.default.createElement(_PlaceholderItem.default,{renderPlaceholder:props.renderPlaceholder,__self:this,__source:{fileName:_jsxFileName,lineNumber:383,columnNumber:13}}),_react.default.createElement(AnimatedFlatList,(0,_extends2.default)({},props,{data:props.data,onViewableItemsChanged:onViewableItemsChanged,CellRendererComponent:_CellRendererComponent.default,ref:flatlistRef,onContentSizeChange:onListContentSizeChange,scrollEnabled:!activeKey&&scrollEnabled,renderItem:renderItem,extraData:extraData,keyExtractor:keyExtractor,onScroll:scrollHandler,scrollEventThrottle:16,simultaneousHandlers:props.simultaneousHandlers,removeClippedSubviews:false,__self:this,__source:{fileName:_jsxFileName,lineNumber:385,columnNumber:11}})),!!props.onScrollOffsetChange&&_react.default.createElement(_ScrollOffsetListener.default,{onScrollOffsetChange:props.onScrollOffsetChange,scrollOffset:scrollOffset,__self:this,__source:{fileName:_jsxFileName,lineNumber:402,columnNumber:13}}))));}function DraggableFlatList(props,ref){return _react.default.createElement(_propsContext.default,(0,_extends2.default)({},props,{__self:this,__source:{fileName:_jsxFileName,lineNumber:418,columnNumber:5}}),_react.default.createElement(_animatedValueContext.default,{__self:this,__source:{fileName:_jsxFileName,lineNumber:419,columnNumber:7}},_react.default.createElement(_refContext.default,{flatListRef:ref,__self:this,__source:{fileName:_jsxFileName,lineNumber:420,columnNumber:9}},_react.default.createElement(MemoizedInner,(0,_extends2.default)({},props,{__self:this,__source:{fileName:_jsxFileName,lineNumber:421,columnNumber:11}})))));}var MemoizedInner=(0,_utils.typedMemo)(DraggableFlatListInner);var _default=_react.default.forwardRef(DraggableFlatList);exports.default=_default;
+ //# sourceMappingURL=DraggableFlatList.js.map
+\ No newline at end of file
 diff --git a/node_modules/react-native-draggable-flatlist/lib/commonjs/hooks/useAutoScroll.js b/node_modules/react-native-draggable-flatlist/lib/commonjs/hooks/useAutoScroll.js
-index 3e526c2..b02188b 100644
+index 3e526c2..121d7ce 100644
 --- a/node_modules/react-native-draggable-flatlist/lib/commonjs/hooks/useAutoScroll.js
 +++ b/node_modules/react-native-draggable-flatlist/lib/commonjs/hooks/useAutoScroll.js
-@@ -1,2 +1,2 @@
+@@ -1,2 +1,122 @@
 -Object.defineProperty(exports,"__esModule",{value:true});exports.useAutoScroll=useAutoScroll;var _reactNativeReanimated=require("react-native-reanimated");var _constants=require("../constants");var _propsContext=require("../context/propsContext");var _animatedValueContext=require("../context/animatedValueContext");var _refContext=require("../context/refContext");function useAutoScroll(){var _useRefs=(0,_refContext.useRefs)(),flatlistRef=_useRefs.flatlistRef;var _useProps=(0,_propsContext.useProps)(),_useProps$autoscrollT=_useProps.autoscrollThreshold,autoscrollThreshold=_useProps$autoscrollT===void 0?_constants.DEFAULT_PROPS.autoscrollThreshold:_useProps$autoscrollT,_useProps$autoscrollS=_useProps.autoscrollSpeed,autoscrollSpeed=_useProps$autoscrollS===void 0?_constants.DEFAULT_PROPS.autoscrollSpeed:_useProps$autoscrollS;var _useAnimatedValues=(0,_animatedValueContext.useAnimatedValues)(),scrollOffset=_useAnimatedValues.scrollOffset,scrollViewSize=_useAnimatedValues.scrollViewSize,containerSize=_useAnimatedValues.containerSize,activeCellSize=_useAnimatedValues.activeCellSize,hoverOffset=_useAnimatedValues.hoverOffset,activeIndexAnim=_useAnimatedValues.activeIndexAnim;var hoverScreenOffset=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){return hoverOffset.value-scrollOffset.value;};_f._closure={hoverOffset:hoverOffset,scrollOffset:scrollOffset};_f.asString="function _f(){const{hoverOffset,scrollOffset}=jsThis._closure;{return hoverOffset.value-scrollOffset.value;}}";_f.__workletHash=10763890843319;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (29:44)";return _f;}(),[]);var isScrolledUp=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){return scrollOffset.value-_constants.SCROLL_POSITION_TOLERANCE<=0;};_f._closure={scrollOffset:scrollOffset,SCROLL_POSITION_TOLERANCE:_constants.SCROLL_POSITION_TOLERANCE};_f.asString="function _f(){const{scrollOffset,SCROLL_POSITION_TOLERANCE}=jsThis._closure;{return scrollOffset.value-SCROLL_POSITION_TOLERANCE<=0;}}";_f.__workletHash=15578879662595;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (33:39)";return _f;}(),[]);var isScrolledDown=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){return scrollOffset.value+containerSize.value+_constants.SCROLL_POSITION_TOLERANCE>=scrollViewSize.value;};_f._closure={scrollOffset:scrollOffset,containerSize:containerSize,SCROLL_POSITION_TOLERANCE:_constants.SCROLL_POSITION_TOLERANCE,scrollViewSize:scrollViewSize};_f.asString="function _f(){const{scrollOffset,containerSize,SCROLL_POSITION_TOLERANCE,scrollViewSize}=jsThis._closure;{return scrollOffset.value+containerSize.value+SCROLL_POSITION_TOLERANCE>=scrollViewSize.value;}}";_f.__workletHash=7372520673244;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (37:41)";return _f;}(),[]);var distToTopEdge=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){return Math.max(0,hoverScreenOffset.value);};_f._closure={hoverScreenOffset:hoverScreenOffset};_f.asString="function _f(){const{hoverScreenOffset}=jsThis._closure;{return Math.max(0,hoverScreenOffset.value);}}";_f.__workletHash=5945680760068;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (44:40)";return _f;}(),[]);var distToBottomEdge=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){var hoverPlusActiveCell=hoverScreenOffset.value+activeCellSize.value;return Math.max(0,containerSize.value-hoverPlusActiveCell);};_f._closure={hoverScreenOffset:hoverScreenOffset,activeCellSize:activeCellSize,containerSize:containerSize};_f.asString="function _f(){const{hoverScreenOffset,activeCellSize,containerSize}=jsThis._closure;{const hoverPlusActiveCell=hoverScreenOffset.value+activeCellSize.value;return Math.max(0,containerSize.value-hoverPlusActiveCell);}}";_f.__workletHash=17447360140833;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (48:43)";return _f;}(),[]);var isAtTopEdge=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){return distToTopEdge.value<=autoscrollThreshold;};_f._closure={distToTopEdge:distToTopEdge,autoscrollThreshold:autoscrollThreshold};_f.asString="function _f(){const{distToTopEdge,autoscrollThreshold}=jsThis._closure;{return distToTopEdge.value<=autoscrollThreshold;}}";_f.__workletHash=499688299934;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (53:38)";return _f;}());var isAtBottomEdge=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){return distToBottomEdge.value<=autoscrollThreshold;};_f._closure={distToBottomEdge:distToBottomEdge,autoscrollThreshold:autoscrollThreshold};_f.asString="function _f(){const{distToBottomEdge,autoscrollThreshold}=jsThis._closure;{return distToBottomEdge.value<=autoscrollThreshold;}}";_f.__workletHash=10361122491518;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (57:41)";return _f;}(),[]);var scrollTarget=(0,_reactNativeReanimated.useSharedValue)(0);var dragIsActive=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){return activeIndexAnim.value>=0;};_f._closure={activeIndexAnim:activeIndexAnim};_f.asString="function _f(){const{activeIndexAnim}=jsThis._closure;{return activeIndexAnim.value>=0;}}";_f.__workletHash=16254827243008;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (62:39)";return _f;}(),[]);(0,_reactNativeReanimated.useAnimatedReaction)(function(){var _f=function _f(){return dragIsActive.value;};_f._closure={dragIsActive:dragIsActive};_f.asString="function _f(){const{dragIsActive}=jsThis._closure;{return dragIsActive.value;}}";_f.__workletHash=4207325526803;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (67:4)";return _f;}(),function(){var _f=function _f(cur,prev){if(cur&&!prev){scrollTarget.value=scrollOffset.value;}};_f._closure={scrollTarget:scrollTarget,scrollOffset:scrollOffset};_f.asString="function _f(cur,prev){const{scrollTarget,scrollOffset}=jsThis._closure;{if(cur&&!prev){scrollTarget.value=scrollOffset.value;}}}";_f.__workletHash=14491611054056;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (70:4)";return _f;}());var shouldAutoScroll=(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){var scrollTargetDiff=Math.abs(scrollTarget.value-scrollOffset.value);var hasScrolledToTarget=scrollTargetDiff<_constants.SCROLL_POSITION_TOLERANCE;var isAtEdge=isAtTopEdge.value||isAtBottomEdge.value;var topDisabled=isAtTopEdge.value&&isScrolledUp.value;var bottomDisabled=isAtBottomEdge.value&&isScrolledDown.value;var isEdgeDisabled=topDisabled||bottomDisabled;var cellIsActive=activeIndexAnim.value>=0;return hasScrolledToTarget&&isAtEdge&&!isEdgeDisabled&&cellIsActive;};_f._closure={scrollTarget:scrollTarget,scrollOffset:scrollOffset,SCROLL_POSITION_TOLERANCE:_constants.SCROLL_POSITION_TOLERANCE,isAtTopEdge:isAtTopEdge,isAtBottomEdge:isAtBottomEdge,isScrolledUp:isScrolledUp,isScrolledDown:isScrolledDown,activeIndexAnim:activeIndexAnim};_f.asString="function _f(){const{scrollTarget,scrollOffset,SCROLL_POSITION_TOLERANCE,isAtTopEdge,isAtBottomEdge,isScrolledUp,isScrolledDown,activeIndexAnim}=jsThis._closure;{const scrollTargetDiff=Math.abs(scrollTarget.value-scrollOffset.value);const hasScrolledToTarget=scrollTargetDiff<SCROLL_POSITION_TOLERANCE;const isAtEdge=isAtTopEdge.value||isAtBottomEdge.value;const topDisabled=isAtTopEdge.value&&isScrolledUp.value;const bottomDisabled=isAtBottomEdge.value&&isScrolledDown.value;const isEdgeDisabled=topDisabled||bottomDisabled;const cellIsActive=activeIndexAnim.value>=0;return hasScrolledToTarget&&isAtEdge&&!isEdgeDisabled&&cellIsActive;}}";_f.__workletHash=8742571894036;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (77:43)";return _f;}(),[]);function scrollToInternal(offset){if(flatlistRef&&"current"in flatlistRef){var _flatlistRef$current;(_flatlistRef$current=flatlistRef.current)==null?void 0:_flatlistRef$current.scrollToOffset({offset:offset,animated:true});}}(0,_reactNativeReanimated.useDerivedValue)(function(){var _f=function _f(){if(!shouldAutoScroll.value)return;var distFromEdge=isAtTopEdge.value?distToTopEdge.value:distToBottomEdge.value;var speedPct=1-distFromEdge/autoscrollThreshold;var offset=speedPct*autoscrollSpeed;var targetOffset=isAtTopEdge.value?Math.max(0,scrollOffset.value-offset):Math.min(scrollOffset.value+offset,scrollViewSize.value-containerSize.value);scrollTarget.value=targetOffset;(0,_reactNativeReanimated.runOnJS)(scrollToInternal)(targetOffset);};_f._closure={shouldAutoScroll:shouldAutoScroll,isAtTopEdge:isAtTopEdge,distToTopEdge:distToTopEdge,distToBottomEdge:distToBottomEdge,autoscrollThreshold:autoscrollThreshold,autoscrollSpeed:autoscrollSpeed,scrollOffset:scrollOffset,scrollViewSize:scrollViewSize,containerSize:containerSize,scrollTarget:scrollTarget,runOnJS:_reactNativeReanimated.runOnJS,scrollToInternal:scrollToInternal};_f.asString="function _f(){const{shouldAutoScroll,isAtTopEdge,distToTopEdge,distToBottomEdge,autoscrollThreshold,autoscrollSpeed,scrollOffset,scrollViewSize,containerSize,scrollTarget,runOnJS,scrollToInternal}=jsThis._closure;{if(!shouldAutoScroll.value)return;const distFromEdge=isAtTopEdge.value?distToTopEdge.value:distToBottomEdge.value;const speedPct=1-distFromEdge/autoscrollThreshold;const offset=speedPct*autoscrollSpeed;const targetOffset=isAtTopEdge.value?Math.max(0,scrollOffset.value-offset):Math.min(scrollOffset.value+offset,scrollViewSize.value-containerSize.value);scrollTarget.value=targetOffset;runOnJS(scrollToInternal)(targetOffset);}}";_f.__workletHash=8964641543522;_f.__location="/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (97:18)";return _f;}(),[]);return null;}
-+Object.defineProperty(exports, "__esModule", { value: true }); exports.useAutoScroll = useAutoScroll; var _reactNativeReanimated = require("react-native-reanimated"); var _constants = require("../constants"); var _propsContext = require("../context/propsContext"); var _animatedValueContext = require("../context/animatedValueContext"); var _refContext = require("../context/refContext"); function useAutoScroll() { var _useRefs = (0, _refContext.useRefs)(), flatlistRef = _useRefs.flatlistRef; var _useProps = (0, _propsContext.useProps)(), _useProps$autoscrollT = _useProps.autoscrollThreshold, autoscrollThreshold = _useProps$autoscrollT === void 0 ? _constants.DEFAULT_PROPS.autoscrollThreshold : _useProps$autoscrollT, _useProps$autoscrollS = _useProps.autoscrollSpeed, autoscrollSpeed = _useProps$autoscrollS === void 0 ? _constants.DEFAULT_PROPS.autoscrollSpeed : _useProps$autoscrollS; var _useAnimatedValues = (0, _animatedValueContext.useAnimatedValues)(), scrollOffset = _useAnimatedValues.scrollOffset, scrollViewSize = _useAnimatedValues.scrollViewSize, containerSize = _useAnimatedValues.containerSize, activeCellSize = _useAnimatedValues.activeCellSize, hoverOffset = _useAnimatedValues.hoverOffset, activeIndexAnim = _useAnimatedValues.activeIndexAnim, touchTranslate = _useAnimatedValues.touchTranslate; var hoverScreenOffset = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { return hoverOffset.value - scrollOffset.value; }; _f._closure = { hoverOffset: hoverOffset, scrollOffset: scrollOffset }; _f.asString = "function _f(){const{hoverOffset,scrollOffset}=jsThis._closure;{return hoverOffset.value-scrollOffset.value;}}"; _f.__workletHash = 10763890843319; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (29:44)"; return _f; }(), []); var isScrolledUp = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { return scrollOffset.value - _constants.SCROLL_POSITION_TOLERANCE <= 0; }; _f._closure = { scrollOffset: scrollOffset, SCROLL_POSITION_TOLERANCE: _constants.SCROLL_POSITION_TOLERANCE }; _f.asString = "function _f(){const{scrollOffset,SCROLL_POSITION_TOLERANCE}=jsThis._closure;{return scrollOffset.value-SCROLL_POSITION_TOLERANCE<=0;}}"; _f.__workletHash = 15578879662595; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (33:39)"; return _f; }(), []); var isScrolledDown = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { return scrollOffset.value + containerSize.value + _constants.SCROLL_POSITION_TOLERANCE >= scrollViewSize.value; }; _f._closure = { scrollOffset: scrollOffset, containerSize: containerSize, SCROLL_POSITION_TOLERANCE: _constants.SCROLL_POSITION_TOLERANCE, scrollViewSize: scrollViewSize }; _f.asString = "function _f(){const{scrollOffset,containerSize,SCROLL_POSITION_TOLERANCE,scrollViewSize}=jsThis._closure;{return scrollOffset.value+containerSize.value+SCROLL_POSITION_TOLERANCE>=scrollViewSize.value;}}"; _f.__workletHash = 7372520673244; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (37:41)"; return _f; }(), []); var distToTopEdge = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { return Math.max(0, hoverScreenOffset.value); }; _f._closure = { hoverScreenOffset: hoverScreenOffset }; _f.asString = "function _f(){const{hoverScreenOffset}=jsThis._closure;{return Math.max(0,hoverScreenOffset.value);}}"; _f.__workletHash = 5945680760068; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (44:40)"; return _f; }(), []); var distToBottomEdge = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { var hoverPlusActiveCell = hoverScreenOffset.value + activeCellSize.value; return Math.max(0, containerSize.value - hoverPlusActiveCell); }; _f._closure = { hoverScreenOffset: hoverScreenOffset, activeCellSize: activeCellSize, containerSize: containerSize }; _f.asString = "function _f(){const{hoverScreenOffset,activeCellSize,containerSize}=jsThis._closure;{const hoverPlusActiveCell=hoverScreenOffset.value+activeCellSize.value;return Math.max(0,containerSize.value-hoverPlusActiveCell);}}"; _f.__workletHash = 17447360140833; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (48:43)"; return _f; }(), []); var _useProps3 = (0, _propsContext.useProps)(), _topThreshold = _useProps3.autoscrollTopThreshold != null ? _useProps3.autoscrollTopThreshold : autoscrollThreshold; var isAtTopEdge = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { return distToTopEdge.value <= _topThreshold && touchTranslate.value < -2; }; _f._closure = { distToTopEdge: distToTopEdge, _topThreshold: _topThreshold, touchTranslate: touchTranslate }; _f.asString = "function _f(){const{distToTopEdge,_topThreshold,touchTranslate}=jsThis._closure;{return distToTopEdge.value<=_topThreshold&&dragDirection.value<0;}}"; _f.__workletHash = 499688299934; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (53:38)"; return _f; }()); var isAtBottomEdge = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { return distToBottomEdge.value <= autoscrollThreshold && touchTranslate.value > 2; }; _f._closure = { distToBottomEdge: distToBottomEdge, autoscrollThreshold: autoscrollThreshold, touchTranslate: touchTranslate }; _f.asString = "function _f(){const{distToBottomEdge,autoscrollThreshold,touchTranslate}=jsThis._closure;{return distToBottomEdge.value<=autoscrollThreshold&&dragDirection.value>0;}}"; _f.__workletHash = 10361122491518; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (57:41)"; return _f; }(), []); var scrollTarget = (0, _reactNativeReanimated.useSharedValue)(0); var dragIsActive = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { return activeIndexAnim.value >= 0; }; _f._closure = { activeIndexAnim: activeIndexAnim }; _f.asString = "function _f(){const{activeIndexAnim}=jsThis._closure;{return activeIndexAnim.value>=0;}}"; _f.__workletHash = 16254827243008; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (62:39)"; return _f; }(), []); (0, _reactNativeReanimated.useAnimatedReaction)(function () { var _f = function _f() { return dragIsActive.value; }; _f._closure = { dragIsActive: dragIsActive }; _f.asString = "function _f(){const{dragIsActive}=jsThis._closure;{return dragIsActive.value;}}"; _f.__workletHash = 4207325526803; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (67:4)"; return _f; }(), function () { var _f = function _f(cur, prev) { if (cur && !prev) { scrollTarget.value = scrollOffset.value; } }; _f._closure = { scrollTarget: scrollTarget, scrollOffset: scrollOffset }; _f.asString = "function _f(cur,prev){const{scrollTarget,scrollOffset,dragDirection}=jsThis._closure;{if(cur&&!prev){scrollTarget.value=scrollOffset.value;}}}"; _f.__workletHash = 14491611054056; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (70:4)"; return _f; }()); var shouldAutoScroll = (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { var scrollTargetDiff = Math.abs(scrollTarget.value - scrollOffset.value); var hasScrolledToTarget = scrollTargetDiff < _constants.SCROLL_POSITION_TOLERANCE; var isAtEdge = isAtTopEdge.value || isAtBottomEdge.value; var topDisabled = isAtTopEdge.value && isScrolledUp.value; var bottomDisabled = isAtBottomEdge.value && isScrolledDown.value; var isEdgeDisabled = topDisabled || bottomDisabled; var cellIsActive = activeIndexAnim.value >= 0; return hasScrolledToTarget && isAtEdge && !isEdgeDisabled && cellIsActive; }; _f._closure = { scrollTarget: scrollTarget, scrollOffset: scrollOffset, SCROLL_POSITION_TOLERANCE: _constants.SCROLL_POSITION_TOLERANCE, isAtTopEdge: isAtTopEdge, isAtBottomEdge: isAtBottomEdge, isScrolledUp: isScrolledUp, isScrolledDown: isScrolledDown, activeIndexAnim: activeIndexAnim }; _f.asString = "function _f(){const{scrollTarget,scrollOffset,SCROLL_POSITION_TOLERANCE,isAtTopEdge,isAtBottomEdge,isScrolledUp,isScrolledDown,activeIndexAnim}=jsThis._closure;{const scrollTargetDiff=Math.abs(scrollTarget.value-scrollOffset.value);const hasScrolledToTarget=scrollTargetDiff<SCROLL_POSITION_TOLERANCE;const isAtEdge=isAtTopEdge.value||isAtBottomEdge.value;const topDisabled=isAtTopEdge.value&&isScrolledUp.value;const bottomDisabled=isAtBottomEdge.value&&isScrolledDown.value;const isEdgeDisabled=topDisabled||bottomDisabled;const cellIsActive=activeIndexAnim.value>=0;return hasScrolledToTarget&&isAtEdge&&!isEdgeDisabled&&cellIsActive;}}"; _f.__workletHash = 8742571894036; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (77:43)"; return _f; }(), []); function scrollToInternal(offset) { if (flatlistRef && "current" in flatlistRef) { var _flatlistRef$current; (_flatlistRef$current = flatlistRef.current) == null ? void 0 : _flatlistRef$current.scrollToOffset({ offset: offset, animated: true }); } } (0, _reactNativeReanimated.useDerivedValue)(function () { var _f = function _f() { if (!shouldAutoScroll.value) return; var distFromEdge = isAtTopEdge.value ? distToTopEdge.value : distToBottomEdge.value; var speedPct = 1 - distFromEdge / autoscrollThreshold; var offset = speedPct * autoscrollSpeed; var targetOffset = isAtTopEdge.value ? Math.max(0, scrollOffset.value - offset) : Math.min(scrollOffset.value + offset, scrollViewSize.value - containerSize.value); scrollTarget.value = targetOffset; (0, _reactNativeReanimated.runOnJS)(scrollToInternal)(targetOffset); }; _f._closure = { shouldAutoScroll: shouldAutoScroll, isAtTopEdge: isAtTopEdge, distToTopEdge: distToTopEdge, distToBottomEdge: distToBottomEdge, autoscrollThreshold: autoscrollThreshold, autoscrollSpeed: autoscrollSpeed, scrollOffset: scrollOffset, scrollViewSize: scrollViewSize, containerSize: containerSize, scrollTarget: scrollTarget, runOnJS: _reactNativeReanimated.runOnJS, scrollToInternal: scrollToInternal }; _f.asString = "function _f(){const{shouldAutoScroll,isAtTopEdge,distToTopEdge,distToBottomEdge,autoscrollThreshold,autoscrollSpeed,scrollOffset,scrollViewSize,containerSize,scrollTarget,runOnJS,scrollToInternal}=jsThis._closure;{if(!shouldAutoScroll.value)return;const distFromEdge=isAtTopEdge.value?distToTopEdge.value:distToBottomEdge.value;const speedPct=1-distFromEdge/autoscrollThreshold;const offset=speedPct*autoscrollSpeed;const targetOffset=isAtTopEdge.value?Math.max(0,scrollOffset.value-offset):Math.min(scrollOffset.value+offset,scrollViewSize.value-containerSize.value);scrollTarget.value=targetOffset;runOnJS(scrollToInternal)(targetOffset);}}"; _f.__workletHash = 8964641543522; _f.__location = "/Users/danielmerrill/code/oss/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx (97:18)"; return _f; }(), []); return null; }
- //# sourceMappingURL=useAutoScroll.js.map
+-//# sourceMappingURL=useAutoScroll.js.map
 \ No newline at end of file
-diff --git a/node_modules/react-native-draggable-flatlist/lib/module/hooks/useAutoScroll.js b/node_modules/react-native-draggable-flatlist/lib/module/hooks/useAutoScroll.js
-index 4923c20..3b03533 100644
---- a/node_modules/react-native-draggable-flatlist/lib/module/hooks/useAutoScroll.js
-+++ b/node_modules/react-native-draggable-flatlist/lib/module/hooks/useAutoScroll.js
-@@ -1,7 +1,7 @@
- import { runOnJS, useAnimatedReaction, useDerivedValue, useSharedValue } from "react-native-reanimated";
- import { DEFAULT_PROPS, SCROLL_POSITION_TOLERANCE } from "../constants";
--import { useProps } from "../context/propsContext";
- import { useAnimatedValues } from "../context/animatedValueContext";
-+import { useProps } from "../context/propsContext";
- import { useRefs } from "../context/refContext";
- export function useAutoScroll() {
-   const {
-@@ -17,11 +17,22 @@ export function useAutoScroll() {
-     containerSize,
-     activeCellSize,
-     hoverOffset,
--    activeIndexAnim
-+    activeIndexAnim,
-+    touchTranslate
-   } = useAnimatedValues();
-   const hoverScreenOffset = useDerivedValue(() => {
-     return hoverOffset.value - scrollOffset.value;
-   }, []);
-+  const dragDirection = useSharedValue(0);
-+  useAnimatedReaction(() => {
-+    return touchTranslate.value;
-+  }, (cur, prev) => {
-+    if (prev !== null) {
-+      const diff = cur - prev;
-+      if (diff < -1) dragDirection.value = -1;
-+      else if (diff > 1) dragDirection.value = 1;
-+    }
-+  });
-   const isScrolledUp = useDerivedValue(() => {
-     return scrollOffset.value - SCROLL_POSITION_TOLERANCE <= 0;
-   }, []);
-@@ -35,11 +46,13 @@ export function useAutoScroll() {
-     const hoverPlusActiveCell = hoverScreenOffset.value + activeCellSize.value;
-     return Math.max(0, containerSize.value - hoverPlusActiveCell);
-   }, []);
++"use strict";
++Object.defineProperty(exports, "__esModule", { value: true });
++exports.useAutoScroll = useAutoScroll;
 +
-+  const _topThreshold = useProps().autoscrollTopThreshold ?? autoscrollThreshold;
-   const isAtTopEdge = useDerivedValue(() => {
--    return distToTopEdge.value <= autoscrollThreshold;
-+    return distToTopEdge.value <= _topThreshold && dragDirection.value < 0;
-   });
-   const isAtBottomEdge = useDerivedValue(() => {
--    return distToBottomEdge.value <= autoscrollThreshold;
-+    return distToBottomEdge.value <= autoscrollThreshold && dragDirection.value > 0;
-   }, []);
-   const scrollTarget = useSharedValue(0);
-   const dragIsActive = useDerivedValue(() => {
-@@ -50,6 +63,7 @@ export function useAutoScroll() {
-   }, (cur, prev) => {
-     if (cur && !prev) {
-       scrollTarget.value = scrollOffset.value;
-+      dragDirection.value = 0; // reset on drag start
-     }
-   });
-   const shouldAutoScroll = useDerivedValue(() => {
-diff --git a/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx b/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx
-index d3add83..b100798 100644
---- a/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx
-+++ b/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx
-@@ -5,8 +5,8 @@ import {
-   useSharedValue,
- } from "react-native-reanimated";
- import { DEFAULT_PROPS, SCROLL_POSITION_TOLERANCE } from "../constants";
--import { useProps } from "../context/propsContext";
- import { useAnimatedValues } from "../context/animatedValueContext";
-+import { useProps } from "../context/propsContext";
- import { useRefs } from "../context/refContext";
- 
- export function useAutoScroll() {
-@@ -24,12 +24,25 @@ export function useAutoScroll() {
-     activeCellSize,
-     hoverOffset,
-     activeIndexAnim,
-+    touchTranslate,
-   } = useAnimatedValues();
- 
-   const hoverScreenOffset = useDerivedValue(() => {
-     return hoverOffset.value - scrollOffset.value;
-   }, []);
- 
-+  const dragDirection = useSharedValue(0);
-+  useAnimatedReaction(
-+    () => touchTranslate.value,
-+    (cur, prev) => {
-+      if (prev !== null) {
-+        const diff = cur - prev;
-+        if (diff < -1) dragDirection.value = -1;
-+        else if (diff > 1) dragDirection.value = 1;
++var _reactNativeReanimated = require("react-native-reanimated");
++var _constants = require("../constants");
++var _propsContext = require("../context/propsContext");
++var _animatedValueContext = require("../context/animatedValueContext");
++var _refContext = require("../context/refContext");
++
++function useAutoScroll() {
++  var _useRefs = (0, _refContext.useRefs)(),
++    flatlistRef = _useRefs.flatlistRef;
++
++  var _useProps = (0, _propsContext.useProps)(),
++    _useProps$autoscrollT = _useProps.autoscrollThreshold,
++    autoscrollThreshold = _useProps$autoscrollT === void 0 ? _constants.DEFAULT_PROPS.autoscrollThreshold : _useProps$autoscrollT,
++    _useProps$autoscrollS = _useProps.autoscrollSpeed,
++    autoscrollSpeed = _useProps$autoscrollS === void 0 ? _constants.DEFAULT_PROPS.autoscrollSpeed : _useProps$autoscrollS;
++
++  var _topThreshold = _useProps.autoscrollTopThreshold != null ? _useProps.autoscrollTopThreshold : autoscrollThreshold;
++
++  var _useAnimatedValues = (0, _animatedValueContext.useAnimatedValues)(),
++    scrollOffset = _useAnimatedValues.scrollOffset,
++    scrollViewSize = _useAnimatedValues.scrollViewSize,
++    containerSize = _useAnimatedValues.containerSize,
++    activeCellSize = _useAnimatedValues.activeCellSize,
++    hoverOffset = _useAnimatedValues.hoverOffset,
++    activeIndexAnim = _useAnimatedValues.activeIndexAnim;
++
++  var hoverScreenOffset = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    return hoverOffset.value - scrollOffset.value;
++  }, []);
++
++  var isScrolledUp = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    return scrollOffset.value - _constants.SCROLL_POSITION_TOLERANCE <= 0;
++  }, []);
++
++  var isScrolledDown = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    return scrollOffset.value + containerSize.value + _constants.SCROLL_POSITION_TOLERANCE >= scrollViewSize.value;
++  }, []);
++
++  var distToTopEdge = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    return Math.max(0, hoverScreenOffset.value);
++  }, []);
++
++  var distToBottomEdge = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    var hoverPlusActiveCell = hoverScreenOffset.value + activeCellSize.value;
++    return Math.max(0, containerSize.value - hoverPlusActiveCell);
++  }, []);
++
++  var scrollTarget = (0, _reactNativeReanimated.useSharedValue)(0);
++  var dragStartHover = (0, _reactNativeReanimated.useSharedValue)(0);
++  var hasMovedEnough = (0, _reactNativeReanimated.useSharedValue)(false);
++  var MIN_DRAG_DISTANCE = 10;
++
++  var isAtTopEdge = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    if (_topThreshold <= 0) return false;
++    return distToTopEdge.value <= _topThreshold && hoverOffset.value < dragStartHover.value;
++  });
++
++  var isAtBottomEdge = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    return distToBottomEdge.value <= autoscrollThreshold && hoverOffset.value > dragStartHover.value;
++  }, []);
++
++  var dragIsActive = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    return activeIndexAnim.value >= 0;
++  }, []);
++
++  (0, _reactNativeReanimated.useAnimatedReaction)(
++    function () { return dragIsActive.value; },
++    function (cur, prev) {
++      if (cur && !prev) {
++        scrollTarget.value = scrollOffset.value;
++        dragStartHover.value = hoverOffset.value;
++        hasMovedEnough.value = false;
 +      }
 +    }
 +  );
 +
-   const isScrolledUp = useDerivedValue(() => {
-     return scrollOffset.value - SCROLL_POSITION_TOLERANCE <= 0;
++  (0, _reactNativeReanimated.useAnimatedReaction)(
++    function () { return hoverOffset.value; },
++    function (cur) {
++      if (!hasMovedEnough.value && Math.abs(cur - dragStartHover.value) >= MIN_DRAG_DISTANCE) {
++        hasMovedEnough.value = true;
++      }
++    }
++  );
++
++  var shouldAutoScroll = (0, _reactNativeReanimated.useDerivedValue)(function () {
++    var scrollTargetDiff = Math.abs(scrollTarget.value - scrollOffset.value);
++    var hasScrolledToTarget = scrollTargetDiff < _constants.SCROLL_POSITION_TOLERANCE;
++    var isAtEdge = isAtTopEdge.value || isAtBottomEdge.value;
++    var topDisabled = isAtTopEdge.value && isScrolledUp.value;
++    var bottomDisabled = isAtBottomEdge.value && isScrolledDown.value;
++    var isEdgeDisabled = topDisabled || bottomDisabled;
++    var cellIsActive = activeIndexAnim.value >= 0;
++    return hasScrolledToTarget && isAtEdge && !isEdgeDisabled && cellIsActive && hasMovedEnough.value;
++  }, []);
++
++  function scrollToInternal(offset) {
++    if (flatlistRef && "current" in flatlistRef) {
++      var _flatlistRef$current;
++      (_flatlistRef$current = flatlistRef.current) == null ? void 0 : _flatlistRef$current.scrollToOffset({ offset: offset, animated: true });
++    }
++  }
++
++  (0, _reactNativeReanimated.useDerivedValue)(function () {
++    if (!shouldAutoScroll.value) return;
++    var distFromEdge = isAtTopEdge.value ? distToTopEdge.value : distToBottomEdge.value;
++    var currentThreshold = isAtTopEdge.value ? _topThreshold : autoscrollThreshold;
++    var speedPct = 1 - distFromEdge / currentThreshold;
++    var offset = speedPct * autoscrollSpeed;
++    var targetOffset = isAtTopEdge.value
++      ? Math.max(0, scrollOffset.value - offset)
++      : Math.min(scrollOffset.value + offset, scrollViewSize.value - containerSize.value);
++    scrollTarget.value = targetOffset;
++    (0, _reactNativeReanimated.runOnJS)(scrollToInternal)(targetOffset);
++  }, []);
++
++  return null;
++}
+diff --git a/node_modules/react-native-draggable-flatlist/lib/module/components/DraggableFlatList.js b/node_modules/react-native-draggable-flatlist/lib/module/components/DraggableFlatList.js
+index 80185d0..140b06d 100644
+--- a/node_modules/react-native-draggable-flatlist/lib/module/components/DraggableFlatList.js
++++ b/node_modules/react-native-draggable-flatlist/lib/module/components/DraggableFlatList.js
+@@ -108,6 +108,16 @@ function DraggableFlatListInner(props) {
+       activeCellSize.value = cellData.measurements.size;
+     }
+ 
++    // Allow consumer to override cell size/offset via a prop callback
++    var overrideFn = propsRef.current.onCellMeasureOverride;
++    if (overrideFn && index !== undefined) {
++      var override = overrideFn(index, activeKey, cellData, cellDataRef.current);
++      if (override) {
++        if (override.size !== undefined) activeCellSize.value = override.size;
++        if (override.offset !== undefined) activeCellOffset.value = override.offset;
++      }
++    }
++
+     const {
+       onDragBegin
+     } = propsRef.current;
+diff --git a/node_modules/react-native-draggable-flatlist/lib/module/hooks/useAutoScroll.js b/node_modules/react-native-draggable-flatlist/lib/module/hooks/useAutoScroll.js
+index 4923c20..56381f1 100644
+--- a/node_modules/react-native-draggable-flatlist/lib/module/hooks/useAutoScroll.js
++++ b/node_modules/react-native-draggable-flatlist/lib/module/hooks/useAutoScroll.js
+@@ -9,8 +9,10 @@ export function useAutoScroll() {
+   } = useRefs();
+   const {
+     autoscrollThreshold = DEFAULT_PROPS.autoscrollThreshold,
+-    autoscrollSpeed = DEFAULT_PROPS.autoscrollSpeed
++    autoscrollSpeed = DEFAULT_PROPS.autoscrollSpeed,
++    autoscrollTopThreshold,
+   } = useProps();
++  const _topThreshold = autoscrollTopThreshold != null ? autoscrollTopThreshold : autoscrollThreshold;
+   const {
+     scrollOffset,
+     scrollViewSize,
+@@ -35,13 +37,17 @@ export function useAutoScroll() {
+     const hoverPlusActiveCell = hoverScreenOffset.value + activeCellSize.value;
+     return Math.max(0, containerSize.value - hoverPlusActiveCell);
    }, []);
-@@ -50,12 +63,13 @@ export function useAutoScroll() {
++  const scrollTarget = useSharedValue(0);
++  const dragStartHover = useSharedValue(0);
++  const hasMovedEnough = useSharedValue(false);
++  const MIN_DRAG_DISTANCE = 10;
+   const isAtTopEdge = useDerivedValue(() => {
+-    return distToTopEdge.value <= autoscrollThreshold;
++    if (_topThreshold <= 0) return false;
++    return distToTopEdge.value <= _topThreshold && hoverOffset.value < dragStartHover.value;
+   });
+   const isAtBottomEdge = useDerivedValue(() => {
+-    return distToBottomEdge.value <= autoscrollThreshold;
++    return distToBottomEdge.value <= autoscrollThreshold && hoverOffset.value > dragStartHover.value;
+   }, []);
+-  const scrollTarget = useSharedValue(0);
+   const dragIsActive = useDerivedValue(() => {
+     return activeIndexAnim.value >= 0;
+   }, []);
+@@ -50,6 +56,13 @@ export function useAutoScroll() {
+   }, (cur, prev) => {
+     if (cur && !prev) {
+       scrollTarget.value = scrollOffset.value;
++      dragStartHover.value = hoverOffset.value;
++      hasMovedEnough.value = false;
++    }
++  });
++  useAnimatedReaction(() => hoverOffset.value, (cur) => {
++    if (!hasMovedEnough.value && Math.abs(cur - dragStartHover.value) >= MIN_DRAG_DISTANCE) {
++      hasMovedEnough.value = true;
+     }
+   });
+   const shouldAutoScroll = useDerivedValue(() => {
+@@ -60,7 +73,23 @@ export function useAutoScroll() {
+     const bottomDisabled = isAtBottomEdge.value && isScrolledDown.value;
+     const isEdgeDisabled = topDisabled || bottomDisabled;
+     const cellIsActive = activeIndexAnim.value >= 0;
+-    return hasScrolledToTarget && isAtEdge && !isEdgeDisabled && cellIsActive;
++    return hasScrolledToTarget && isAtEdge && !isEdgeDisabled && cellIsActive && hasMovedEnough.value;
++  }, []);
++
++  function _debugLog(msg) { console.log('[AUTOSCROLL]', msg); }
++
++  useDerivedValue(() => {
++    if (dragIsActive.value) {
++      const msg = 'hover=' + Math.round(hoverOffset.value) +
++        ' start=' + Math.round(dragStartHover.value) +
++        ' distBot=' + Math.round(distToBottomEdge.value) +
++        ' distTop=' + Math.round(distToTopEdge.value) +
++        ' atBot=' + isAtBottomEdge.value +
++        ' atTop=' + isAtTopEdge.value +
++        ' should=' + shouldAutoScroll.value +
++        ' moved=' + hasMovedEnough.value;
++      runOnJS(_debugLog)(msg);
++    }
+   }, []);
+ 
+   function scrollToInternal(offset) {
+@@ -77,7 +106,8 @@ export function useAutoScroll() {
+   useDerivedValue(() => {
+     if (!shouldAutoScroll.value) return;
+     const distFromEdge = isAtTopEdge.value ? distToTopEdge.value : distToBottomEdge.value;
+-    const speedPct = 1 - distFromEdge / autoscrollThreshold;
++    const currentThreshold = isAtTopEdge.value ? _topThreshold : autoscrollThreshold;
++    const speedPct = 1 - distFromEdge / currentThreshold;
+     const offset = speedPct * autoscrollSpeed;
+     const targetOffset = isAtTopEdge.value ? Math.max(0, scrollOffset.value - offset) : Math.min(scrollOffset.value + offset, scrollViewSize.value - containerSize.value);
+     scrollTarget.value = targetOffset; // Reanimated scrollTo is crashing on android. use 'regular' scrollTo until figured out.
+diff --git a/node_modules/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx b/node_modules/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx
+index 7c88afc..effe928 100644
+--- a/node_modules/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx
++++ b/node_modules/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx
+@@ -153,6 +153,16 @@ function DraggableFlatListInner<T>(props: DraggableFlatListProps<T>) {
+       activeCellSize.value = cellData.measurements.size;
+     }
+ 
++    // Allow consumer to override cell size/offset via a prop callback
++    const overrideFn = (propsRef.current as any).onCellMeasureOverride;
++    if (overrideFn && index !== undefined) {
++      const override = overrideFn(index, activeKey, cellData, cellDataRef.current);
++      if (override) {
++        if (override.size !== undefined) activeCellSize.value = override.size;
++        if (override.offset !== undefined) activeCellOffset.value = override.offset;
++      }
++    }
++
+     const { onDragBegin } = propsRef.current;
+     if (index !== undefined) {
+       spacerIndexAnim.value = index;
+diff --git a/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx b/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx
+index d3add83..c1f8f92 100644
+--- a/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx
++++ b/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx
+@@ -15,7 +15,9 @@ export function useAutoScroll() {
+   const {
+     autoscrollThreshold = DEFAULT_PROPS.autoscrollThreshold,
+     autoscrollSpeed = DEFAULT_PROPS.autoscrollSpeed,
+-  } = useProps();
++    autoscrollTopThreshold,
++  } = useProps() as any;
++  const _topThreshold = autoscrollTopThreshold != null ? autoscrollTopThreshold : autoscrollThreshold;
+ 
+   const {
+     scrollOffset,
+@@ -50,19 +52,42 @@ export function useAutoScroll() {
      return Math.max(0, containerSize.value - hoverPlusActiveCell);
    }, []);
  
-+  const _topThreshold = (useProps() as any).autoscrollTopThreshold ?? autoscrollThreshold;
++  const scrollTarget = useSharedValue(0);
++  const stableHoverStart = useSharedValue(0);
++  const dragDirection = useSharedValue(0); // -1 = up, 0 = neutral, 1 = down
++  const prevHoverOffset = useSharedValue(0);
++  const isStabilized = useSharedValue(false);
++  const hasMovedFromStart = useSharedValue(false);
++
    const isAtTopEdge = useDerivedValue(() => {
 -    return distToTopEdge.value <= autoscrollThreshold;
++    if (_topThreshold <= 0) return false;
 +    return distToTopEdge.value <= _topThreshold && dragDirection.value < 0;
    });
  
@@ -123,25 +302,222 @@ index d3add83..b100798 100644
 +    return distToBottomEdge.value <= autoscrollThreshold && dragDirection.value > 0;
    }, []);
  
-   const scrollTarget = useSharedValue(0);
-@@ -70,6 +84,7 @@ export function useAutoScroll() {
+-  const scrollTarget = useSharedValue(0);
+   const dragIsActive = useDerivedValue(() => {
+     return activeIndexAnim.value >= 0;
+   }, []);
+ 
++  function captureStablePosition() {
++    setTimeout(() => {
++      stableHoverStart.value = hoverOffset.value;
++      isStabilized.value = true;
++    }, 300);
++  }
++
++  function resetDragScroll() {
++    isStabilized.value = false;
++    hasMovedFromStart.value = false;
++    // Stop any in-progress animated scroll
++    if (flatlistRef && "current" in flatlistRef) {
++      flatlistRef.current?.scrollToOffset({ offset: scrollOffset.value, animated: false });
++    }
++  }
++
+   useAnimatedReaction(
+     () => {
+       return dragIsActive.value;
+@@ -70,6 +95,29 @@ export function useAutoScroll() {
      (cur, prev) => {
        if (cur && !prev) {
          scrollTarget.value = scrollOffset.value;
-+        dragDirection.value = 0; // reset on drag start
++        isStabilized.value = false;
++        hasMovedFromStart.value = false;
++        dragDirection.value = 0;
++        runOnJS(captureStablePosition)();
++      }
++      if (!cur && prev) {
++        runOnJS(resetDragScroll)();
++      }
++    }
++  );
++
++  useAnimatedReaction(
++    () => hoverOffset.value,
++    (cur, prev) => {
++      if (prev !== null) {
++        const diff = cur - prev;
++        if (diff < -2) dragDirection.value = -1;
++        else if (diff > 2) dragDirection.value = 1;
++      }
++      if (isStabilized.value && !hasMovedFromStart.value) {
++        if (Math.abs(cur - stableHoverStart.value) >= 15) {
++          hasMovedFromStart.value = true;
++        }
        }
      }
    );
-@@ -105,9 +120,9 @@ export function useAutoScroll() {
+@@ -85,7 +133,7 @@ export function useAutoScroll() {
+ 
+     const cellIsActive = activeIndexAnim.value >= 0;
+ 
+-    return hasScrolledToTarget && isAtEdge && !isEdgeDisabled && cellIsActive;
++    return hasScrolledToTarget && isAtEdge && !isEdgeDisabled && cellIsActive && hasMovedFromStart.value;
+   }, []);
+ 
+   function scrollToInternal(offset: number) {
+@@ -100,7 +148,8 @@ export function useAutoScroll() {
+     const distFromEdge = isAtTopEdge.value
+       ? distToTopEdge.value
+       : distToBottomEdge.value;
+-    const speedPct = 1 - distFromEdge / autoscrollThreshold!;
++    const currentThreshold = isAtTopEdge.value ? _topThreshold : autoscrollThreshold!;
++    const speedPct = 1 - distFromEdge / currentThreshold;
+     const offset = speedPct * autoscrollSpeed;
      const targetOffset = isAtTopEdge.value
        ? Math.max(0, scrollOffset.value - offset)
-       : Math.min(
--          scrollOffset.value + offset,
--          scrollViewSize.value - containerSize.value
--        );
-+        scrollOffset.value + offset,
-+        scrollViewSize.value - containerSize.value
-+      );
+@@ -110,8 +159,6 @@ export function useAutoScroll() {
+         );
  
      scrollTarget.value = targetOffset;
-     // Reanimated scrollTo is crashing on android. use 'regular' scrollTo until figured out.
+-    // Reanimated scrollTo is crashing on android. use 'regular' scrollTo until figured out.
+-    // scrollTo(scrollViewRef, targetX, targetY, true);
+     runOnJS(scrollToInternal)(targetOffset);
+   }, []);
+ 
+diff --git a/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx.bak b/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx.bak
+new file mode 100644
+index 0000000..d3add83
+--- /dev/null
++++ b/node_modules/react-native-draggable-flatlist/src/hooks/useAutoScroll.tsx.bak
+@@ -0,0 +1,119 @@
++import {
++  runOnJS,
++  useAnimatedReaction,
++  useDerivedValue,
++  useSharedValue,
++} from "react-native-reanimated";
++import { DEFAULT_PROPS, SCROLL_POSITION_TOLERANCE } from "../constants";
++import { useProps } from "../context/propsContext";
++import { useAnimatedValues } from "../context/animatedValueContext";
++import { useRefs } from "../context/refContext";
++
++export function useAutoScroll() {
++  const { flatlistRef } = useRefs();
++
++  const {
++    autoscrollThreshold = DEFAULT_PROPS.autoscrollThreshold,
++    autoscrollSpeed = DEFAULT_PROPS.autoscrollSpeed,
++  } = useProps();
++
++  const {
++    scrollOffset,
++    scrollViewSize,
++    containerSize,
++    activeCellSize,
++    hoverOffset,
++    activeIndexAnim,
++  } = useAnimatedValues();
++
++  const hoverScreenOffset = useDerivedValue(() => {
++    return hoverOffset.value - scrollOffset.value;
++  }, []);
++
++  const isScrolledUp = useDerivedValue(() => {
++    return scrollOffset.value - SCROLL_POSITION_TOLERANCE <= 0;
++  }, []);
++
++  const isScrolledDown = useDerivedValue(() => {
++    return (
++      scrollOffset.value + containerSize.value + SCROLL_POSITION_TOLERANCE >=
++      scrollViewSize.value
++    );
++  }, []);
++
++  const distToTopEdge = useDerivedValue(() => {
++    return Math.max(0, hoverScreenOffset.value);
++  }, []);
++
++  const distToBottomEdge = useDerivedValue(() => {
++    const hoverPlusActiveCell = hoverScreenOffset.value + activeCellSize.value;
++    return Math.max(0, containerSize.value - hoverPlusActiveCell);
++  }, []);
++
++  const isAtTopEdge = useDerivedValue(() => {
++    return distToTopEdge.value <= autoscrollThreshold;
++  });
++
++  const isAtBottomEdge = useDerivedValue(() => {
++    return distToBottomEdge.value <= autoscrollThreshold;
++  }, []);
++
++  const scrollTarget = useSharedValue(0);
++  const dragIsActive = useDerivedValue(() => {
++    return activeIndexAnim.value >= 0;
++  }, []);
++
++  useAnimatedReaction(
++    () => {
++      return dragIsActive.value;
++    },
++    (cur, prev) => {
++      if (cur && !prev) {
++        scrollTarget.value = scrollOffset.value;
++      }
++    }
++  );
++
++  const shouldAutoScroll = useDerivedValue(() => {
++    const scrollTargetDiff = Math.abs(scrollTarget.value - scrollOffset.value);
++    const hasScrolledToTarget = scrollTargetDiff < SCROLL_POSITION_TOLERANCE;
++
++    const isAtEdge = isAtTopEdge.value || isAtBottomEdge.value;
++    const topDisabled = isAtTopEdge.value && isScrolledUp.value;
++    const bottomDisabled = isAtBottomEdge.value && isScrolledDown.value;
++    const isEdgeDisabled = topDisabled || bottomDisabled;
++
++    const cellIsActive = activeIndexAnim.value >= 0;
++
++    return hasScrolledToTarget && isAtEdge && !isEdgeDisabled && cellIsActive;
++  }, []);
++
++  function scrollToInternal(offset: number) {
++    if (flatlistRef && "current" in flatlistRef) {
++      flatlistRef.current?.scrollToOffset({ offset, animated: true });
++    }
++  }
++
++  useDerivedValue(() => {
++    if (!shouldAutoScroll.value) return;
++
++    const distFromEdge = isAtTopEdge.value
++      ? distToTopEdge.value
++      : distToBottomEdge.value;
++    const speedPct = 1 - distFromEdge / autoscrollThreshold!;
++    const offset = speedPct * autoscrollSpeed;
++    const targetOffset = isAtTopEdge.value
++      ? Math.max(0, scrollOffset.value - offset)
++      : Math.min(
++          scrollOffset.value + offset,
++          scrollViewSize.value - containerSize.value
++        );
++
++    scrollTarget.value = targetOffset;
++    // Reanimated scrollTo is crashing on android. use 'regular' scrollTo until figured out.
++    // scrollTo(scrollViewRef, targetX, targetY, true);
++    runOnJS(scrollToInternal)(targetOffset);
++  }, []);
++
++  return null;
++}
+diff --git a/node_modules/react-native-draggable-flatlist/src/hooks/useCellTranslate.tsx b/node_modules/react-native-draggable-flatlist/src/hooks/useCellTranslate.tsx
+index efea240..d5a2c06 100644
+--- a/node_modules/react-native-draggable-flatlist/src/hooks/useCellTranslate.tsx
++++ b/node_modules/react-native-draggable-flatlist/src/hooks/useCellTranslate.tsx
+@@ -42,6 +42,7 @@ export function useCellTranslate({ cellIndex, cellSize, cellOffset }: Params) {
+     const hoverPlusActiveSize = hoverOffset.value + activeCellSize.value;
+     const offsetPlusHalfSize = cellOffset.value + cellSize.value / 2;
+     const offsetPlusSize = cellOffset.value + cellSize.value;
++
+     let result = -1;
+ 
+     if (isAfterActive) {
