@@ -137,6 +137,7 @@ export default function OggiScreen() {
     const newDate = new Date(currentDate);
     newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1));
     setCurrentDate(newDate);
+    hasAutoScrolled.current = false;
   };
 
   const weekday = useMemo(() => currentDate.getDay(), [currentDate]);
@@ -242,6 +243,22 @@ export default function OggiScreen() {
   useEffect(() => {
     if (allDayEvents.length === 0) setAllDayHeight(0);
   }, [allDayEvents.length]);
+
+  // Auto-scroll to current time on mount / when layout changes
+  const hasAutoScrolled = useRef(false);
+  useEffect(() => {
+    if (hasAutoScrolled.current) return;
+    if (!hourHeight || hourHeight <= 0) return;
+    const now = new Date();
+    const min = now.getHours() * 60 + now.getMinutes();
+    if (min < windowStartMin || min > windowEndMin) return;
+    const targetY = ((min - windowStartMin) / 60) * hourHeight + BASE_VERTICAL_OFFSET - 60;
+    const id = setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, targetY), animated: false });
+      hasAutoScrolled.current = true;
+    }, 100);
+    return () => clearTimeout(id);
+  }, [hourHeight, windowStartMin, windowEndMin]);
 
   useEffect(() => {
     if (Object.keys(pendingEventPositions).length === 0) return;
