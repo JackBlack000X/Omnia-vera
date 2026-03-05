@@ -1,8 +1,9 @@
 import { getCalendarDays, getMonthName, getMonthYear, isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
 import { useAppTheme } from '@/lib/theme-context';
-import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -32,6 +33,86 @@ function getCompletionStyle(level: CompletionLevel, isPast: boolean): { backgrou
     case 'medium': return { backgroundColor: 'rgba(255, 215, 0, 0.5)' }; // yellow 50% transparent
     case 'low': return isPast ? { backgroundColor: 'rgba(255, 0, 0, 0.5)' } : {}; // red 50% transparent only for past days
   }
+}
+
+function AnimatedStreakFlame() {
+  const scale = useRef(new Animated.Value(1)).current;
+  const scaleY = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const glowOpacity = useRef(new Animated.Value(0.6)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const flicker = () =>
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(scale, { toValue: 1.12, duration: 120, useNativeDriver: true }),
+          Animated.timing(scaleY, { toValue: 1.08, duration: 120, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0.92, duration: 120, useNativeDriver: true }),
+          Animated.timing(glowOpacity, { toValue: 0.85, duration: 120, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -3, duration: 120, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 1, duration: 120, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(scale, { toValue: 0.96, duration: 100, useNativeDriver: true }),
+          Animated.timing(scaleY, { toValue: 1.05, duration: 100, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
+          Animated.timing(glowOpacity, { toValue: 0.5, duration: 100, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: 1, duration: 100, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 0, duration: 100, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(scale, { toValue: 1.18, duration: 180, useNativeDriver: true }),
+          Animated.timing(scaleY, { toValue: 0.95, duration: 180, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0.88, duration: 180, useNativeDriver: true }),
+          Animated.timing(glowOpacity, { toValue: 0.9, duration: 180, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -2, duration: 180, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 1, duration: 180, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(scale, { toValue: 1, duration: 220, useNativeDriver: true }),
+          Animated.timing(scaleY, { toValue: 1, duration: 220, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+          Animated.timing(glowOpacity, { toValue: 0.6, duration: 220, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: 0, duration: 220, useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 0, duration: 220, useNativeDriver: true }),
+        ]),
+      ]);
+
+    const loop = Animated.loop(flicker(), { iterations: -1 });
+    loop.start();
+    return () => loop.stop();
+  }, [scale, scaleY, opacity, glowOpacity, translateY, rotate]);
+
+  const rotateDeg = rotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '5deg'],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.streakFlameWrap,
+        {
+          transform: [
+            { scaleX: scale },
+            { scaleY },
+            { translateY },
+            { rotate: rotateDeg },
+          ],
+          opacity,
+        },
+      ]}
+    >
+      <Animated.View style={[styles.streakFlameGlow, { opacity: glowOpacity }]} pointerEvents="none">
+        <Ionicons name="flame" size={36} color="#fbbf24" />
+      </Animated.View>
+      <View style={styles.streakFlameCore}>
+        <Ionicons name="flame" size={28} color="#f59e0b" />
+      </View>
+    </Animated.View>
+  );
 }
 
 // Test state - temporary completion override for testing
@@ -429,7 +510,11 @@ export default function CalendarScreen() {
             )}
           </View>
           <View style={styles.headerRight}>
-            <Text style={styles.streakValue}>{currentPerfectStreak}</Text>
+            <View style={styles.streakBadge}>
+              <Text style={styles.streakValue}>{currentPerfectStreak}</Text>
+              <View style={styles.streakFlameSpacer} />
+              <AnimatedStreakFlame />
+            </View>
             {activeTheme === 'futuristic' && (
               <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
                 <View style={styles.infoCircle}>
@@ -540,6 +625,32 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+    minWidth: 80,
+    justifyContent: 'flex-end',
+  },
+  streakFlameSpacer: {
+    width: 0,
+  },
+  streakFlameWrap: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  streakFlameGlow: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  streakFlameCore: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   streakValue: {
     color: '#FFD700',

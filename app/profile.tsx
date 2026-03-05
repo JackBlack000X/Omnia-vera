@@ -1,27 +1,21 @@
+import { APP_CONFIG } from '@/constants/app';
 import { THEME } from '@/constants/theme';
 import { buildCsv } from '@/lib/csv';
 import { useHabits } from '@/lib/habits/Provider';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-function getLast7Days(): string[] {
-  const arr: string[] = [];
-  const today = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    arr.push(d.toISOString().split('T')[0]);
-  }
-  return arr.reverse();
-}
+type ProfileSection = 'impostazioni' | 'statistiche';
 
 export default function ProfileScreen() {
   const { habits, history } = useHabits();
   const router = useRouter();
+  const [feedbackText, setFeedbackText] = useState('');
+  const [section, setSection] = useState<ProfileSection>('impostazioni');
 
   const todayKey = new Date().toISOString().split('T')[0];
   const todayCompleted = useMemo(() => Object.values(history[todayKey]?.completedByHabitId ?? {}).filter(Boolean).length, [history, todayKey]);
@@ -69,17 +63,24 @@ export default function ProfileScreen() {
       .sort((a, b) => b.pct - a.pct);
   }, [habits, history]);
 
-  const weekly = useMemo(() => {
-    const days = getLast7Days();
-    const items = days.map(d => {
-      const completed = Object.values(history[d]?.completedByHabitId ?? {}).filter(Boolean).length;
-      return { date: d, completed, total: habits.length };
-    });
-    const totalCompleted = items.reduce((a, b) => a + b.completed, 0);
-    const totalPossible = items.reduce((a, b) => a + b.total, 0);
-    const perfectDays = items.filter(i => i.total > 0 && i.completed === i.total).length;
-    return { items, totalCompleted, totalPossible, perfectDays };
-  }, [history, habits.length]);
+  async function sendFeedback() {
+    const trimmed = feedbackText.trim();
+    if (!trimmed) {
+      Alert.alert('Feedback', 'Scrivi un messaggio prima di inviare.');
+      return;
+    }
+    const subject = encodeURIComponent('Feedback Omnia App');
+    const body = encodeURIComponent(trimmed);
+    const mailto = `mailto:${APP_CONFIG.feedbackEmail}?subject=${subject}&body=${body}`;
+    const canOpen = await Linking.canOpenURL(mailto);
+    if (canOpen) {
+      await Linking.openURL(mailto);
+      setFeedbackText('');
+      Alert.alert('Grazie', 'Si aprirà la mail con il tuo messaggio. Invia l’email per inviare il feedback.');
+    } else {
+      Alert.alert('Feedback', `Scrivi a ${APP_CONFIG.feedbackEmail} per inviare il tuo feedback.`);
+    }
+  }
 
   async function exportCsv() {
     const csv = buildCsv(history);
@@ -102,34 +103,98 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-back" size={28} color={THEME.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Profilo</Text>
-        <TouchableOpacity onPress={exportCsv} style={styles.csvBtn}>
-          <Text style={styles.csvText}>CSV</Text>
+        <View style={styles.headerRight}>
+          {section === 'statistiche' && (
+            <TouchableOpacity onPress={exportCsv} style={styles.csvBtn}>
+              <Text style={styles.csvText}>CSV</Text>
+            </TouchableOpacity>
+          )}
+          {section !== 'statistiche' && <View style={styles.headerSpacer} />}
+        </View>
+      </View>
+
+      <View style={styles.tabs}>
+        <TouchableOpacity
+          style={[styles.tab, section === 'impostazioni' && styles.tabActive]}
+          onPress={() => setSection('impostazioni')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="settings-outline" size={20} color={section === 'impostazioni' ? '#fff' : THEME.textMuted} />
+          <Text style={[styles.tabText, section === 'impostazioni' && styles.tabTextActive]}>Impostazioni</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, section === 'statistiche' && styles.tabActive]}
+          onPress={() => setSection('statistiche')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="stats-chart-outline" size={20} color={section === 'statistiche' ? '#fff' : THEME.textMuted} />
+          <Text style={[styles.tabText, section === 'statistiche' && styles.tabTextActive]}>Statistiche</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.cards}>
-        <View style={styles.card}><Text style={styles.cardBig}>{todayCompleted}/{habits.length}</Text><Text style={styles.cardLabel}>Oggi</Text></View>
-        <View style={styles.card}><Text style={styles.cardBig}>{averageCompletion}%</Text><Text style={styles.cardLabel}>Questa settimana</Text></View>
-        <View style={styles.card}><Text style={styles.cardBig}>{activeDays}</Text><Text style={styles.cardLabel}>Giorni attivi</Text></View>
-        <View style={styles.card}><Text style={styles.cardBig}>{bestStreak}</Text><Text style={styles.cardLabel}>Serie migliore</Text></View>
-      </View>
-
-      <ScrollView>
-        <Text style={styles.sectionTitle}>Abitudini più completate</Text>
-        {leaderboard.map((l, idx) => (
-          <View key={l.id} style={styles.rowItem}>
-            <Text style={styles.rank}>#{idx + 1}</Text>
-            <Text style={styles.rowText}>{l.text}</Text>
-            <Text style={styles.rowPct}>{l.pct}%</Text>
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false}>
+        {section === 'impostazioni' && (
+          <View style={styles.feedbackBox}>
+            <Text style={styles.feedbackLabel}>Feedback</Text>
+            <Text style={styles.feedbackSublabel}>Scrivi un messaggio allo sviluppatore</Text>
+            <TextInput
+              style={styles.feedbackInput}
+              placeholder="Scrivi qui il tuo messaggio..."
+              placeholderTextColor={THEME.textMuted}
+              value={feedbackText}
+              onChangeText={setFeedbackText}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            <TouchableOpacity style={styles.sendFeedbackBtn} onPress={sendFeedback} activeOpacity={0.8}>
+              <Ionicons name="send" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.sendFeedbackBtnText}>Invia alla mail</Text>
+            </TouchableOpacity>
           </View>
-        ))}
+        )}
 
-        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Panoramica settimanale</Text>
-        <View style={styles.weekBox}>
-          <Text style={styles.weekText}>Abitudini completate: {weekly.totalCompleted}</Text>
-          <Text style={styles.weekText}>Totale possibili: {weekly.totalPossible}</Text>
-          <Text style={styles.weekText}>Giorni perfetti: {weekly.perfectDays}</Text>
-        </View>
+        {section === 'statistiche' && (
+          <>
+            <View style={styles.cards}>
+              <View style={[styles.card, styles.cardHighlight]}>
+                <View style={styles.cardIconWrap}><Ionicons name="today-outline" size={24} color={THEME.cyan} /></View>
+                <Text style={styles.cardBig}>{todayCompleted}/{habits.length}</Text>
+                <Text style={styles.cardLabel}>Oggi</Text>
+              </View>
+              <View style={styles.card}>
+                <View style={styles.cardIconWrap}><Ionicons name="calendar-outline" size={24} color={THEME.primary} /></View>
+                <Text style={styles.cardBig}>{averageCompletion}%</Text>
+                <Text style={styles.cardLabel}>Media settimana</Text>
+              </View>
+              <View style={styles.card}>
+                <View style={styles.cardIconWrap}><Ionicons name="flame-outline" size={24} color={THEME.orange} /></View>
+                <Text style={styles.cardBig}>{activeDays}</Text>
+                <Text style={styles.cardLabel}>Giorni attivi</Text>
+              </View>
+              <View style={styles.card}>
+                <View style={styles.cardIconWrap}><Ionicons name="trophy-outline" size={24} color={THEME.warning} /></View>
+                <Text style={styles.cardBig}>{bestStreak}</Text>
+                <Text style={styles.cardLabel}>Serie migliore</Text>
+              </View>
+            </View>
+
+            <Text style={styles.blockTitle}>Abitudini più completate</Text>
+            {leaderboard.slice(0, 10).map((l, idx) => (
+              <View key={l.id} style={styles.leaderRow}>
+                <View style={[styles.leaderRank, idx === 0 && styles.leaderRankGold]}>
+                  <Text style={styles.leaderRankText}>{idx + 1}</Text>
+                </View>
+                <View style={styles.leaderContent}>
+                  <Text style={styles.leaderLabel} numberOfLines={1}>{l.text}</Text>
+                  <View style={styles.leaderBarBg}><View style={[styles.leaderBarFill, { width: `${l.pct}%` }]} /></View>
+                </View>
+                <Text style={styles.leaderPct}>{l.pct}%</Text>
+              </View>
+            ))}
+
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -137,24 +202,46 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: THEME.background, paddingHorizontal: 14 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 10 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 12 },
   backBtn: { padding: 8, marginLeft: -8 },
   title: { color: THEME.text, fontSize: 24, fontWeight: '700' },
+  headerRight: { minWidth: 60, alignItems: 'flex-end' },
+  headerSpacer: { width: 60 },
   csvBtn: { backgroundColor: '#1d4ed8', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   csvText: { color: THEME.text, fontWeight: '700' },
 
-  cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginVertical: 16 },
-  card: { flexBasis: '48%', backgroundColor: '#000', borderColor: '#334155', borderWidth: 1, borderRadius: 14, padding: 12 },
-  cardBig: { color: THEME.text, fontSize: 22, fontWeight: '700' },
-  cardLabel: { color: THEME.textMuted, marginTop: 4 },
+  tabs: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 14, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155' },
+  tabActive: { backgroundColor: '#1e3a5f', borderColor: THEME.primary },
+  tabText: { color: THEME.textMuted, fontSize: 15, fontWeight: '600' },
+  tabTextActive: { color: '#fff' },
 
-  sectionTitle: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 8 },
-  rowItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#000', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 8 },
-  rank: { color: '#22d3ee', width: 30, fontWeight: '700' },
-  rowText: { color: THEME.text, flex: 1 },
-  rowPct: { color: THEME.text, fontWeight: '700' },
+  content: { flex: 1 },
+  contentInner: { paddingBottom: 32 },
 
-  weekBox: { backgroundColor: '#000', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 12, gap: 6 },
-  weekText: { color: THEME.textSecondary },
+  cards: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 24 },
+  card: { flexBasis: '47%', backgroundColor: '#0a0a0a', borderColor: '#334155', borderWidth: 1, borderRadius: 16, padding: 16 },
+  cardHighlight: { borderColor: THEME.cyan, backgroundColor: 'rgba(34, 211, 238, 0.06)' },
+  cardIconWrap: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  cardBig: { color: THEME.text, fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+  cardLabel: { color: THEME.textMuted, marginTop: 4, fontSize: 13, fontWeight: '500' },
+
+  blockTitle: { color: THEME.text, fontSize: 17, fontWeight: '700', marginBottom: 12 },
+  leaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  leaderRank: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center' },
+  leaderRankGold: { backgroundColor: 'rgba(245, 158, 11, 0.2)' },
+  leaderRankText: { color: THEME.text, fontWeight: '700', fontSize: 14 },
+  leaderContent: { flex: 1, minWidth: 0 },
+  leaderLabel: { color: THEME.text, fontSize: 15, marginBottom: 6 },
+  leaderBarBg: { height: 6, backgroundColor: '#1e293b', borderRadius: 3, overflow: 'hidden' },
+  leaderBarFill: { height: '100%', backgroundColor: THEME.cyan, borderRadius: 3 },
+  leaderPct: { color: THEME.textMuted, fontWeight: '700', fontSize: 14, minWidth: 36, textAlign: 'right' },
+
+  feedbackBox: { marginTop: 8 },
+  feedbackLabel: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  feedbackSublabel: { color: THEME.textMuted, fontSize: 14, marginBottom: 14 },
+  feedbackInput: { backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 14, color: THEME.text, fontSize: 16, minHeight: 120, maxHeight: 160 },
+  sendFeedbackBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1d4ed8', paddingVertical: 14, borderRadius: 12, marginTop: 14 },
+  sendFeedbackBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });
 

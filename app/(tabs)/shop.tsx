@@ -1,18 +1,35 @@
+import { useHabits } from '@/lib/habits/Provider';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+const COINS_PER_STREAK_DAY = 100;
 
 export default function ShopScreen() {
   const router = useRouter();
   const { activeTheme, setActiveTheme } = useAppTheme();
+  const { history } = useHabits();
+
+  const coins = useMemo(() => {
+    const activeDays = Object.keys(history).filter(k =>
+      Object.values(history[k]?.completedByHabitId ?? {}).some(Boolean)
+    ).length;
+    return activeDays * COINS_PER_STREAK_DAY;
+  }, [history]);
 
   return (
     <View style={styles.background}>
       <SafeAreaView style={styles.container}>
         <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 60 }]}>
           {activeTheme !== 'futuristic' && <Text style={styles.title}>Shop</Text>}
+          <View style={styles.coinsWrap}>
+            <View style={styles.coinSymbol}>
+              <Text style={styles.coinSymbolText}>C</Text>
+            </View>
+            <Text style={styles.coinsText}>{coins}</Text>
+          </View>
           <View style={styles.headerRight}>
             <TouchableOpacity 
               onPress={() => router.push('/profile')}
@@ -75,6 +92,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     marginBottom: 20,
+  },
+  coinsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingVertical: 6,
+    paddingLeft: 8,
+    paddingRight: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  coinSymbol: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#f59e0b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#fbbf24',
+  },
+  coinSymbolText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  coinsText: {
+    color: '#fbbf24',
+    fontSize: 17,
+    fontWeight: '700',
   },
   headerRight: {
     flexDirection: 'row',
