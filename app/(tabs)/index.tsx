@@ -72,6 +72,8 @@ export default function IndexScreen() {
     setNewFolderColor,
     newFolderIcon,
     setNewFolderIcon,
+    newFolderFilters,
+    setNewFolderFilters,
     foldersScrollEnabled,
     foldersContainerWidthRef,
     foldersContentWidthRef,
@@ -674,6 +676,8 @@ export default function IndexScreen() {
         setNewFolderColor={setNewFolderColor}
         newFolderIcon={newFolderIcon}
         setNewFolderIcon={setNewFolderIcon}
+        newFolderFilters={newFolderFilters}
+        setNewFolderFilters={setNewFolderFilters}
         handleCreateFolder={handleCreateFolder}
         handleSaveEditFolder={handleSaveEditFolder}
         performDeleteFolder={performDeleteFolder}

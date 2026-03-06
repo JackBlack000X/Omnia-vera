@@ -4,6 +4,7 @@ import {
   FOLDER_COLORS,
   FOLDER_ICONS,
   FolderBlockItem,
+  FolderFilters,
   FolderItem,
   MultiDragBlockItem,
   OGGI_TODAY_KEY,
@@ -36,6 +37,7 @@ export function useIndexLogic() {
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState(FOLDER_COLORS[3]);
   const [newFolderIcon, setNewFolderIcon] = useState(FOLDER_ICONS[0].name);
+  const [newFolderFilters, setNewFolderFilters] = useState<FolderFilters>({});
   const [foldersScrollEnabled, setFoldersScrollEnabled] = useState(false);
   const foldersContainerWidthRef = useRef(0);
   const foldersContentWidthRef = useRef(0);
@@ -199,6 +201,7 @@ export function useIndexLogic() {
     setNewFolderName('');
     setNewFolderColor(FOLDER_COLORS[3]);
     setNewFolderIcon(FOLDER_ICONS[0].name);
+    setNewFolderFilters({});
     setCreateFolderVisible(true);
   }, []);
 
@@ -214,18 +217,24 @@ export function useIndexLogic() {
   const handleCreateFolder = useCallback(() => {
     const name = newFolderName.trim();
     if (!name) return;
-    const newFolder: FolderItem = { id: `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, name, color: newFolderColor, icon: newFolderIcon };
+    const cleanFilters: FolderFilters | undefined =
+      (newFolderFilters.tipos?.length || newFolderFilters.colors?.length || newFolderFilters.frequencies?.length)
+        ? newFolderFilters : undefined;
+    const newFolder: FolderItem = { id: `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, name, color: newFolderColor, icon: newFolderIcon, filters: cleanFilters };
     addFolderAndPersist(newFolder);
     setActiveFolder(name);
     setCreateFolderVisible(false);
-  }, [newFolderName, newFolderColor, newFolderIcon, addFolderAndPersist]);
+  }, [newFolderName, newFolderColor, newFolderIcon, newFolderFilters, addFolderAndPersist]);
 
   const handleSaveEditFolder = useCallback(() => {
     const name = newFolderName.trim();
     if (!name || !editingFolder) return;
     const oldName = editingFolder.name.trim();
     setFolders(prev => {
-      const next = prev.map(f => f.name.trim() === oldName ? { ...f, name, color: newFolderColor, icon: newFolderIcon } : f);
+      const cleanFilters: FolderFilters | undefined =
+        (newFolderFilters.tipos?.length || newFolderFilters.colors?.length || newFolderFilters.frequencies?.length)
+          ? newFolderFilters : undefined;
+      const next = prev.map(f => f.name.trim() === oldName ? { ...f, name, color: newFolderColor, icon: newFolderIcon, filters: cleanFilters } : f);
       AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
       return next;
     });
@@ -246,7 +255,7 @@ export function useIndexLogic() {
     if (activeFolder === oldName) setActiveFolder(name);
     setEditFolderVisible(false);
     setEditingFolder(null);
-  }, [newFolderName, newFolderColor, newFolderIcon, editingFolder, activeFolder, setHabits]);
+  }, [newFolderName, newFolderColor, newFolderIcon, newFolderFilters, editingFolder, activeFolder, setHabits]);
 
   const performDeleteFolder = useCallback((folderName: string) => {
     setFolders(prev => {
@@ -272,6 +281,7 @@ export function useIndexLogic() {
     setNewFolderName(folder.name);
     setNewFolderColor(folder.color);
     setNewFolderIcon(folder.icon ?? 'folder-outline');
+    setNewFolderFilters(folder.filters ?? {});
     setEditFolderVisible(true);
   }, []);
 
@@ -456,6 +466,21 @@ export function useIndexLogic() {
     return { total, done, pct };
   }, [habitsAppearingToday, history, today]);
 
+  const applyFolderFilters = useCallback((list: Habit[], filters: FolderFilters | undefined): Habit[] => {
+    if (!filters) return list;
+    let result = list;
+    if (filters.tipos?.length) {
+      result = result.filter(h => filters.tipos!.includes(h.tipo ?? 'task'));
+    }
+    if (filters.colors?.length) {
+      result = result.filter(h => h.color && filters.colors!.includes(h.color));
+    }
+    if (filters.frequencies?.length) {
+      result = result.filter(h => filters.frequencies!.includes(h.habitFreq ?? 'single'));
+    }
+    return result;
+  }, []);
+
   const effectiveSortMode: SortModeType =
     activeFolder === null
       ? sortMode
@@ -580,12 +605,22 @@ export function useIndexLogic() {
       }
     } else if (activeFolder) {
       const target = activeFolder.trim();
-      list = habits.filter(h => (h.folder ?? '').trim() === target && !singleHabitsHiddenAfterReset.has(h.id));
+      const folderDef = folders.find(f => (f.name ?? '').trim() === target);
+      const hasFilters = folderDef?.filters && (folderDef.filters.tipos?.length || folderDef.filters.colors?.length || folderDef.filters.frequencies?.length);
+      if (hasFilters) {
+        // Filtered folder: show all habits matching filters (not just ones assigned to this folder)
+        list = applyFolderFilters(
+          habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id)),
+          folderDef!.filters
+        );
+      } else {
+        list = habits.filter(h => (h.folder ?? '').trim() === target && !singleHabitsHiddenAfterReset.has(h.id));
+      }
     } else {
       list = habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
     }
     return sortHabitsList(list);
-  }, [habits, habitsAppearingToday, sortMode, today, activeFolder, sortHabitsList, singleHabitsHiddenAfterReset, effectiveSortMode, oggiCustomOrder]);
+  }, [habits, habitsAppearingToday, sortMode, today, activeFolder, folders, applyFolderFilters, sortHabitsList, singleHabitsHiddenAfterReset, effectiveSortMode, oggiCustomOrder]);
 
   const sectionedList = useMemo((): SectionItem[] => {
     const isOggiView = activeFolder === OGGI_TODAY_KEY;
@@ -1239,6 +1274,8 @@ export function useIndexLogic() {
     setNewFolderColor,
     newFolderIcon,
     setNewFolderIcon,
+    newFolderFilters,
+    setNewFolderFilters,
     foldersScrollEnabled,
     foldersContainerWidthRef,
     foldersContentWidthRef,

@@ -1,6 +1,12 @@
 import type { Habit } from '@/lib/habits/schema';
 
-export type FolderItem = { id: string; name: string; color: string; icon?: string };
+export type FolderFilters = {
+  tipos?: ('task' | 'abitudine' | 'evento')[]; // filter by tipo
+  colors?: string[]; // filter by habit color
+  frequencies?: ('single' | 'daily' | 'weekly' | 'monthly' | 'annual')[]; // filter by frequency
+};
+
+export type FolderItem = { id: string; name: string; color: string; icon?: string; filters?: FolderFilters };
 
 export type FolderBlockItem = { type: 'folderBlock'; folderName: string | null; folderId: string; tasks: Habit[] };
 export type TaskItem = { type: 'task'; habit: Habit };
