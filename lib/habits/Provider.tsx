@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
 import { Habit, HabitsState } from './schema';
+import { loadPlaces } from '@/lib/places';
+import { canAskLocationPermission, getLocationPermissionStatusAsync, startGeofencingForRegions, stopGeofencingAsync } from '@/lib/location';
 
 const STORAGE_HABITS = 'habitcheck_habits_v1';
 const STORAGE_HISTORY = 'habitcheck_history_v1';
@@ -75,6 +77,7 @@ export type HabitsContextType = {
   getDay: (date: Date | string) => string;
   setTimeOverride: (id: string, date: string, hhmm: string | null) => void;
   setTimeOverrideRange: (id: string, date: string, startTime: string | null, endTime: string | null) => void;
+  setColumnRanks: (updates: Record<string, number>) => void;
   updateScheduleTime: (id: string, hhmm: string | null) => void;
   updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   updateSchedule: (id: string, daysOfWeek: number[], hhmm: string | null) => void;
@@ -168,6 +171,49 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       console.error('Failed to save history:', error);
     });
   }, [history]);
+
+  // Setup geofencing for location-based habits when permissions and data allow
+  useEffect(() => {
+    if (!canAskLocationPermission()) return;
+    (async () => {
+      try {
+        const status = await getLocationPermissionStatusAsync();
+        if (status !== 'background') {
+          await stopGeofencingAsync();
+          return;
+        }
+        const places = await loadPlaces();
+        if (places.length === 0) {
+          await stopGeofencingAsync();
+          return;
+        }
+        const activePlaceIds = new Set(
+          habits
+            .filter(h => h.locationRule?.type === 'geofenceExit')
+            .map(h => h.locationRule!.placeId),
+        );
+        if (activePlaceIds.size === 0) {
+          await stopGeofencingAsync();
+          return;
+        }
+        const regions = places
+          .filter(p => activePlaceIds.has(p.id))
+          .map(p => ({
+            identifier: p.id,
+            latitude: p.lat,
+            longitude: p.lng,
+            radius: p.radiusMeters,
+          }));
+        if (regions.length === 0) {
+          await stopGeofencingAsync();
+          return;
+        }
+        await startGeofencingForRegions(regions);
+      } catch (e) {
+        console.warn('Failed to configure geofencing', e);
+      }
+    })();
+  }, [habits]);
 
   // Auto reset at midnight
   useEffect(() => {
@@ -265,10 +311,14 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         setHistory(prev => {
           const day = prev[todayYmd] || { date: todayYmd, completedByHabitId: {} };
           if (day.completedByHabitId[habit.id]) return prev;
-          return {
+          const next = {
             ...prev,
             [todayYmd]: { ...day, completedByHabitId: { ...day.completedByHabitId, [habit.id]: true } },
           };
+          AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(next)).catch((err) => {
+            console.error('Failed to save history (autoComplete):', err);
+          });
+          return next;
         });
       }
     }
@@ -343,7 +393,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
       const dayCompletion = prev[today] || { date: today, completedByHabitId: {} };
       const isCompleted = !dayCompletion.completedByHabitId[id];
-      return {
+      const next = {
         ...prev,
         [today]: {
           ...dayCompletion,
@@ -353,6 +403,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           },
         },
       };
+      AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(next)).catch((err) => {
+        console.error('Failed to save history (toggleDone):', err);
+      });
+      return next;
     });
   }, []);
 
@@ -410,10 +464,14 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-      return {
+      const next = {
         ...prev,
         [today]: { date: today, completedByHabitId: preserved },
       };
+      AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(next)).catch((err) => {
+        console.error('Failed to save history (resetToday):', err);
+      });
+      return next;
     });
     setLastResetDate(today);
     await AsyncStorage.setItem(STORAGE_LASTRESET, today);
@@ -447,6 +505,19 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           delete nextOverrides[date];
         }
         return { ...h, timeOverrides: nextOverrides };
+      });
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
+      return next;
+    });
+  }, []);
+
+  const setColumnRanks = useCallback((updates: Record<string, number>) => {
+    if (Object.keys(updates).length === 0) return;
+    setHabits(prev => {
+      const next = prev.map(h => {
+        const rank = updates[h.id];
+        if (rank === undefined) return h;
+        return { ...h, columnRank: rank };
       });
       AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
@@ -575,8 +646,8 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime,
     addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay,
-    setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
-  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
+    setTimeOverride, setTimeOverrideRange, setColumnRanks, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
+  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, setColumnRanks, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

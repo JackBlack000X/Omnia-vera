@@ -43,8 +43,9 @@ export function toMinutes(hhmm: string) {
 }
 
 export function minutesToTime(minutes: number): string {
-  if (minutes >= 1440) return '24:00';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+  const total = Math.round(minutes);
+  if (total >= 1440) return '24:00';
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }

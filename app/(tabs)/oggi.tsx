@@ -1,14 +1,14 @@
+import DraggableEvent from '@/components/oggi/DraggableEvent';
 import { THEME } from '@/constants/theme';
 import { isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
-import { useRouter } from 'expo-router';
 import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
 import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
-import { useAppTheme } from '@/lib/theme-context';
 import { BASE_VERTICAL_OFFSET, isLightColor, LEFT_MARGIN, minutesToTime, OggiEvent, toMinutes } from '@/lib/oggi/oggiHelpers';
 import { useTimelineSettings } from '@/lib/oggi/useTimelineSettings';
-import DraggableEvent from '@/components/oggi/DraggableEvent';
+import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -573,6 +573,7 @@ export default function OggiScreen() {
                   setDragSizingLocked={setDragSizingLocked}
                    windowStartMin={windowStartMin}
                    hourHeight={hourHeight}
+                   visibleHours={visibleHours}
                    currentDate={currentDate}
                    getDay={getDay}
                    setTimeOverrideRange={setTimeOverrideRange}

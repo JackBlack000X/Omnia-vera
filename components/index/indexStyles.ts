@@ -173,6 +173,36 @@ export const styles = StyleSheet.create({
   folderTaskGroup: {
     paddingBottom: 4,
   },
+  folderDebugBoxWrap: {
+    position: 'relative' as const,
+  },
+  folderDebugBoxOverlay: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    // Full block bounds (header + tasks)
+    top: 0,
+    bottom: 0,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 0, 0, 0.7)',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+  },
+  folderDebugInnerWrap: {
+    position: 'relative' as const,
+  },
+  folderDebugInnerOverlay: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    // Tight box around tasks only (uses taskInFolder margin + folderTaskGroup padding)
+    top: 6,
+    bottom: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 215, 0, 0.95)',
+    borderStyle: 'dashed',
+    borderRadius: 10,
+  },
   taskInFolder: {
     marginVertical: 2,
   },

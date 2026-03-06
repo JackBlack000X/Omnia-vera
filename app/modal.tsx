@@ -5,9 +5,65 @@ import { useModalLogic } from '@/lib/modal/useModalLogic';
 import { formatDuration } from '@/lib/modal/helpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useRef } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { loadPlaces } from '@/lib/places';
+import { canAskLocationPermission, getLocationPermissionStatusAsync, type LocationPermissionStatus } from '@/lib/location';
+import React, { useEffect, useRef } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+type HoldableStepperButtonProps = {
+  onPress: () => void;
+  children: React.ReactNode;
+};
+
+const HOLD_DELAY_MS = 350;
+const HOLD_INTERVAL_MS = 60;
+
+function HoldableStepperButton({ onPress, children }: HoldableStepperButtonProps) {
+  const onPressRef = useRef(onPress);
+  const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    onPressRef.current = onPress;
+  }, [onPress]);
+
+  const clearTimers = () => {
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  const handlePressIn = () => {
+    onPressRef.current();
+    holdTimeoutRef.current = setTimeout(() => {
+      intervalRef.current = setInterval(() => onPressRef.current(), HOLD_INTERVAL_MS);
+    }, HOLD_DELAY_MS);
+  };
+
+  const handlePressOut = () => {
+    clearTimers();
+  };
+
+  useEffect(() => clearTimers, []);
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.timeStepper, pressed && { opacity: 0.85 }]}
+      onPress={() => {}}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onResponderTerminate={handlePressOut}
+    >
+      <Text style={styles.timeStepperText}>{children}</Text>
+    </Pressable>
+  );
+}
 
 // Modal multipurpose: type=new|rename|schedule|color
 export default function ModalScreen() {
@@ -17,6 +73,23 @@ export default function ModalScreen() {
   const isDark = colorScheme === 'dark';
 
   const m = useModalLogic({ type, id, folder, scrollRef });
+  const [places, setPlaces] = React.useState<{ id: string; name: string }[]>([]);
+  const [selectedPlaceId, setSelectedPlaceId] = React.useState<string | null>(m.locationRule?.placeId ?? null);
+  const [locationStatus, setLocationStatus] = React.useState<LocationPermissionStatus>('none');
+
+  React.useEffect(() => {
+    (async () => {
+      const loaded = await loadPlaces();
+      setPlaces(loaded.map(p => ({ id: p.id, name: p.name })));
+      if (m.locationRule?.placeId) {
+        setSelectedPlaceId(m.locationRule.placeId);
+      }
+      if (canAskLocationPermission()) {
+        const status = await getLocationPermissionStatusAsync();
+        setLocationStatus(status);
+      }
+    })();
+  }, [m.locationRule?.placeId]);
 
   return (
     <>
@@ -188,17 +261,17 @@ export default function ModalScreen() {
                     <View style={{ alignItems: 'center' }}>
                       <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity onPress={() => m.setAnnualDay(d => Math.max(1, d - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualDay(d => Math.max(1, d - 1))}>−</HoldableStepperButton>
                         <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualDay}</Text>
-                        <TouchableOpacity onPress={() => m.setAnnualDay(d => Math.min(31, d + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualDay(d => Math.min(31, d + 1))}>+</HoldableStepperButton>
                       </View>
                     </View>
                     <View style={{ alignItems: 'center' }}>
                       <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity onPress={() => m.setAnnualMonth(prev => Math.max(1, prev - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualMonth(prev => Math.max(1, prev - 1))}>−</HoldableStepperButton>
                         <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualMonth}</Text>
-                        <TouchableOpacity onPress={() => m.setAnnualMonth(prev => Math.min(12, prev + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualMonth(prev => Math.min(12, prev + 1))}>+</HoldableStepperButton>
                       </View>
                     </View>
                   </View>
@@ -215,25 +288,25 @@ export default function ModalScreen() {
                     <View style={{ alignItems: 'center' }}>
                       <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity onPress={() => m.setAnnualDay(d => Math.max(1, d - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualDay(d => Math.max(1, d - 1))}>−</HoldableStepperButton>
                         <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualDay}</Text>
-                        <TouchableOpacity onPress={() => m.setAnnualDay(d => Math.min(31, d + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualDay(d => Math.min(31, d + 1))}>+</HoldableStepperButton>
                       </View>
                     </View>
                     <View style={{ alignItems: 'center' }}>
                       <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity onPress={() => m.setAnnualMonth(prev => Math.max(1, prev - 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualMonth(prev => Math.max(1, prev - 1))}>−</HoldableStepperButton>
                         <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualMonth}</Text>
-                        <TouchableOpacity onPress={() => m.setAnnualMonth(prev => Math.min(12, prev + 1))} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualMonth(prev => Math.min(12, prev + 1))}>+</HoldableStepperButton>
                       </View>
                     </View>
                     <View style={{ alignItems: 'center' }}>
                       <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity onPress={() => m.setAnnualYear(y => y - 1)} style={styles.timeStepper}><Text style={styles.timeStepperText}>−</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualYear(y => y - 1)}>−</HoldableStepperButton>
                         <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{m.annualYear}</Text>
-                        <TouchableOpacity onPress={() => m.setAnnualYear(y => y + 1)} style={styles.timeStepper}><Text style={styles.timeStepperText}>+</Text></TouchableOpacity>
+                        <HoldableStepperButton onPress={() => m.setAnnualYear(y => y + 1)}>+</HoldableStepperButton>
                       </View>
                     </View>
                   </View>
@@ -293,37 +366,29 @@ export default function ModalScreen() {
                         <View style={styles.timeControls}>
                           <Text style={styles.timeLabel}>Ore</Text>
                           <View style={styles.timeStepperRow}>
-                            <TouchableOpacity onPress={() => m.updateCurrentStartMin(Math.max(0, m.currentStartMin - 60))} style={styles.timeStepper}>
-                              <Text style={styles.timeStepperText}>−</Text>
-                            </TouchableOpacity>
+                            <HoldableStepperButton onPress={() => m.updateCurrentStartMin(Math.max(0, m.currentStartMin - 60))}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{Math.floor(m.currentStartMin / 60)}</Text>
-                            <TouchableOpacity onPress={() => {
+                            <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               const newStartMin = curS + 60;
                               const maxStartMin = curE ? curE - 5 : 23 * 60;
                               m.updateCurrentStartMin(Math.min(maxStartMin, newStartMin));
-                            }} style={styles.timeStepper}>
-                              <Text style={styles.timeStepperText}>+</Text>
-                            </TouchableOpacity>
+                            }}>+</HoldableStepperButton>
                           </View>
                         </View>
                         <View style={styles.timeControls}>
                           <Text style={styles.timeLabel}>Min</Text>
                           <View style={styles.timeStepperRow}>
-                            <TouchableOpacity onPress={() => m.updateCurrentStartMin(Math.max(0, m.currentStartMin - 5))} style={styles.timeStepper}>
-                        <Text style={styles.timeStepperText}>−</Text>
-                      </TouchableOpacity>
+                            <HoldableStepperButton onPress={() => m.updateCurrentStartMin(Math.max(0, m.currentStartMin - 5))}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{m.currentStartMin % 60}</Text>
-                            <TouchableOpacity onPress={() => {
+                            <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               const newStartMin = curS + 5;
                               const maxStartMin = curE ? curE - 5 : 23 * 60 + 55;
                               m.updateCurrentStartMin(Math.min(maxStartMin, newStartMin));
-                            }} style={styles.timeStepper}>
-                              <Text style={styles.timeStepperText}>+</Text>
-                            </TouchableOpacity>
+                            }}>+</HoldableStepperButton>
                           </View>
                         </View>
                       </View>
@@ -335,41 +400,33 @@ export default function ModalScreen() {
                         <View style={styles.timeControls}>
                           <Text style={styles.timeLabel}>Ore</Text>
                           <View style={styles.timeStepperRow}>
-                            <TouchableOpacity onPress={() => {
+                            <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               m.updateCurrentEndMin(Math.max(curS + 5, (curE ?? curS + 60) - 60));
-                            }} style={styles.timeStepper}>
-                              <Text style={styles.timeStepperText}>−</Text>
-                            </TouchableOpacity>
+                            }}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{Math.floor(((m.currentEndMin ?? (m.currentStartMin + 60)) / 60))}</Text>
-                            <TouchableOpacity onPress={() => {
+                            <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               m.updateCurrentEndMin(Math.min(24 * 60, (curE ?? curS + 60) + 60));
-                            }} style={styles.timeStepper}>
-                        <Text style={styles.timeStepperText}>+</Text>
-                      </TouchableOpacity>
+                            }}>+</HoldableStepperButton>
                     </View>
                         </View>
                         <View style={styles.timeControls}>
                           <Text style={styles.timeLabel}>Min</Text>
                           <View style={styles.timeStepperRow}>
-                            <TouchableOpacity onPress={() => {
+                            <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               m.updateCurrentEndMin(Math.max(curS + 5, (curE ?? curS + 60) - 5));
-                            }} style={styles.timeStepper}>
-                        <Text style={styles.timeStepperText}>−</Text>
-                      </TouchableOpacity>
+                            }}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{((m.currentEndMin ?? (m.currentStartMin + 60)) % 60)}</Text>
-                            <TouchableOpacity onPress={() => {
+                            <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               m.updateCurrentEndMin(Math.min(24 * 60, (curE ?? curS + 60) + 5));
-                            }} style={styles.timeStepper}>
-                              <Text style={styles.timeStepperText}>+</Text>
-                            </TouchableOpacity>
+                            }}>+</HoldableStepperButton>
                           </View>
                         </View>
                       </View>
@@ -377,6 +434,68 @@ export default function ModalScreen() {
                   </View>
                   <Text style={styles.duration}>{formatDuration((m.currentEndMin ?? (m.currentStartMin + 60)) - m.currentStartMin)}</Text>
                 </View>
+              )}
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && m.tipo === 'task' && (
+            <View style={{ marginTop: 20 }}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Automazioni posizione</Text>
+              </View>
+              {(!canAskLocationPermission() || locationStatus === 'denied' || locationStatus === 'none') && (
+                <Text style={styles.subtle}>
+                  Per usare le automazioni posizione devi abilitare la posizione per Omnia nelle impostazioni. Puoi continuare a usare la task normalmente.
+                </Text>
+              )}
+              {canAskLocationPermission() && locationStatus !== 'denied' && (
+                <>
+                  {places.length === 0 ? (
+                    <Text style={styles.subtle}>
+                      Nessun luogo ancora. Aggiungi luoghi dalla schermata Luoghi (icona mappa nel menu ⋯ delle task) per collegare questa task a un posto.
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={[styles.subtle, { marginTop: 6 }]}>
+                        Collega questa task a un luogo. Regola: completa quando esci dal raggio del luogo scelto.
+                      </Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={{ marginTop: 8 }}
+                        contentContainerStyle={{ gap: 8 }}
+                      >
+                        <TouchableOpacity
+                          onPress={() => setSelectedPlaceId(null)}
+                          style={[
+                            styles.chip,
+                            selectedPlaceId === null ? styles.chipActive : styles.chipGhost,
+                            { paddingHorizontal: 16, paddingVertical: 8 },
+                          ]}
+                        >
+                          <Text style={selectedPlaceId === null ? styles.chipActiveText : styles.chipGhostText}>
+                            Nessuna automazione
+                          </Text>
+                        </TouchableOpacity>
+                        {places.map((p) => (
+                          <TouchableOpacity
+                            key={p.id}
+                            onPress={() => setSelectedPlaceId(p.id)}
+                            style={[
+                              styles.chip,
+                              selectedPlaceId === p.id ? styles.chipActive : styles.chipGhost,
+                              { paddingHorizontal: 16, paddingVertical: 8 },
+                            ]}
+                          >
+                            <Text style={selectedPlaceId === p.id ? styles.chipActiveText : styles.chipGhostText}>
+                              {p.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </>
+                  )}
+                </>
               )}
             </View>
           )}
@@ -399,7 +518,24 @@ export default function ModalScreen() {
           <TouchableOpacity onPress={m.close} style={[styles.circularBtn, styles.cancelBtn]}>
             <Ionicons name="close" size={52} color="#ff0000" />
               </TouchableOpacity>
-          <TouchableOpacity onPress={m.save} style={[styles.circularBtn, styles.saveBtn]}>
+          <TouchableOpacity
+            onPress={() => {
+              if ((type === 'new' || type === 'edit') && m.tipo === 'task') {
+                const placeId = selectedPlaceId ?? null;
+                if (placeId) {
+                  m.setLocationRule({
+                    type: 'geofenceExit',
+                    placeId,
+                    minOutsideMinutes: 3,
+                  });
+                } else {
+                  m.setLocationRule(null);
+                }
+              }
+              m.save();
+            }}
+            style={[styles.circularBtn, styles.saveBtn]}
+          >
             <Ionicons name="checkmark" size={52} color="#00ff00" />
               </TouchableOpacity>
         </View>

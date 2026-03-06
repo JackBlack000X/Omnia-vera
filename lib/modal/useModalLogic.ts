@@ -1,6 +1,13 @@
 import { useHabits } from '@/lib/habits/Provider';
 import { Habit } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
+
+/** Default end time when user sets only start: start + 1 hour, capped at 24:00 */
+function defaultEndForStart(startHhmm: string): string {
+  const startM = hhmmToMinutes(startHhmm);
+  if (startM == null) return startHhmm;
+  return minutesToHhmm(Math.min(startM + 60, 1440));
+}
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -24,11 +31,42 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (existing?.tipo) setTipo(existing.tipo);
   }, [existing?.tipo]);
 
+  const inferredExistingTipo: 'task' | 'abitudine' | 'evento' = (existing?.tipo ?? 'task');
+  const todayForInit = useMemo(() => new Date(), []);
+  const todayYmdForInit = useMemo(() => getDay(todayForInit), [getDay, todayForInit]);
+  const todayWeekdayForInit = useMemo(() => todayForInit.getDay(), [todayForInit]);
+  const todayDayOfMonthForInit = useMemo(() => todayForInit.getDate(), [todayForInit]);
+
+  const effectiveTimeForToday = useMemo(() => {
+    if (!existing) return { isAllDayMarker: false, start: null as string | null, end: null as string | null };
+    const override = existing.timeOverrides?.[todayYmdForInit];
+    const isAllDayMarker = override === '00:00';
+    const overrideStart = !isAllDayMarker && typeof override === 'string'
+      ? override
+      : (!isAllDayMarker && override && typeof override === 'object' && 'start' in override ? (override as any).start : null);
+    const overrideEnd = !isAllDayMarker && override && typeof override === 'object' && 'end' in override
+      ? (override as any).end
+      : null;
+
+    const weekly = existing.schedule?.weeklyTimes?.[todayWeekdayForInit] ?? null;
+    const monthlyT = existing.schedule?.monthlyTimes?.[todayDayOfMonthForInit] ?? null;
+    const start = overrideStart ?? (weekly?.start ?? monthlyT?.start ?? (existing.schedule?.time ?? null));
+    const end = overrideEnd ?? (weekly?.end ?? monthlyT?.end ?? (existing.schedule?.endTime ?? null));
+    return { isAllDayMarker, start, end };
+  }, [existing, todayYmdForInit, todayWeekdayForInit, todayDayOfMonthForInit]);
+
   // For tasks only: whether to show the schedule/time block.
   // Defaults to false (no time) for new tasks; true if the existing task already has time config.
-  const [taskHasTime, setTaskHasTime] = useState<boolean>(
-    existing?.tipo === 'task' && initialMode === 'timed'
-  );
+  const [taskHasTime, setTaskHasTime] = useState<boolean>(() => {
+    if (!existing) return false;
+    if (inferredExistingTipo !== 'task') return false;
+    if (effectiveTimeForToday.isAllDayMarker) return false;
+    return Boolean(effectiveTimeForToday.start || effectiveTimeForToday.end
+      || existing.schedule?.time || existing.schedule?.endTime
+      || existing.schedule?.weeklyTimes || existing.schedule?.monthlyTimes);
+  });
+
+  const [locationRule, setLocationRule] = useState<Habit['locationRule'] | null>(existing?.locationRule ?? null);
 
   useEffect(() => {
     (async () => {
@@ -71,8 +109,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   // schedule state
 
   const initialDays = existing?.schedule?.daysOfWeek ?? [];
-  const initialStart = existing?.schedule?.time ?? null;
-  const initialEnd = existing?.schedule?.endTime ?? null;
+  const initialStart = (!effectiveTimeForToday.isAllDayMarker ? effectiveTimeForToday.start : null) ?? existing?.schedule?.time ?? null;
+  const initialEnd = (!effectiveTimeForToday.isAllDayMarker ? effectiveTimeForToday.end : null) ?? existing?.schedule?.endTime ?? null;
   // Compute initial mode: if any recurring selection (weekly/monthly/annual) or any time is configured, default to 'timed'.
   const scheduleObj = existing?.schedule;
   const hasRecurringSelection = (initialDays.length > 0)
@@ -237,6 +275,35 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       setEndMin(next);
     }
   };
+
+  // When editing an existing task that already shows a time "outside" (Oggi/cards),
+  // ensure the modal's Task → Orario toggle starts enabled and matches that time.
+  // Important: run only when the modal is opened for a specific existing id.
+  useEffect(() => {
+    if (!existing) return;
+    const exTipo: 'task' | 'abitudine' | 'evento' = (existing.tipo ?? 'task');
+    if (exTipo !== 'task') return;
+
+    // If there is an effective time for today (override/weekly/monthly/base) and it's not an all-day marker,
+    // the UI should start with "Orario" enabled.
+    if (!effectiveTimeForToday.isAllDayMarker && (effectiveTimeForToday.start || effectiveTimeForToday.end)) {
+      setTaskHasTime(true);
+      setMode('timed');
+      if (effectiveTimeForToday.start) {
+        const s = hhmmToMinutes(effectiveTimeForToday.start);
+        if (s != null) setStartMin(s);
+      }
+      if (effectiveTimeForToday.end) {
+        const e = hhmmToMinutes(effectiveTimeForToday.end);
+        setEndMin(e ?? null);
+      }
+      return;
+    }
+
+    // Otherwise, default to whether any time config exists in the stored habit.
+    const storedHasTime = Boolean(existing.schedule?.time || existing.schedule?.endTime || existing.schedule?.weeklyTimes || existing.schedule?.monthlyTimes);
+    setTaskHasTime(storedHasTime);
+  }, [existing?.id, effectiveTimeForToday]);
 
 
   function toggleDow(d: number) {
@@ -491,6 +558,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               color,
               folder: selectedFolder || undefined,
               tipo,
+              locationRule: locationRule ?? undefined,
             };
           }));
         }
@@ -500,17 +568,18 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           const endTime = endMin !== null ? minutesToHhmm(endMin) as string : null;
 
           if (freq === 'single') {
-            // save one-off override for selected date only
+            // save one-off override for selected date only (always save start + end so it displays correctly)
             const y = annualYear;
             const m = String(annualMonth).padStart(2, '0');
             const d = String(annualDay).padStart(2, '0');
             const ymd = `${y}-${m}-${d}`;
-            updateScheduleFromDate(newHabitId, ymd, time as string, endTime as string | null);
+            const endToSave = endTime ?? defaultEndForStart(time);
+            updateScheduleFromDate(newHabitId, ymd, time as string, endToSave as string | null);
             setHabits(prev => {
               const next = prev.map(h => {
                 if (h.id !== newHabitId) return h;
                 const overrides: Record<string, string | { start: string; end: string }> = {};
-                if (time) overrides[ymd] = endTime ? { start: time, end: endTime } : time;
+                if (time) overrides[ymd] = { start: time, end: endToSave };
                 const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
                 schedule.daysOfWeek = [];
                 schedule.monthDays = undefined;
@@ -717,7 +786,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         }
         }
         // Persist explicit flags so the modal restores them correctly on re-open
-        setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, isAllDay: mode === 'allDay', habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq, tipo } : h));
+        setHabits(prev => prev.map(h => h.id === newHabitId ? {
+          ...h,
+          isAllDay: mode === 'allDay',
+          habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
+          tipo,
+          locationRule: locationRule ?? undefined,
+        } : h));
       }
     } else if (type === 'rename' && existing) {
       const t = text.trim();
@@ -729,17 +804,18 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       const endTime = mode === 'timed' && endMin !== null ? minutesToHhmm(endMin) as string : null;
 
       if (freq === 'single') {
-        // For single frequency, save as one-off override for selected date only (remove today if moved)
+        // For single frequency, save as one-off override for selected date only (always save start + end)
         const y = annualYear;
         const m = String(annualMonth).padStart(2, '0');
         const d = String(annualDay).padStart(2, '0');
         const ymd = `${y}-${m}-${d}`;
-        updateScheduleFromDate(existing.id, ymd, time, endTime);
+        const endToSave = endTime ?? (time ? defaultEndForStart(time) : null);
+        updateScheduleFromDate(existing.id, ymd, time, endToSave);
         setHabits(prev => {
           const next = prev.map(h => {
             if (h.id !== existing.id) return h;
             const overrides: Record<string, string | { start: string; end: string }> = {};
-            if (time) overrides[ymd] = endTime ? { start: time, end: endTime } : time;
+            if (time) overrides[ymd] = { start: time, end: endToSave ?? defaultEndForStart(time) };
             const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
             schedule.daysOfWeek = [];
             schedule.monthDays = undefined;
@@ -941,7 +1017,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         }
       }
       // Persist explicit flags so the modal restores them correctly on re-open (preserve tipo)
-      setHabits(prev => prev.map(h => h.id === existing.id ? { ...h, isAllDay: mode === 'allDay', habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq, tipo: existing.tipo ?? h.tipo } : h));
+      setHabits(prev => prev.map(h => h.id === existing.id ? {
+        ...h,
+        isAllDay: mode === 'allDay',
+        habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
+        tipo: existing.tipo ?? h.tipo,
+        locationRule: locationRule ?? undefined,
+      } : h));
     }
     close();
   };
@@ -990,6 +1072,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setSelectedDow,
     currentStartMin,
     currentEndMin,
+    locationRule,
     // Derived
     existing,
     usePerDayTimeWeekly,
@@ -1005,5 +1088,6 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     save,
     close,
     closeConfirmationModal,
+    setLocationRule,
   };
 }

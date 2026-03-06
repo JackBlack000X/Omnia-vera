@@ -10,7 +10,11 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.jackblack000x.habitchecknative"
+      "bundleIdentifier": "com.jackblack000x.habitchecknative",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi (es. completare automaticamente la task \"Palestra\" quando esci dalla palestra).",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Omnia ha bisogno dell’accesso alla posizione anche in background per completare automaticamente alcune task quando entri o esci da luoghi salvati, anche con l’app chiusa."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,13 +25,24 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.jackblack000x.habitchecknative"
+      "package": "com.jackblack000x.habitchecknative",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Omnia vuole accedere al calendario per importare i tuoi eventi e mostrarli nell'app."
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
@@ -41,7 +56,14 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Omnia usa la tua posizione per attivare funzioni extra come il completamento automatico di alcune task quando esci da luoghi salvati, anche con l’app in background.",
+          "locationWhenInUsePermission": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi mentre utilizzi l’app."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

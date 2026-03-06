@@ -13,6 +13,7 @@ import { AppThemeProvider } from '@/lib/theme-context';
 import { BagelFatOne_400Regular, useFonts } from '@expo-google-fonts/bagel-fat-one';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import '@/lib/geofenceTask';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync().catch(() => { });

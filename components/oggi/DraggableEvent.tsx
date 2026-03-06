@@ -1,10 +1,10 @@
 import { LayoutInfo } from '@/lib/layoutEngine';
 import {
-  DRAG_VISUAL_OFFSET,
-  isLightColor,
-  minutesToTime,
-  OggiEvent,
-  toMinutes,
+    DRAG_VISUAL_OFFSET,
+    isLightColor,
+    minutesToTime,
+    OggiEvent,
+    toMinutes,
 } from '@/lib/oggi/oggiHelpers';
 import * as Haptics from 'expo-haptics';
 import { Dispatch, SetStateAction, useMemo, useRef } from 'react';
@@ -24,6 +24,7 @@ export type DraggableEventProps = {
   setDragSizingLocked: (value: boolean) => void;
   windowStartMin: number;
   hourHeight: number;
+  visibleHours: number;
   currentDate: Date;
   getDay: (date: Date) => string;
   setTimeOverrideRange: (habitId: string, ymd: string, start: string, end: string) => void;
@@ -45,6 +46,14 @@ export type DraggableEventProps = {
   onDoubleTap?: () => void;
 };
 
+function getSnapStepMinutes(visibleHours: number, hourHeight: number): 5 | 10 | 15 {
+  // Prefer deterministic behavior based on zoom level (visible hours),
+  // with a fallback on pixel density for safety.
+  if (visibleHours >= 20 || hourHeight <= 32) return 15;
+  if (visibleHours >= 14 || hourHeight <= 48) return 10;
+  return 5;
+}
+
 function DraggableEvent({
   event,
   layoutStyle,
@@ -58,6 +67,7 @@ function DraggableEvent({
   setDragSizingLocked,
   windowStartMin,
   hourHeight,
+  visibleHours,
   currentDate,
   getDay,
   setTimeOverrideRange,
@@ -185,15 +195,15 @@ function DraggableEvent({
 
         const initialBaseTop = dragInitialTop.value;
         const currentTop = initialBaseTop + touchDeltaY;
-        const relativeTop = Math.max(0, currentTop - DRAG_VISUAL_OFFSET);
+        const clampedTop = Math.max(DRAG_VISUAL_OFFSET, currentTop);
+        const relativeTop = Math.max(0, clampedTop - DRAG_VISUAL_OFFSET);
         const minutesFromStart = (relativeTop / hourHeight) * 60;
         const newStartMinutes = windowStartMin + minutesFromStart;
-        const roundedMinutes = Math.round(newStartMinutes / 15) * 15;
-        const clampedMinutes = Math.max(0, Math.min(1440, roundedMinutes));
+        const clampedMinutes = Math.max(0, Math.min(1440, newStartMinutes));
 
-        const snappedMinutesFromStart = clampedMinutes - windowStartMin;
-        const snappedTop = (snappedMinutesFromStart / 60) * hourHeight + DRAG_VISUAL_OFFSET;
-        dragY.value = snappedTop - initialBaseTop;
+        // Movimento fluido: la posizione segue il dito senza scatti,
+        // lo snap avviene solo in onPanResponderRelease.
+        dragY.value = clampedTop - initialBaseTop;
 
         const initialStartM = initialStartMinutesRef.current ?? toMinutes(event.startTime);
         const movedMinutes = Math.abs(clampedMinutes - initialStartM);
@@ -255,8 +265,7 @@ function DraggableEvent({
         // Questo permette al layout di ricalcolarsi correttamente anche quando si muove di poco
         if (hasMovedRef.current || movedMinutes > 0) {
           setCurrentDragPosition(clampedMinutes);
-          // >>> FIX: Ricalcola sempre il layout, anche quando overlapClearedRef è false
-          // Questo permette alla task in drag di aggiornarsi visivamente anche quando è ancora in overlap
+          // Ricalcola sempre il layout per aggiornare larghezza/colonna durante il drag.
           const dragLayout = calculateDragLayoutRef.current(event.id, clampedMinutes, overlapClearedRef.current);
           dragWidthValue.value = dragLayout.width;
           dragLeftValue.value = dragLayout.left;
@@ -266,11 +275,15 @@ function DraggableEvent({
           setCurrentDragPosition(null);
         }
 
-        if (lastSnappedMinuteRef.current !== null && lastSnappedMinuteRef.current !== clampedMinutes) {
-          const isFullHour = clampedMinutes % 60 === 0;
+        // Feedback aptico solo quando si attraversano multipli di 15 minuti,
+        // ma senza influenzare la posizione (niente snap visivo).
+        const snapStep = getSnapStepMinutes(visibleHours, hourHeight);
+        const snappedMinute = Math.round(clampedMinutes / snapStep) * snapStep;
+        if (lastSnappedMinuteRef.current !== null && lastSnappedMinuteRef.current !== snappedMinute) {
+          const isFullHour = snappedMinute % 60 === 0;
           Haptics.impactAsync(isFullHour ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
         }
-        lastSnappedMinuteRef.current = clampedMinutes;
+        lastSnappedMinuteRef.current = snappedMinute;
       },
 
       onPanResponderTerminate: () => {
@@ -306,7 +319,9 @@ function DraggableEvent({
         const relativeFinalTop = Math.max(0, finalTop - DRAG_VISUAL_OFFSET);
         const minutesFromStart = (relativeFinalTop / hourHeight) * 60;
         const newStartMinutes = windowStartMin + minutesFromStart;
-        const clampedMinutes = Math.max(0, Math.min(1440, Math.round(newStartMinutes)));
+        const snapStep = getSnapStepMinutes(visibleHours, hourHeight);
+        const snappedMinutes = Math.round(newStartMinutes / snapStep) * snapStep;
+        const clampedMinutes = Math.max(0, Math.min(1440, snappedMinutes));
 
         const originalStartM = toMinutes(event.startTime);
         const originalEndM = toMinutes(event.endTime);
@@ -376,6 +391,7 @@ function DraggableEvent({
     baseTop,
     windowStartMin,
     hourHeight,
+    visibleHours,
     dragInitialTop,
     dragY,
     dragWidthValue,

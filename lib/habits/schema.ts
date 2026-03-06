@@ -21,6 +21,16 @@ export type Habit = {
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; // explicit frequency flag
   folder?: string; // custom folder/category name
   tipo?: 'task' | 'abitudine' | 'evento'; // task type
+  /** Set when habit was imported from Apple/device calendar; used to avoid duplicate imports */
+  calendarEventId?: string;
+  /** Optional location-based auto-completion rule */
+  locationRule?: {
+    type: 'geofenceExit';
+    placeId: string;
+    minOutsideMinutes?: number;
+  };
+  /** Ordine sinistra-destra nella timeline Oggi (per task sovrapposte). Usato solo dopo uno spostamento; alla prima creazione l'ordine è da createdAt. */
+  columnRank?: number;
 };
 
 export type DayCompletion = {

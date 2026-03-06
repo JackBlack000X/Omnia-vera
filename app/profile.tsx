@@ -1,21 +1,31 @@
 import { APP_CONFIG } from '@/constants/app';
 import { THEME } from '@/constants/theme';
+import {
+  canAskCalendarPermission,
+  calendarEventsToHabits,
+  getCalendarEventsAsync,
+  requestCalendarPermissionsAsync,
+} from '@/lib/appleCalendar';
+import { canAskLocationPermission, getLocationPermissionStatusAsync, requestLocationPermissionsAsync, type LocationPermissionStatus } from '@/lib/location';
 import { buildCsv } from '@/lib/csv';
 import { useHabits } from '@/lib/habits/Provider';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type ProfileSection = 'impostazioni' | 'statistiche';
 
 export default function ProfileScreen() {
-  const { habits, history } = useHabits();
+  const { habits, history, setHabits } = useHabits();
   const router = useRouter();
   const [feedbackText, setFeedbackText] = useState('');
   const [section, setSection] = useState<ProfileSection>('impostazioni');
+  const [calendarImporting, setCalendarImporting] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<LocationPermissionStatus>('none');
+  const [locationLoading, setLocationLoading] = useState(false);
 
   const todayKey = new Date().toISOString().split('T')[0];
   const todayCompleted = useMemo(() => Object.values(history[todayKey]?.completedByHabitId ?? {}).filter(Boolean).length, [history, todayKey]);
@@ -63,6 +73,14 @@ export default function ProfileScreen() {
       .sort((a, b) => b.pct - a.pct);
   }, [habits, history]);
 
+  React.useEffect(() => {
+    if (!canAskLocationPermission()) return;
+    (async () => {
+      const status = await getLocationPermissionStatusAsync();
+      setLocationStatus(status);
+    })();
+  }, []);
+
   async function sendFeedback() {
     const trimmed = feedbackText.trim();
     if (!trimmed) {
@@ -93,6 +111,100 @@ export default function ProfileScreen() {
     } else {
       await Clipboard.setStringAsync(csv);
       Alert.alert('CSV copiato', 'Contenuto copiato negli appunti.');
+    }
+  }
+
+  async function importFromAppleCalendar() {
+    if (!canAskCalendarPermission()) {
+      Alert.alert('Calendario', 'L\'import da calendario non è disponibile su questo dispositivo.');
+      return;
+    }
+    setCalendarImporting(true);
+    try {
+      let status = await requestCalendarPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permesso negato',
+          'Per importare gli eventi devi consentire l\'accesso al calendario nelle Impostazioni del dispositivo.'
+        );
+        return;
+      }
+      const start = new Date();
+      start.setDate(start.getDate() - 30);
+      const end = new Date();
+      end.setFullYear(end.getFullYear() + 1);
+      const events = await getCalendarEventsAsync(start, end);
+      const newHabits = calendarEventsToHabits(events, habits, habits.length);
+      if (newHabits.length === 0) {
+        Alert.alert('Calendario', 'Nessun nuovo evento da importare nel periodo selezionato (ultimi 30 giorni + 1 anno).');
+        return;
+      }
+      setHabits((prev) => [...prev, ...newHabits]);
+      Alert.alert('Calendario', `Importati ${newHabits.length} eventi dal Calendario Apple.`);
+    } catch (e) {
+      Alert.alert('Errore', 'Impossibile importare gli eventi dal calendario.');
+    } finally {
+      setCalendarImporting(false);
+    }
+  }
+
+  function getLocationStatusLabel(status: LocationPermissionStatus): string {
+    switch (status) {
+      case 'background':
+        return 'Stato: Attivo (background abilitato)';
+      case 'foreground':
+        return 'Stato: Solo mentre usi l’app';
+      case 'none':
+        return 'Stato: Non ancora richiesto';
+      case 'denied':
+      default:
+        return 'Stato: Disattivato';
+    }
+  }
+
+  async function handleRequestLocation() {
+    if (!canAskLocationPermission()) return;
+    if (locationStatus === 'denied') {
+      Alert.alert(
+        'Abilita posizione',
+        'Hai già rifiutato la posizione per Omnia. Vuoi aprire le impostazioni del dispositivo per abilitarla?',
+        [
+          { text: 'Annulla', style: 'cancel' },
+          {
+            text: 'Apri impostazioni',
+            onPress: () => {
+              Linking.openSettings().catch(() => {});
+            },
+          },
+        ],
+      );
+      return;
+    }
+    setLocationLoading(true);
+    try {
+      const targetKind: 'foreground' | 'background' =
+        locationStatus === 'background' ? 'background' :
+        locationStatus === 'foreground' ? 'background' :
+        'background';
+      const result = await requestLocationPermissionsAsync(targetKind);
+      setLocationStatus(result);
+      if (result === 'denied') {
+        Alert.alert(
+          'Posizione disattivata',
+          'Per usare le automazioni posizione devi abilitare la posizione per Omnia nelle impostazioni del dispositivo.',
+          [
+            { text: 'Annulla', style: 'cancel' },
+            {
+              text: 'Apri impostazioni',
+              onPress: () => {
+                Linking.openSettings().catch(() => {});
+              },
+            },
+          ],
+        );
+      }
+    } finally {
+      setLocationLoading(false);
     }
   }
 
@@ -134,24 +246,75 @@ export default function ProfileScreen() {
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false}>
         {section === 'impostazioni' && (
-          <View style={styles.feedbackBox}>
-            <Text style={styles.feedbackLabel}>Feedback</Text>
-            <Text style={styles.feedbackSublabel}>Scrivi un messaggio allo sviluppatore</Text>
-            <TextInput
-              style={styles.feedbackInput}
-              placeholder="Scrivi qui il tuo messaggio..."
-              placeholderTextColor={THEME.textMuted}
-              value={feedbackText}
-              onChangeText={setFeedbackText}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-            <TouchableOpacity style={styles.sendFeedbackBtn} onPress={sendFeedback} activeOpacity={0.8}>
-              <Ionicons name="send" size={20} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={styles.sendFeedbackBtnText}>Invia alla mail</Text>
-            </TouchableOpacity>
-          </View>
+          <>
+            {canAskCalendarPermission() && (
+              <View style={styles.feedbackBox}>
+                <Text style={styles.feedbackLabel}>Calendario Apple</Text>
+                <Text style={styles.feedbackSublabel}>Importa eventi dal Calendario del dispositivo in Omnia</Text>
+                <TouchableOpacity
+                  style={[styles.sendFeedbackBtn, styles.calendarImportBtn]}
+                  onPress={importFromAppleCalendar}
+                  disabled={calendarImporting}
+                  activeOpacity={0.8}
+                >
+                  {calendarImporting ? (
+                    <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
+                  ) : (
+                    <Ionicons name="calendar-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  )}
+                  <Text style={styles.sendFeedbackBtnText}>
+                    {calendarImporting ? 'Importazione...' : 'Trasferisci dati da Apple Calendario'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {canAskLocationPermission() && (
+              <View style={styles.feedbackBox}>
+                <Text style={styles.feedbackLabel}>Automazioni posizione</Text>
+                <Text style={styles.feedbackSublabel}>
+                  Usa la posizione per completare automaticamente alcune task (es. Palestra) quando esci da luoghi salvati.
+                </Text>
+                <Text style={[styles.feedbackSublabel, { marginBottom: 10 }]}>
+                  {getLocationStatusLabel(locationStatus)}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.sendFeedbackBtn, styles.calendarImportBtn]}
+                  onPress={handleRequestLocation}
+                  disabled={locationLoading}
+                  activeOpacity={0.8}
+                >
+                  {locationLoading ? (
+                    <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
+                  ) : (
+                    <Ionicons name="locate-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  )}
+                  <Text style={styles.sendFeedbackBtnText}>
+                    {locationStatus === 'background'
+                      ? 'Gestisci dalle impostazioni di sistema'
+                      : 'Abilita posizione per le automazioni'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <View style={styles.feedbackBox}>
+              <Text style={styles.feedbackLabel}>Feedback</Text>
+              <Text style={styles.feedbackSublabel}>Scrivi un messaggio allo sviluppatore</Text>
+              <TextInput
+                style={styles.feedbackInput}
+                placeholder="Scrivi qui il tuo messaggio..."
+                placeholderTextColor={THEME.textMuted}
+                value={feedbackText}
+                onChangeText={setFeedbackText}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+              <TouchableOpacity style={styles.sendFeedbackBtn} onPress={sendFeedback} activeOpacity={0.8}>
+                <Ionicons name="send" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.sendFeedbackBtnText}>Invia alla mail</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
 
         {section === 'statistiche' && (
@@ -238,6 +401,7 @@ const styles = StyleSheet.create({
   leaderPct: { color: THEME.textMuted, fontWeight: '700', fontSize: 14, minWidth: 36, textAlign: 'right' },
 
   feedbackBox: { marginTop: 8 },
+  calendarImportBtn: { marginBottom: 4 },
   feedbackLabel: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 4 },
   feedbackSublabel: { color: THEME.textMuted, fontSize: 14, marginBottom: 14 },
   feedbackInput: { backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 14, color: THEME.text, fontSize: 16, minHeight: 120, maxHeight: 160 },
