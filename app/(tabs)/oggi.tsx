@@ -10,7 +10,7 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Modal, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,6 +52,13 @@ export default function OggiScreen() {
   const dragY = useSharedValue(0);
   const dragInitialTop = useSharedValue(0);
   const scrollViewRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  const dragAreaRef = useRef<View | null>(null);
+  const dragAreaWindowLayoutRef = useRef<{ top: number; bottom: number }>({ top: 0, bottom: 0 });
+  const viewportHeightRef = useRef(0);
+  const autoScrollDirRef = useRef<-1 | 0 | 1>(0);
+  const autoScrollIntensityRef = useRef(0);
+  const autoScrollRafRef = useRef<number | null>(null);
 
   const stableLayoutRef = useRef<Record<string, LayoutInfo>>({});
   const brokenOverlapPairsRef = useRef<Set<string>>(new Set());
@@ -122,6 +129,10 @@ export default function OggiScreen() {
 
   const totalMinutes = windowEndMin - windowStartMin;
   const totalHeight = (totalMinutes / 60) * hourHeight;
+  const contentHeight = useMemo(
+    () => totalHeight + (visibleHours === 24 ? 0 : 43 + (activeTheme !== 'futuristic' ? 55 : 0)),
+    [totalHeight, visibleHours, activeTheme]
+  );
   
   const hours = useMemo(() => {
     const startHour = Math.floor(windowStartMin / 60);
@@ -260,6 +271,115 @@ export default function OggiScreen() {
     return () => clearTimeout(id);
   }, [hourHeight, windowStartMin, windowEndMin]);
 
+  const stopAutoScroll = useCallback(() => {
+    autoScrollDirRef.current = 0;
+    autoScrollIntensityRef.current = 0;
+  }, []);
+
+  const stepAutoScroll = useCallback(() => {
+    const dir = autoScrollDirRef.current;
+    const intensity = autoScrollIntensityRef.current;
+
+    if (!scrollViewRef.current || dir === 0 || intensity <= 0) {
+      autoScrollRafRef.current = null;
+      return;
+    }
+
+    const viewportHeight = viewportHeightRef.current;
+    const totalContentHeight = contentHeight;
+
+    if (!viewportHeight || totalContentHeight <= viewportHeight) {
+      autoScrollRafRef.current = null;
+      return;
+    }
+
+    const maxOffset = totalContentHeight - viewportHeight;
+    const baseSpeed = 8;
+    const extra = 18;
+    const delta = dir * (baseSpeed + extra * intensity);
+    const current = scrollOffsetRef.current;
+
+    let next = current + delta;
+    if (next < 0) next = 0;
+    if (next > maxOffset) next = maxOffset;
+
+    if (next === current) {
+      autoScrollRafRef.current = null;
+      return;
+    }
+
+    scrollViewRef.current.scrollTo({ y: next, animated: false });
+    autoScrollRafRef.current = requestAnimationFrame(stepAutoScroll);
+  }, [contentHeight]);
+
+  const ensureAutoScrollLoop = useCallback(() => {
+    if (autoScrollRafRef.current != null) return;
+    autoScrollRafRef.current = requestAnimationFrame(stepAutoScroll);
+  }, [stepAutoScroll]);
+
+  const handleAutoScrollRequest = useCallback(
+    (direction: -1 | 0 | 1, intensity: number) => {
+      autoScrollDirRef.current = direction;
+      autoScrollIntensityRef.current = intensity;
+
+      if (direction === 0 || intensity <= 0) {
+        return;
+      }
+
+      ensureAutoScrollLoop();
+    },
+    [ensureAutoScrollLoop]
+  );
+
+  const handleDragAreaLayout = useCallback(() => {
+    if (!dragAreaRef.current) return;
+    dragAreaRef.current.measureInWindow((_, y, __, height) => {
+      dragAreaWindowLayoutRef.current = { top: y, bottom: y + height };
+      viewportHeightRef.current = height;
+    });
+  }, []);
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+    },
+    []
+  );
+
+  const handleDragAutoScroll = useCallback(
+    (pageY: number | null) => {
+      if (pageY === null) {
+        handleAutoScrollRequest(0, 0);
+        return;
+      }
+
+      const { top, bottom } = dragAreaWindowLayoutRef.current;
+      if (bottom <= top) {
+        handleAutoScrollRequest(0, 0);
+        return;
+      }
+
+      const threshold = 80;
+      let direction: -1 | 0 | 1 = 0;
+      let intensity = 0;
+
+      if (pageY < top + threshold) {
+        direction = -1;
+        intensity = (top + threshold - pageY) / threshold;
+      } else if (pageY > bottom - threshold) {
+        direction = 1;
+        intensity = (pageY - (bottom - threshold)) / threshold;
+      }
+
+      if (intensity <= 0.05) {
+        handleAutoScrollRequest(0, 0);
+      } else {
+        handleAutoScrollRequest(direction, Math.min(1, intensity));
+      }
+    },
+    [handleAutoScrollRequest]
+  );
+
   useEffect(() => {
     if (Object.keys(pendingEventPositions).length === 0) return;
     setPendingEventPositions((prev) => {
@@ -374,7 +494,8 @@ export default function OggiScreen() {
 
   const handleDragEnd = useCallback(() => {
       setDraggingEventId(null);
-  }, []);
+      stopAutoScroll();
+  }, [stopAutoScroll]);
   
   const calculateDragLayout = useCallback((draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean): { width: number; left: number } => {
     const draggedEvent = timedEvents.find(e => e.id === draggedEventId);
@@ -524,13 +645,20 @@ export default function OggiScreen() {
       <GestureHandlerRootView
         style={{ flex: 1 }}
       >
+        <View
+          ref={dragAreaRef}
+          style={{ flex: 1 }}
+          onLayout={handleDragAreaLayout}
+        >
         <ScrollView 
           ref={scrollViewRef}
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           scrollEnabled={!draggingEventId}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         >
-         <View style={{ height: totalHeight + (visibleHours === 24 ? 0 : 43 + (activeTheme !== 'futuristic' ? 55 : 0)) }}> 
+         <View style={{ height: contentHeight }}> 
              {/* Grid Lines & Hours */}
              {hours.map(h => {
                 const minutesFromStart = (h * 60) - windowStartMin;
@@ -590,6 +718,7 @@ export default function OggiScreen() {
                    brokenOverlapPairsRef={brokenOverlapPairsRef}
                    columnRankRef={columnRankRef}
                    rankCounterRef={rankCounterRef}
+                   onDragAutoScroll={handleDragAutoScroll}
                    onDoubleTap={() => router.push({ pathname: '/modal', params: { type: 'edit', id: e.id } })}
                  />
                );
@@ -607,6 +736,7 @@ export default function OggiScreen() {
              })()}
          </View>
       </ScrollView>
+      </View>
       </GestureHandlerRootView>
 
       {/* Settings Modal */}

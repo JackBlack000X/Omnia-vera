@@ -1,13 +1,6 @@
 import { useHabits } from '@/lib/habits/Provider';
 import { Habit } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
-
-/** Default end time when user sets only start: start + 1 hour, capped at 24:00 */
-function defaultEndForStart(startHhmm: string): string {
-  const startM = hhmmToMinutes(startHhmm);
-  if (startM == null) return startHhmm;
-  return minutesToHhmm(Math.min(startM + 60, 1440));
-}
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -565,21 +558,22 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         // Se è una task temporizzata, aggiungi anche la programmazione
         if (mode === 'timed' && (tipo !== 'task' || taskHasTime)) {
           const time = minutesToHhmm(startMin) as string;
-          const endTime = endMin !== null ? minutesToHhmm(endMin) as string : null;
+          // Se c'è orario di inizio ma nessuna fine, salva fine = inizio + 1 ora
+          const rawEndMin = endMin !== null ? endMin : startMin + 60;
+          const endTime = minutesToHhmm(Math.min(rawEndMin, 24 * 60)) as string;
 
           if (freq === 'single') {
-            // save one-off override for selected date only (always save start + end so it displays correctly)
+            // save one-off override for selected date only
             const y = annualYear;
             const m = String(annualMonth).padStart(2, '0');
             const d = String(annualDay).padStart(2, '0');
             const ymd = `${y}-${m}-${d}`;
-            const endToSave = endTime ?? defaultEndForStart(time);
-            updateScheduleFromDate(newHabitId, ymd, time as string, endToSave as string | null);
+            updateScheduleFromDate(newHabitId, ymd, time as string, endTime as string | null);
             setHabits(prev => {
               const next = prev.map(h => {
                 if (h.id !== newHabitId) return h;
                 const overrides: Record<string, string | { start: string; end: string }> = {};
-                if (time) overrides[ymd] = { start: time, end: endToSave };
+                if (time) overrides[ymd] = endTime ? { start: time, end: endTime } : time;
                 const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
                 schedule.daysOfWeek = [];
                 schedule.monthDays = undefined;
@@ -801,21 +795,22 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       updateHabitColor(existing.id, color);
     } else if (type === 'schedule' && existing) {
       const time = mode === 'timed' ? minutesToHhmm(startMin) as string : null;
-      const endTime = mode === 'timed' && endMin !== null ? minutesToHhmm(endMin) as string : null;
+      // Se c'è orario di inizio ma nessuna fine impostata, salva fine = inizio + 1 ora (come in Oggi)
+      const rawEndMin = mode === 'timed' && endMin !== null ? endMin : (mode === 'timed' && time ? startMin + 60 : null);
+      const endTime = rawEndMin != null ? minutesToHhmm(Math.min(rawEndMin, 24 * 60)) as string : null;
 
       if (freq === 'single') {
-        // For single frequency, save as one-off override for selected date only (always save start + end)
+        // For single frequency, save as one-off override for selected date only (remove today if moved)
         const y = annualYear;
         const m = String(annualMonth).padStart(2, '0');
         const d = String(annualDay).padStart(2, '0');
         const ymd = `${y}-${m}-${d}`;
-        const endToSave = endTime ?? (time ? defaultEndForStart(time) : null);
-        updateScheduleFromDate(existing.id, ymd, time, endToSave);
+        updateScheduleFromDate(existing.id, ymd, time, endTime);
         setHabits(prev => {
           const next = prev.map(h => {
             if (h.id !== existing.id) return h;
             const overrides: Record<string, string | { start: string; end: string }> = {};
-            if (time) overrides[ymd] = { start: time, end: endToSave ?? defaultEndForStart(time) };
+            if (time) overrides[ymd] = endTime ? { start: time, end: endTime } : time;
             const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
             schedule.daysOfWeek = [];
             schedule.monthDays = undefined;

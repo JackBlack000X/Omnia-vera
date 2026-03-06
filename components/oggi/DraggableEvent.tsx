@@ -44,6 +44,7 @@ export type DraggableEventProps = {
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
   onDoubleTap?: () => void;
+  onDragAutoScroll?: (pageY: number | null) => void;
 };
 
 function getSnapStepMinutes(visibleHours: number, hourHeight: number): 5 | 10 | 15 {
@@ -87,6 +88,7 @@ function DraggableEvent({
   onDragStart,
   onDragEnd,
   onDoubleTap,
+  onDragAutoScroll,
 }: DraggableEventProps) {
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
@@ -188,6 +190,8 @@ function DraggableEvent({
         }
 
         if (!isDragActiveRef.current) return;
+
+        onDragAutoScroll?.(evt.nativeEvent.pageY);
 
         if (initialTouchYRef.current === null) initialTouchYRef.current = evt.nativeEvent.pageY;
         const currentTouchY = evt.nativeEvent.pageY;
@@ -304,6 +308,7 @@ function DraggableEvent({
         setCurrentDragPosition(null);
         dragY.value = 0;
         onDragEnd();
+        onDragAutoScroll?.(null);
       },
 
       onPanResponderRelease: (evt, gestureState) => {
@@ -339,10 +344,10 @@ function DraggableEvent({
         }
 
         const selectedYmd = getDay(currentDate);
+        // Salva sempre l'orario sulla task (schedule + override) così appare anche in Tasks
+        updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
         if (dragMode === 'single') {
           setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
-        } else {
-          updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
         }
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -382,6 +387,7 @@ function DraggableEvent({
         setDraggingEventId(null);
         setCurrentDragPosition(null);
         onDragEnd();
+        onDragAutoScroll?.(null);
       },
     });
   }, [

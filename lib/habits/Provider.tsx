@@ -77,7 +77,6 @@ export type HabitsContextType = {
   getDay: (date: Date | string) => string;
   setTimeOverride: (id: string, date: string, hhmm: string | null) => void;
   setTimeOverrideRange: (id: string, date: string, startTime: string | null, endTime: string | null) => void;
-  setColumnRanks: (updates: Record<string, number>) => void;
   updateScheduleTime: (id: string, hhmm: string | null) => void;
   updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   updateSchedule: (id: string, daysOfWeek: number[], hhmm: string | null) => void;
@@ -311,14 +310,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         setHistory(prev => {
           const day = prev[todayYmd] || { date: todayYmd, completedByHabitId: {} };
           if (day.completedByHabitId[habit.id]) return prev;
-          const next = {
+          return {
             ...prev,
             [todayYmd]: { ...day, completedByHabitId: { ...day.completedByHabitId, [habit.id]: true } },
           };
-          AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(next)).catch((err) => {
-            console.error('Failed to save history (autoComplete):', err);
-          });
-          return next;
         });
       }
     }
@@ -393,7 +388,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
       const dayCompletion = prev[today] || { date: today, completedByHabitId: {} };
       const isCompleted = !dayCompletion.completedByHabitId[id];
-      const next = {
+      return {
         ...prev,
         [today]: {
           ...dayCompletion,
@@ -403,10 +398,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           },
         },
       };
-      AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(next)).catch((err) => {
-        console.error('Failed to save history (toggleDone):', err);
-      });
-      return next;
     });
   }, []);
 
@@ -464,14 +455,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-      const next = {
+      return {
         ...prev,
         [today]: { date: today, completedByHabitId: preserved },
       };
-      AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(next)).catch((err) => {
-        console.error('Failed to save history (resetToday):', err);
-      });
-      return next;
     });
     setLastResetDate(today);
     await AsyncStorage.setItem(STORAGE_LASTRESET, today);
@@ -505,19 +492,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           delete nextOverrides[date];
         }
         return { ...h, timeOverrides: nextOverrides };
-      });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
-      return next;
-    });
-  }, []);
-
-  const setColumnRanks = useCallback((updates: Record<string, number>) => {
-    if (Object.keys(updates).length === 0) return;
-    setHabits(prev => {
-      const next = prev.map(h => {
-        const rank = updates[h.id];
-        if (rank === undefined) return h;
-        return { ...h, columnRank: rank };
       });
       AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
@@ -646,8 +620,8 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime,
     addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay,
-    setTimeOverride, setTimeOverrideRange, setColumnRanks, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
-  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, setColumnRanks, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
+    setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
+  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

@@ -735,7 +735,9 @@ export function useIndexLogic() {
       // While guard is up, NEVER update displayList — this prevents the flash.
       return;
     }
-    if (sectionedListOrderKey(sectionedList) !== sectionedListOrderKey(displayList)) {
+    // Non in post-drag: aggiorna subito displayList con sectionedList così i cambi
+    // fatti in tab Oggi (es. orario) si vedono subito in tab Tasks.
+    if (displayList !== sectionedList) {
       pendingDisplayRef.current = null;
       setDisplayList(sectionedList);
     }
@@ -943,7 +945,7 @@ export function useIndexLogic() {
       setDisplayList(newData);
       isPostDragRef.current = true;
 
-      // Salviamo l'ordine locale per "Oggi"
+      // Salviamo subito l'ordine locale per "Oggi" (nessun ritardo)
       setOggiCustomOrder(taskItems.map(h => h.id));
 
       const runUpdates = () => {
@@ -957,7 +959,7 @@ export function useIndexLogic() {
         }, 2000);
       };
       if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
-      dragEndTimeoutRef.current = setTimeout(runUpdates, 100);
+      runUpdates();
       return;
     }
 

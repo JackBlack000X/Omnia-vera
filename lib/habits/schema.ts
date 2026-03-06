@@ -29,8 +29,6 @@ export type Habit = {
     placeId: string;
     minOutsideMinutes?: number;
   };
-  /** Ordine sinistra-destra nella timeline Oggi (per task sovrapposte). Usato solo dopo uno spostamento; alla prima creazione l'ordine è da createdAt. */
-  columnRank?: number;
 };
 
 export type DayCompletion = {
