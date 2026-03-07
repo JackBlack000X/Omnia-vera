@@ -3,7 +3,7 @@ import type { Habit } from '@/lib/habits/schema';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
@@ -20,8 +20,6 @@ type Props = {
   isSelected?: boolean;
   onToggleSelect?: (habit: Habit) => void;
   onLongPress?: () => void;
-  /** Called when long-press starts/ends on a non-selected task in selection mode (to block scroll) */
-  onLongPressActive?: (active: boolean, habitId?: string) => void;
   /** When dragging with multiple selected, show this count as a badge on the card */
   dragBadgeCount?: number;
   onMenuOpen?: (habit: Habit) => void;
@@ -118,9 +116,7 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
   );
 }
 
-const LONG_PRESS_DELAY = 200;
-
-export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onLongPress, onLongPressActive, dragBadgeCount, onMenuOpen, onMenuClose }: Props) {
+export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onLongPress, dragBadgeCount, onMenuOpen, onMenuClose }: Props) {
   const { activeTheme } = useAppTheme();
   const { toggleDone, removeHabit, getDay } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
@@ -205,15 +201,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     if (isAllDayMarker || habit.isAllDay) return 'Tutto il giorno';
     if (!startRaw && !endNorm) return 'Tutto il giorno';
     if (startRaw && endNorm) return `${startRaw} - ${endNorm}`;
-    // Solo inizio: mostra intervallo inizio - (inizio + 1 ora), come in Oggi
-    if (startRaw) {
-      const [h, m] = startRaw.split(':').map(Number);
-      const totalMin = (h ?? 0) * 60 + (m ?? 0) + 60;
-      const endH = Math.min(24, Math.floor(totalMin / 60));
-      const endM = totalMin % 60;
-      const endDisplay = endH === 24 && endM === 0 ? '24:00' : `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-      return `${startRaw} - ${endDisplay}`;
-    }
+    if (startRaw) return startRaw;
     if (endNorm) return `- ${endNorm}`;
     return 'Tutto il giorno';
   };
@@ -395,36 +383,13 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     </View>
   );
 
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handlePressIn = useCallback(() => {
-    if (selectionMode && !isSelected && onLongPressActive) {
-      longPressTimerRef.current = setTimeout(() => {
-        longPressTimerRef.current = null;
-        onLongPressActive(true, habit.id);
-      }, LONG_PRESS_DELAY);
-    }
-  }, [selectionMode, isSelected, onLongPressActive]);
-
-  const handlePressOut = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    if (selectionMode && !isSelected && onLongPressActive) {
-      onLongPressActive(false);
-    }
-  }, [selectionMode, isSelected, onLongPressActive]);
-
   const Wrapper = selectionMode
     ? ({ children }: { children: React.ReactNode }) => (
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => onToggleSelect?.(habit)}
         onLongPress={onLongPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        delayLongPress={LONG_PRESS_DELAY}
+        delayLongPress={200}
         style={{ width: '100%' }}
       >
         {children}

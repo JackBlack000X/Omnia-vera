@@ -16,7 +16,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
-import { useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
+import { runOnJS, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
+
+type OverlapHoverState = {
+  isOverlapping: boolean;
+  activeIndex: number;
+  direction: number;
+};
+
+const DEFAULT_OVERLAP_HOVER_STATE: OverlapHoverState = {
+  isOverlapping: false,
+  activeIndex: -1,
+  direction: 0,
+};
 
 export function useIndexLogic() {
   const router = useRouter();
@@ -52,6 +64,7 @@ export function useIndexLogic() {
   const dragDirectionAtReleaseRef = useRef(0);
   const lastMergeHoverTimeRef = useRef<number>(0);
   const mergeDirectionRef = useRef(0); // last non-zero direction while merge indicator was active
+  const overlapHoverStateRef = useRef<OverlapHoverState>(DEFAULT_OVERLAP_HOVER_STATE);
   const [animVals, setAnimVals] = useState<unknown>(null);
   const emptyFoldersIndicesSV = useSharedValue<number[]>([]);
 
@@ -72,13 +85,53 @@ export function useIndexLogic() {
 
   const prevSectionedListRef = useRef<SectionItem[]>([]);
 
-  const sectionedListOrderKey = useCallback((list: SectionItem[]) => {
-    return list.map(i => {
-      if (i.type === 'folderBlock') return `f-${i.folderId}-${i.tasks.map(t => `${t.id}:${t.text}:${t.folder ?? ''}:${t.color ?? ''}`).join('|')}`;
-      if (i.type === 'multiDragBlock') return `m-${i.habits.map(h => h.id).join(',')}`;
-      return `t-${i.habit.id}-${i.habit.text}-${i.habit.folder ?? ''}-${i.habit.color ?? ''}`;
-    }).join(',');
+  const habitVisualKey = useCallback((habit: Habit) => {
+    const weeklyTimesKey = Object.entries(habit.schedule?.weeklyTimes ?? {})
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([day, value]) => `${day}:${value?.start ?? ''}-${value?.end ?? ''}`)
+      .join(';');
+    const monthlyTimesKey = Object.entries(habit.schedule?.monthlyTimes ?? {})
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([day, value]) => `${day}:${value?.start ?? ''}-${value?.end ?? ''}`)
+      .join(';');
+    const overridesKey = Object.entries(habit.timeOverrides ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, value]) => typeof value === 'string'
+        ? `${day}:${value}`
+        : `${day}:${value.start ?? ''}-${value.end ?? ''}`)
+      .join(';');
+
+    return [
+      habit.id,
+      habit.text,
+      habit.folder ?? '',
+      habit.color ?? '',
+      habit.tipo ?? '',
+      habit.habitFreq ?? '',
+      habit.isAllDay ? '1' : '0',
+      habit.schedule?.time ?? '',
+      habit.schedule?.endTime ?? '',
+      (habit.schedule?.daysOfWeek ?? []).join('.'),
+      (habit.schedule?.monthDays ?? []).join('.'),
+      habit.schedule?.yearMonth ?? '',
+      habit.schedule?.yearDay ?? '',
+      weeklyTimesKey,
+      monthlyTimesKey,
+      overridesKey,
+    ].join('|');
   }, []);
+
+  const sectionedListVisualKey = useCallback((list: SectionItem[]) => {
+    return list.map((item) => {
+      if (item.type === 'folderBlock') {
+        return `f-${item.folderId}-${item.tasks.map(habitVisualKey).join('||')}`;
+      }
+      if (item.type === 'multiDragBlock') {
+        return `m-${item.habits.map(habitVisualKey).join('||')}`;
+      }
+      return `t-${habitVisualKey(item.habit)}`;
+    }).join(',');
+  }, [habitVisualKey]);
 
   const updateFoldersScrollEnabled = useCallback(() => {
     const cw = foldersContentWidthRef.current;
@@ -713,12 +766,15 @@ export function useIndexLogic() {
     // Keep the UI thread synchronously updated with which active indices correspond to empty folders
     emptyFoldersIndicesSV.value = sectionedList.map(x => x.type === 'folderBlock' && x.tasks.length === 0 ? 1 : 0);
 
+    const nextVisualKey = sectionedListVisualKey(sectionedList);
+    const displayVisualKey = displayList ? sectionedListVisualKey(displayList) : null;
+
     if (displayList === null) {
       setDisplayList(sectionedList);
       return;
     }
     if (isPostDragRef.current) {
-      if (sectionedListOrderKey(sectionedList) === sectionedListOrderKey(displayList)) {
+      if (displayVisualKey === nextVisualKey) {
         // Convergence! sectionedList now matches the drag result.
         // Release the guard and let DraggableFlatList continue using
         // displayList (which is the EXACT array reference from onDragEnd).
@@ -735,13 +791,13 @@ export function useIndexLogic() {
       // While guard is up, NEVER update displayList — this prevents the flash.
       return;
     }
-    // Non in post-drag: aggiorna subito displayList con sectionedList così i cambi
-    // fatti in tab Oggi (es. orario) si vedono subito in tab Tasks.
-    if (displayList !== sectionedList) {
+    // Sync only when the rendered content really changed. A pure ref swap right
+    // after drag convergence causes the intermittent flicker seen in Tasks.
+    if (displayVisualKey !== nextVisualKey) {
       pendingDisplayRef.current = null;
       setDisplayList(sectionedList);
     }
-  }, [sectionedList, displayList, sectionedListOrderKey]);
+  }, [sectionedList, displayList, sectionedListVisualKey]);
 
   const completedByHabitId = useMemo(
     () => history[today]?.completedByHabitId ?? {},
@@ -773,8 +829,13 @@ export function useIndexLogic() {
 
   const commitDragEnd = useCallback(() => {
     isMergeHoverSV.value = false;
+    overlapHoverStateRef.current = DEFAULT_OVERLAP_HOVER_STATE;
   }, [isMergeHoverSV]);
   commitDragEndRef.current = commitDragEnd;
+
+  const updateOverlapHoverState = useCallback((next: OverlapHoverState) => {
+    overlapHoverStateRef.current = next;
+  }, []);
 
   const getFolderBlockFromHeaderIndex = useCallback((list: SectionItem[], headerIdx: number) => {
     const header = list[headerIdx];
@@ -1202,7 +1263,13 @@ export function useIndexLogic() {
     () => {
       'worklet';
       const v = animVals as any;
-      if (!v || v.activeIndexAnim.value < 0) return null;
+      if (!v || v.activeIndexAnim.value < 0) {
+        return {
+          isHovering: false,
+          direction: 0,
+          activeIndex: -1,
+        };
+      }
 
       const activeIdx = Math.round(v.activeIndexAnim.value);
       const hover = v.hoverAnim?.value ?? 0;
@@ -1218,26 +1285,30 @@ export function useIndexLogic() {
         const neighborIdx = activeIdx + direction;
         if (neighborIdx >= 0 && neighborIdx < emptyFoldersIndicesSV.value.length &&
           emptyFoldersIndicesSV.value[neighborIdx] === 1) {
-          return { isHovering: false, direction };
+          return { isHovering: false, direction, activeIndex: activeIdx };
         }
       }
 
       return {
         isHovering: absHover > 44 && absHover < 60,
-        direction
+        direction,
+        activeIndex: activeIdx,
       };
     },
     (res) => {
-      if (res !== null) {
-        isMergeHoverSV.value = res.isHovering;
-        dragDirectionSV.value = res.direction;
-        if (res.isHovering && res.direction !== 0) {
-          lastMergeHoverTimeRef.current = Date.now();
-          mergeDirectionRef.current = res.direction;
-        }
+      isMergeHoverSV.value = res.isHovering;
+      dragDirectionSV.value = res.direction;
+      runOnJS(updateOverlapHoverState)({
+        isOverlapping: res.isHovering,
+        activeIndex: res.activeIndex,
+        direction: res.direction,
+      });
+      if (res.isHovering && res.direction !== 0) {
+        lastMergeHoverTimeRef.current = Date.now();
+        mergeDirectionRef.current = res.direction;
       }
     },
-    [animVals]
+    [animVals, updateOverlapHoverState]
   );
 
   return {
@@ -1290,6 +1361,7 @@ export function useIndexLogic() {
     dragDirectionAtReleaseRef,
     lastMergeHoverTimeRef,
     mergeDirectionRef,
+    overlapHoverStateRef,
     animVals,
     setAnimVals,
     emptyFoldersIndicesSV,

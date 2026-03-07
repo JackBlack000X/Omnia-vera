@@ -223,33 +223,6 @@ export default function OggiScreen() {
     return { timedEvents: items, allDayEvents: allDay };
   }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1]);
 
-  // Tasks entirely outside the visible window — used to color first/last hour lines
-  const { overflowBefore, overflowAfter } = useMemo(() => {
-    const ranks = columnRankRef.current;
-    const before: OggiEvent[] = [];
-    const after: OggiEvent[] = [];
-    for (const ev of timedEvents) {
-      const s = pendingEventPositions[ev.id] ?? toMinutes(ev.startTime);
-      const origEnd = toMinutes(ev.endTime);
-      const e = pendingEventPositions[ev.id] !== undefined
-        ? Math.min(1440, s + (origEnd - toMinutes(ev.startTime)))
-        : origEnd;
-      if (e <= windowStartMin) before.push(ev);
-      else if (s >= windowEndMin) after.push(ev);
-    }
-    const sortByTime = (a: OggiEvent, b: OggiEvent) => {
-      const sa = toMinutes(a.startTime);
-      const sb = toMinutes(b.startTime);
-      if (sa !== sb) return sa - sb;
-      const ra = ranks[a.id] ?? 0;
-      const rb = ranks[b.id] ?? 0;
-      return ra - rb;
-    };
-    before.sort(sortByTime);
-    after.sort(sortByTime);
-    return { overflowBefore: before, overflowAfter: after };
-  }, [timedEvents, windowStartMin, windowEndMin, pendingEventPositions]);
-
   // Initialise column rank for any task that doesn't yet have one.
   // Rank determines left-to-right order: lower rank = leftmost column.
   // Initial rank comes from createdAt (older = lower rank).
@@ -496,7 +469,34 @@ export default function OggiScreen() {
     
     return calculateLayoutCallback(events, null);
   }, [timedEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayoutCallback]);
-  
+
+  // Tasks entirely outside the visible window — used to color first/last hour lines
+  const { overflowBefore, overflowAfter } = useMemo(() => {
+    const before: OggiEvent[] = [];
+    const after: OggiEvent[] = [];
+    for (const ev of timedEvents) {
+      const s = pendingEventPositions[ev.id] ?? toMinutes(ev.startTime);
+      const origEnd = toMinutes(ev.endTime);
+      const e = pendingEventPositions[ev.id] !== undefined
+        ? Math.min(1440, s + (origEnd - toMinutes(ev.startTime)))
+        : origEnd;
+      if (e <= windowStartMin) before.push(ev);
+      else if (s >= windowEndMin) after.push(ev);
+    }
+    // Sort by startTime first, then by layout column for same-start events
+    const sortByStartThenCol = (a: OggiEvent, b: OggiEvent) => {
+      const sa = toMinutes(a.startTime);
+      const sb = toMinutes(b.startTime);
+      if (sa !== sb) return sa - sb;
+      const colA = layoutById[a.id]?.col ?? 0;
+      const colB = layoutById[b.id]?.col ?? 0;
+      return colA - colB;
+    };
+    before.sort(sortByStartThenCol);
+    after.sort(sortByStartThenCol);
+    return { overflowBefore: before, overflowAfter: after };
+  }, [timedEvents, windowStartMin, windowEndMin, pendingEventPositions, layoutById]);
+
   const handleDragStart = useCallback((id: string) => {
       stableLayoutRef.current = layoutById;
     

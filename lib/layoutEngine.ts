@@ -63,10 +63,10 @@ export function calculateLayout<T extends BaseEvent>(
       const bM = mover && b.id === mover.id;
       if (aM && !bM) return 1;
       if (!aM && bM) return -1;
+      if (a.s !== b.s) return a.s - b.s;
       const ra = ranks ? (ranks[a.id] ?? 0) : 0;
       const rb = ranks ? (ranks[b.id] ?? 0) : 0;
       if (ra !== rb) return ra - rb;
-      if (a.s !== b.s) return a.s - b.s;
       return b.duration - a.duration;
     });
 

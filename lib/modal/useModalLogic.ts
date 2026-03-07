@@ -275,16 +275,31 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
   };
 
-  // When editing an existing task that already shows a time "outside" (Oggi/cards),
-  // ensure the modal's Task → Orario toggle starts enabled and matches that time.
-  // Important: run only when the modal is opened for a specific existing id.
+  // When editing an existing task, keep Task → Orario aligned with persisted data.
+  // Important: include single-date overrides (including all-day marker '00:00'),
+  // otherwise tasks created from Oggi appear as "Nessun orario" in edit.
   useEffect(() => {
     if (!existing) return;
     const exTipo: 'task' | 'abitudine' | 'evento' = (existing.tipo ?? 'task');
     if (exTipo !== 'task') return;
 
-    // If there is an effective time for today (override/weekly/monthly/base) and it's not an all-day marker,
-    // the UI should start with "Orario" enabled.
+    const hasAnyOverrides = Object.keys(existing.timeOverrides ?? {}).length > 0;
+    const hasAnyScheduleConfig = Boolean(
+      existing.schedule?.time ||
+      existing.schedule?.endTime ||
+      existing.schedule?.weeklyTimes ||
+      existing.schedule?.monthlyTimes ||
+      (existing.schedule?.daysOfWeek?.length ?? 0) > 0 ||
+      (existing.schedule?.monthDays?.length ?? 0) > 0 ||
+      (existing.schedule?.yearMonth && existing.schedule?.yearDay)
+    );
+    const shouldShowOrario = hasAnyOverrides || hasAnyScheduleConfig || Boolean(existing.isAllDay);
+    setTaskHasTime(shouldShowOrario);
+
+    if (!shouldShowOrario) return;
+
+    // If there is an effective time for today (override/weekly/monthly/base) and it's not all-day,
+    // start in timed mode and mirror current start/end.
     if (!effectiveTimeForToday.isAllDayMarker && (effectiveTimeForToday.start || effectiveTimeForToday.end)) {
       setTaskHasTime(true);
       setMode('timed');
@@ -299,9 +314,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       return;
     }
 
-    // Otherwise, default to whether any time config exists in the stored habit.
-    const storedHasTime = Boolean(existing.schedule?.time || existing.schedule?.endTime || existing.schedule?.weeklyTimes || existing.schedule?.monthlyTimes);
-    setTaskHasTime(storedHasTime);
+    // For saved all-day tasks, keep all-day mode visible in edit.
+    if (effectiveTimeForToday.isAllDayMarker || existing.isAllDay) {
+      setMode('allDay');
+    }
   }, [existing?.id, effectiveTimeForToday]);
 
 

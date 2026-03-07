@@ -6,7 +6,7 @@ import { OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { useIndexLogic } from '@/lib/index/useIndexLogic';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef } from 'react';
 import { Alert, InteractionManager, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
@@ -45,6 +45,7 @@ const ChevronIcon = ({ isCollapsed, folderColor }: { isCollapsed: boolean; folde
 
 export default function IndexScreen() {
   const { activeTheme } = useAppTheme();
+  const router = useRouter();
 
   const {
     habits,
@@ -84,6 +85,7 @@ export default function IndexScreen() {
     dragDirectionAtReleaseRef,
     lastMergeHoverTimeRef,
     mergeDirectionRef,
+    overlapHoverStateRef,
     animVals,
     setAnimVals,
     displayList,
@@ -122,6 +124,7 @@ export default function IndexScreen() {
   } = useIndexLogic();
 
   const isDraggingRef = useRef(false);
+  const [isDraggingFolder, setIsDraggingFolder] = React.useState(false);
   const dragInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.createInteractionHandle> | null>(null);
 
   // Never collapse the list data. Changing keys triggers the library's reset()
@@ -173,6 +176,41 @@ export default function IndexScreen() {
       const folderColor = folderMeta?.color ?? THEME.textMuted;
       const label = typeof item.folderName === 'string' ? item.folderName : 'Tutte';
       const isCollapsed = collapsedFolderIds.has(item.folderId);
+      const overlapState = overlapHoverStateRef.current;
+      let hasTouchingNeighbor = false;
+
+      if (
+        !isCollapsed &&
+        isDraggingFolder &&
+        overlapState.isOverlapping &&
+        typeof getIndex === 'function'
+      ) {
+        const idx = getIndex() ?? -1;
+        const activeIdx = overlapState.activeIndex;
+        const dir = overlapState.direction;
+        if (idx >= 0 && dir !== 0) {
+          const neighborIdx = activeIdx + dir;
+          if (
+            neighborIdx >= 0 &&
+            neighborIdx < listData.length &&
+            (idx === activeIdx || idx === neighborIdx)
+          ) {
+            const activeItem = listData[activeIdx];
+            const neighborItem = listData[neighborIdx];
+            const activeIsFolder =
+              activeItem &&
+              activeItem.type === 'folderBlock' &&
+              !collapsedFolderIds.has(activeItem.folderId);
+            const neighborIsFolder =
+              neighborItem &&
+              neighborItem.type === 'folderBlock' &&
+              !collapsedFolderIds.has(neighborItem.folderId);
+            if (activeIsFolder && neighborIsFolder) {
+              hasTouchingNeighbor = true;
+            }
+          }
+        }
+      }
 
       return (
         <Animated.View layout={Layout}>
@@ -199,47 +237,55 @@ export default function IndexScreen() {
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} />
-                  {!isActive && (
+                  <View
+                    pointerEvents={isActive ? 'none' : 'auto'}
+                    style={isActive ? { opacity: 0 } : undefined}
+                  >
                     <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: isActive }}
                       onPress={() => {
                         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                         toggleFolderCollapsed(item.folderId);
                       }}
                       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                       activeOpacity={0.7}
+                      disabled={isActive}
                     >
                       <ChevronIcon isCollapsed={isCollapsed} folderColor={folderColor} />
                     </TouchableOpacity>
-                  )}
+                  </View>
                 </View>
               </View>
             </View>
             {/* The Folder Tasks */}
             {!isCollapsed && (
-              <View style={styles.folderTaskGroup}>
-                {item.tasks.map((h, index) => (
-                  <Animated.View
-                    key={h.id}
-                    style={styles.taskInFolder}
-                    entering={FadeInDown.duration(260).delay(index * 60)}
-                  >
-                    <HabitItem
-                      habit={h}
-                      index={0}
-                      isDone={Boolean(completedByHabitId[h.id])}
-                      onRename={handleSchedule}
-                      onSchedule={handleSchedule}
-                      onColor={handleSchedule}
-                      shouldCloseMenu={closingMenuId === h.id || closingMenuId === 'all'}
-                      onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                      selectionMode={selectionMode}
-                      isSelected={selectedIds.has(h.id)}
-                      onToggleSelect={toggleSelect}
-                      onMenuOpen={handleMenuOpen}
-                      onMenuClose={handleMenuClose}
-                    />
-                  </Animated.View>
-                ))}
+              <View style={styles.folderDebugBoxWrap}>
+                <View style={styles.folderTaskGroup}>
+                  {item.tasks.map((h, index) => (
+                    <Animated.View
+                      key={h.id}
+                      style={styles.taskInFolder}
+                      entering={FadeInDown.duration(260).delay(index * 60)}
+                    >
+                      <HabitItem
+                        habit={h}
+                        index={0}
+                        isDone={Boolean(completedByHabitId[h.id])}
+                        onRename={handleSchedule}
+                        onSchedule={handleSchedule}
+                        onColor={handleSchedule}
+                        shouldCloseMenu={closingMenuId === h.id || closingMenuId === 'all'}
+                        onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                        selectionMode={selectionMode}
+                        isSelected={selectedIds.has(h.id)}
+                        onToggleSelect={toggleSelect}
+                        onMenuOpen={handleMenuOpen}
+                        onMenuClose={handleMenuClose}
+                      />
+                    </Animated.View>
+                  ))}
+                </View>
               </View>
             )}
           </View>
@@ -327,7 +373,30 @@ export default function IndexScreen() {
       );
     }
     return null;
-  }, [completedByHabitId, handleSchedule, closingMenuId, activeFolder, sortMode, folders, handleMoveToFolder, handleMenuOpen, handleMenuClose, isFolderModeWithSections, selectionMode, selectedIds, draggingSelectionCount, toggleSelect, isMergeHoverSV, collapsedFolderIds, toggleFolderCollapsed, multiDragAnchorId, multiDragHabits]);
+  }, [
+    completedByHabitId,
+    handleSchedule,
+    closingMenuId,
+    activeFolder,
+    sortMode,
+    folders,
+    handleMoveToFolder,
+    handleMenuOpen,
+    handleMenuClose,
+    isFolderModeWithSections,
+    selectionMode,
+    selectedIds,
+    draggingSelectionCount,
+    toggleSelect,
+    isMergeHoverSV,
+    collapsedFolderIds,
+    toggleFolderCollapsed,
+    multiDragAnchorId,
+    multiDragHabits,
+    isDraggingFolder,
+    listData,
+    overlapHoverStateRef,
+  ]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
@@ -408,6 +477,12 @@ export default function IndexScreen() {
                         `Ordine attuale: ${labels[current] ?? current}`,
                         options
                       );
+                    }
+                  },
+                  {
+                    key: 'places', icon: 'map-outline' as const, onPress: () => {
+                      setOptionsMenuVisible(false);
+                      router.push('/places');
                     }
                   },
                   {
@@ -589,6 +664,7 @@ export default function IndexScreen() {
             }}
             onDragBegin={(idx) => {
               isDraggingRef.current = true;
+              setIsDraggingFolder(listData[idx]?.type === 'folderBlock');
               dragInteractionHandleRef.current = InteractionManager.createInteractionHandle();
               isMergeHoverSV.value = false;
               dragDirectionSV.value = 0;
@@ -609,6 +685,7 @@ export default function IndexScreen() {
             }}
             onDragEnd={(params) => {
               isDraggingRef.current = false;
+              setIsDraggingFolder(false);
               // Release the interaction handle so any pending reset() can fire
               // now that the drag is over.
               if (dragInteractionHandleRef.current !== null) {
@@ -656,7 +733,7 @@ export default function IndexScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <Link href={{ pathname: '/modal', params: { type: 'new', folder: (activeFolder && activeFolder !== TUTTE_KEY) ? activeFolder : undefined } }} asChild>
+        <Link href={{ pathname: '/modal', params: { type: 'new', folder: (activeFolder && activeFolder !== OGGI_TODAY_KEY && activeFolder !== TUTTE_KEY) ? activeFolder : undefined } }} asChild>
           <TouchableOpacity accessibilityRole="button" style={styles.fab}>
             <Ionicons name="add" size={28} color="#fff" />
           </TouchableOpacity>
