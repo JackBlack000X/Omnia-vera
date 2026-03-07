@@ -49,14 +49,20 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   }, [existing, todayYmdForInit, todayWeekdayForInit, todayDayOfMonthForInit]);
 
   // For tasks only: whether to show the schedule/time block.
-  // Defaults to false (no time) for new tasks; true if the existing task already has time config.
+  // New from Oggi = true. Existing: true if task has any schedule/override (including all-day '00:00') so edit shows Frequenza/Giorno/Orario.
   const [taskHasTime, setTaskHasTime] = useState<boolean>(() => {
-    if (!existing) return false;
+    if (!existing) return type === 'new' && folder === '__oggi__';
     if (inferredExistingTipo !== 'task') return false;
-    if (effectiveTimeForToday.isAllDayMarker) return false;
-    return Boolean(effectiveTimeForToday.start || effectiveTimeForToday.end
+    const hasOverrides = existing.timeOverrides && Object.keys(existing.timeOverrides).length > 0;
+    if (hasOverrides) return true;
+    return Boolean(
+      effectiveTimeForToday.start || effectiveTimeForToday.end
       || existing.schedule?.time || existing.schedule?.endTime
-      || existing.schedule?.weeklyTimes || existing.schedule?.monthlyTimes);
+      || existing.schedule?.weeklyTimes || existing.schedule?.monthlyTimes
+      || (existing.schedule?.daysOfWeek?.length ?? 0) > 0
+      || (existing.schedule?.monthDays?.length ?? 0) > 0
+      || (existing.schedule?.yearMonth && existing.schedule?.yearDay)
+    );
   });
 
   const [locationRule, setLocationRule] = useState<Habit['locationRule'] | null>(existing?.locationRule ?? null);
@@ -540,7 +546,16 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (type === 'new' || (type === 'edit' && existing)) {
       const t = text.trim();
       if (t.length <= 100) {
-        const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined, tipo) : existing!.id;
+        // New task "Tutto il giorno" + Singola: create with timeOverrides/schedule in one go so it persists
+        const isNewAllDaySingle = type === 'new' && mode === 'allDay' && (tipo !== 'task' || taskHasTime) && freq === 'single';
+        const ymdSingle = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+        const initialAllDaySingle = isNewAllDaySingle ? {
+          timeOverrides: { [ymdSingle]: '00:00' as const },
+          schedule: { daysOfWeek: [], monthDays: undefined, time: null, endTime: null, weeklyTimes: undefined, monthlyTimes: undefined } as const,
+          isAllDay: true,
+          habitFreq: 'single' as const,
+        } : undefined;
+        const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined, tipo, initialAllDaySingle) : existing!.id;
         if (type === 'edit' && existing) {
           // Single update to avoid React batching overwriting tipo
           setHabits(prev => prev.map(h => {
@@ -698,10 +713,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
           }
         }
-        // Se è "Tutto il giorno", salva solo la frequenza senza orari
+        // Se è "Tutto il giorno", salva solo la frequenza senza orari (new+single già gestito con initial in addHabit)
         if (mode === 'allDay' && (tipo !== 'task' || taskHasTime)) {
-          if (freq === 'single') {
-            // For single frequency, save as one-off override for selected date only
+          if (freq === 'single' && !isNewAllDaySingle) {
+            // Edit only: new single all-day uses initial in addHabit above
             const y = annualYear;
             const m = String(annualMonth).padStart(2, '0');
             const d = String(annualDay).padStart(2, '0');
@@ -719,7 +734,6 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 schedule.monthlyTimes = undefined;
                 return { ...h, timeOverrides: overrides, schedule };
               });
-              AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
               return next;
             });
           } else if (freq === 'daily') {
@@ -778,6 +792,25 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               return { ...h, schedule };
           }));
         }
+        }
+        // New task from "Oggi" tab: ensure single date saved when we didn't use initial (e.g. Nessun orario).
+        if (type === 'new' && folder === '__oggi__' && freq === 'single' && (mode === 'allDay' || !taskHasTime) && !isNewAllDaySingle) {
+          const ymdFromForm = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+          setHabits(prev => {
+            const next = prev.map(h => {
+              if (h.id !== newHabitId) return h;
+              const overrides = { ...(h.timeOverrides ?? {}), [ymdFromForm]: '00:00' };
+              const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+              schedule.daysOfWeek = schedule.daysOfWeek ?? [];
+              schedule.monthDays = undefined;
+              schedule.yearMonth = undefined;
+              schedule.yearDay = undefined;
+              schedule.time = null;
+              schedule.endTime = null;
+              return { ...h, timeOverrides: overrides, schedule };
+            });
+            return next;
+          });
         }
         // Persist explicit flags so the modal restores them correctly on re-open
         setHabits(prev => prev.map(h => h.id === newHabitId ? {

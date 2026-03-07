@@ -223,6 +223,33 @@ export default function OggiScreen() {
     return { timedEvents: items, allDayEvents: allDay };
   }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1]);
 
+  // Tasks entirely outside the visible window — used to color first/last hour lines
+  const { overflowBefore, overflowAfter } = useMemo(() => {
+    const ranks = columnRankRef.current;
+    const before: OggiEvent[] = [];
+    const after: OggiEvent[] = [];
+    for (const ev of timedEvents) {
+      const s = pendingEventPositions[ev.id] ?? toMinutes(ev.startTime);
+      const origEnd = toMinutes(ev.endTime);
+      const e = pendingEventPositions[ev.id] !== undefined
+        ? Math.min(1440, s + (origEnd - toMinutes(ev.startTime)))
+        : origEnd;
+      if (e <= windowStartMin) before.push(ev);
+      else if (s >= windowEndMin) after.push(ev);
+    }
+    const sortByTime = (a: OggiEvent, b: OggiEvent) => {
+      const sa = toMinutes(a.startTime);
+      const sb = toMinutes(b.startTime);
+      if (sa !== sb) return sa - sb;
+      const ra = ranks[a.id] ?? 0;
+      const rb = ranks[b.id] ?? 0;
+      return ra - rb;
+    };
+    before.sort(sortByTime);
+    after.sort(sortByTime);
+    return { overflowBefore: before, overflowAfter: after };
+  }, [timedEvents, windowStartMin, windowEndMin, pendingEventPositions]);
+
   // Initialise column rank for any task that doesn't yet have one.
   // Rank determines left-to-right order: lower rank = leftmost column.
   // Initial rank comes from createdAt (older = lower rank).
@@ -660,18 +687,41 @@ export default function OggiScreen() {
         >
          <View style={{ height: contentHeight }}> 
              {/* Grid Lines & Hours */}
-             {hours.map(h => {
+             {hours.map((h, idx) => {
                 const minutesFromStart = (h * 60) - windowStartMin;
                 if (minutesFromStart < 0 || minutesFromStart > totalMinutes + 60) return null;
-                
+
                 const top = (minutesFromStart / 60) * hourHeight + BASE_VERTICAL_OFFSET;
-                
+
+                const isFirstLine = idx === 0;
+                const isLastLine = idx === hours.length - 1;
+                const overflowTasks = isFirstLine ? overflowBefore : isLastLine ? overflowAfter : [];
+
                 return (
                   <View key={h} style={[styles.hourRow, { top }]}>
                       <Text style={styles.hourLabel}>
                         {`${String(h).padStart(2, '0')}:00`}
                       </Text>
-                      <View style={styles.hourLine} />
+                      {overflowTasks.length > 0 ? (
+                        <View style={styles.hourLineContainer}>
+                          {overflowTasks.map((ev, i) => (
+                            <View
+                              key={ev.id}
+                              style={{
+                                flex: 1,
+                                height: 3,
+                                backgroundColor: ev.color,
+                                borderTopLeftRadius: i === 0 ? 1.5 : 0,
+                                borderBottomLeftRadius: i === 0 ? 1.5 : 0,
+                                borderTopRightRadius: i === overflowTasks.length - 1 ? 1.5 : 0,
+                                borderBottomRightRadius: i === overflowTasks.length - 1 ? 1.5 : 0,
+                              }}
+                            />
+                          ))}
+                        </View>
+                      ) : (
+                        <View style={styles.hourLine} />
+                      )}
                   </View>
                 );
              })}
@@ -923,6 +973,11 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 3, // Even thicker line
     backgroundColor: '#555', // More visible
+  },
+  hourLineContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 3,
   },
   
   // Events

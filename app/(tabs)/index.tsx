@@ -656,7 +656,7 @@ export default function IndexScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <Link href={{ pathname: '/modal', params: { type: 'new', folder: (activeFolder && activeFolder !== OGGI_TODAY_KEY && activeFolder !== TUTTE_KEY) ? activeFolder : undefined } }} asChild>
+        <Link href={{ pathname: '/modal', params: { type: 'new', folder: (activeFolder && activeFolder !== TUTTE_KEY) ? activeFolder : undefined } }} asChild>
           <TouchableOpacity accessibilityRole="button" style={styles.fab}>
             <Ionicons name="add" size={28} color="#fff" />
           </TouchableOpacity>

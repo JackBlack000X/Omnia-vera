@@ -64,7 +64,7 @@ export type HabitsContextType = {
   history: HabitsState['history'];
   lastResetDate: string | null;
   dayResetTime: string;
-  addHabit: (text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento') => string;
+  addHabit: (text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq'] }) => string;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
   updateHabitFolder: (id: string, folder: string | undefined) => void;
@@ -338,12 +338,21 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [checkEventAutoComplete]);
 
-  const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento') => {
+  const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq'] }) => {
     const newId = generateUUID();
-    setHabits((prev) => [
-      ...prev,
-      { id: newId, text, order: prev.length, color: color ?? '#4A148C', createdAt: formatYmd(), folder, tipo },
-    ]);
+    const base = { id: newId, text, order: 0, color: color ?? '#4A148C', createdAt: formatYmd(), folder, tipo };
+    setHabits((prev) => {
+      const newOrder = prev.length;
+      const newHabit: Habit = {
+        ...base,
+        order: newOrder,
+        ...(initial?.timeOverrides && { timeOverrides: initial.timeOverrides }),
+        ...(initial?.schedule && { schedule: initial.schedule }),
+        ...(initial?.isAllDay !== undefined && { isAllDay: initial.isAllDay }),
+        ...(initial?.habitFreq && { habitFreq: initial.habitFreq }),
+      };
+      return [...prev, newHabit];
+    });
     return newId;
   }, []);
 
