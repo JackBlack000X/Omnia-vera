@@ -10,10 +10,10 @@ import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef } from 'react';
 import { Alert, InteractionManager, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import Animated, { FadeInDown, Layout, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { FadeInDown, Layout, SharedValue, useAnimatedStyle, withTiming, runOnUI } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const MergeIcon = ({ isActive, isMergeHoverSV }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean> }) => {
+const MergeIcon = ({ isActive, isMergeHoverSV, debugAboveCount, debugBelowCount }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean>, debugAboveCount?: number | null, debugBelowCount?: number | null }) => {
   const animatedStyle = useAnimatedStyle(() => {
     const isVisible = isActive && isMergeHoverSV.value;
     return {
@@ -23,9 +23,13 @@ const MergeIcon = ({ isActive, isMergeHoverSV }: { isActive: boolean; isMergeHov
   });
 
   return (
-    <Animated.View style={[styles.mergePlusIcon, animatedStyle]}>
-      <Ionicons name="add" size={24} color={THEME.success} />
-    </Animated.View>
+    <View style={[styles.mergePlusIcon, { flexDirection: 'row', alignItems: 'center' }]}>
+      {isActive && debugAboveCount != null && <Text style={{ color: 'blue', marginRight: 4, fontWeight: 'bold' }}>{debugAboveCount}</Text>}
+      <Animated.View style={animatedStyle}>
+        <Ionicons name="add" size={24} color={THEME.success} />
+      </Animated.View>
+      {isActive && debugBelowCount != null && <Text style={{ color: 'yellow', marginLeft: 4, fontWeight: 'bold' }}>{debugBelowCount}</Text>}
+    </View>
   );
 };
 
@@ -86,8 +90,10 @@ export default function IndexScreen() {
     lastMergeHoverTimeRef,
     mergeDirectionRef,
     overlapHoverStateRef,
+    overlapHoverState,
     animVals,
     setAnimVals,
+    folderHeightsSV,
     displayList,
     optionsMenuVisible,
     setOptionsMenuVisible,
@@ -134,6 +140,11 @@ export default function IndexScreen() {
     return pendingDisplayRef.current ?? displayList ?? sectionedList;
   }, [displayList, sectionedList]);
 
+  // Forziamo il re-render delle celle durante il drag quando l'overlap cambia
+  const extraDataForDrag = useMemo(() => ({
+    overlapHoverState
+  }), [overlapHoverState]);
+
   // Determine the anchor task for multi-drag (first selected in selection order)
   const multiDragAnchorId = useMemo(() => {
     if (selectedIds.size <= 1 || isFolderModeWithSections) return null;
@@ -176,7 +187,7 @@ export default function IndexScreen() {
       const folderColor = folderMeta?.color ?? THEME.textMuted;
       const label = typeof item.folderName === 'string' ? item.folderName : 'Tutte';
       const isCollapsed = collapsedFolderIds.has(item.folderId);
-      const overlapState = overlapHoverStateRef.current;
+      const overlapState = overlapHoverState;
       let hasTouchingNeighbor = false;
 
       if (
@@ -212,8 +223,60 @@ export default function IndexScreen() {
         }
       }
 
+      let debugAboveCount: number | null = null;
+      let debugBelowCount: number | null = null;
+      if (isActive && typeof getIndex === 'function') {
+        const originalIdx = getIndex() ?? -1;
+        const currentIdx = overlapState.activeIndex; // Indice visivo calcolato
+        const displayIdx = currentIdx >= 0 ? currentIdx : originalIdx;
+        
+        let aboveOriginalIdx = -1;
+        let belowOriginalIdx = -1;
+        
+        if (displayIdx > originalIdx) {
+          aboveOriginalIdx = displayIdx;
+          belowOriginalIdx = displayIdx + 1;
+        } else if (displayIdx < originalIdx) {
+          aboveOriginalIdx = displayIdx - 1;
+          belowOriginalIdx = displayIdx;
+        } else {
+          aboveOriginalIdx = displayIdx - 1;
+          belowOriginalIdx = displayIdx + 1;
+        }
+        
+        if (aboveOriginalIdx >= 0 && aboveOriginalIdx < listData.length) {
+          const aboveItem = listData[aboveOriginalIdx];
+          if (aboveItem && aboveItem.type === 'folderBlock') {
+            debugAboveCount = aboveItem.tasks.length;
+          }
+        } else {
+          debugAboveCount = 0;
+        }
+        
+        if (belowOriginalIdx >= 0 && belowOriginalIdx < listData.length) {
+          const belowItem = listData[belowOriginalIdx];
+          if (belowItem && belowItem.type === 'folderBlock') {
+            debugBelowCount = belowItem.tasks.length;
+          }
+        } else {
+          debugBelowCount = 0;
+        }
+      }
+
       return (
-        <Animated.View layout={Layout}>
+        <Animated.View layout={Layout} onLayout={(e) => {
+          if (typeof getIndex === 'function') {
+            const idx = getIndex();
+            if (idx != null && idx >= 0) {
+              const h = e.nativeEvent.layout.height;
+              runOnUI(() => {
+                const arr = [...folderHeightsSV.value];
+                arr[idx] = h;
+                folderHeightsSV.value = arr;
+              })();
+            }
+          }
+        }}>
         <ScaleDecorator activeScale={1}>
           <View style={[isActive && styles.dragActiveFolderBlock]}>
             {/* The Folder Header */}
@@ -236,7 +299,7 @@ export default function IndexScreen() {
                 </TouchableOpacity>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} />
+                  <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} debugAboveCount={debugAboveCount} debugBelowCount={debugBelowCount} />
                   <View
                     pointerEvents={isActive ? 'none' : 'auto'}
                     style={isActive ? { opacity: 0 } : undefined}
@@ -395,7 +458,7 @@ export default function IndexScreen() {
     multiDragHabits,
     isDraggingFolder,
     listData,
-    overlapHoverStateRef,
+    overlapHoverState,
   ]);
 
   return (
@@ -634,6 +697,7 @@ export default function IndexScreen() {
               item.type === 'folderBlock' ? `folder-${item.folderId}` :
               item.type === 'multiDragBlock' ? `task-${item.habits[0].id}` :
               `task-${item.habit.id}`}
+            extraData={extraDataForDrag}
             renderItem={renderSectionItem}
             extraData={collapsedFolderIds}
             contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}

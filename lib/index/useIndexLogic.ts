@@ -64,9 +64,11 @@ export function useIndexLogic() {
   const dragDirectionAtReleaseRef = useRef(0);
   const lastMergeHoverTimeRef = useRef<number>(0);
   const mergeDirectionRef = useRef(0); // last non-zero direction while merge indicator was active
+  const [overlapHoverState, setOverlapHoverState] = useState<OverlapHoverState>(DEFAULT_OVERLAP_HOVER_STATE);
   const overlapHoverStateRef = useRef<OverlapHoverState>(DEFAULT_OVERLAP_HOVER_STATE);
   const [animVals, setAnimVals] = useState<unknown>(null);
-  const emptyFoldersIndicesSV = useSharedValue<number[]>([]);
+  const folderTaskCountsSV = useSharedValue<number[]>([]);
+  const folderHeightsSV = useSharedValue<number[]>([]);
 
   const [displayList, setDisplayList] = useState<SectionItem[] | null>(null);
   const [sectionOrder, setSectionOrder] = useState<(string | null)[] | null>(null);
@@ -764,7 +766,7 @@ export function useIndexLogic() {
 
   useEffect(() => {
     // Keep the UI thread synchronously updated with which active indices correspond to empty folders
-    emptyFoldersIndicesSV.value = sectionedList.map(x => x.type === 'folderBlock' && x.tasks.length === 0 ? 1 : 0);
+    folderTaskCountsSV.value = sectionedList.map(x => x.type === 'folderBlock' ? x.tasks.length : -1);
 
     const nextVisualKey = sectionedListVisualKey(sectionedList);
     const displayVisualKey = displayList ? sectionedListVisualKey(displayList) : null;
@@ -830,11 +832,13 @@ export function useIndexLogic() {
   const commitDragEnd = useCallback(() => {
     isMergeHoverSV.value = false;
     overlapHoverStateRef.current = DEFAULT_OVERLAP_HOVER_STATE;
+    setOverlapHoverState(DEFAULT_OVERLAP_HOVER_STATE);
   }, [isMergeHoverSV]);
   commitDragEndRef.current = commitDragEnd;
 
   const updateOverlapHoverState = useCallback((next: OverlapHoverState) => {
     overlapHoverStateRef.current = next;
+    setOverlapHoverState(next);
   }, []);
 
   const getFolderBlockFromHeaderIndex = useCallback((list: SectionItem[], headerIdx: number) => {
@@ -1259,6 +1263,8 @@ export function useIndexLogic() {
 
   }, [updateHabitsOrder, updateHabitFolder, commitDragEnd, activeFolder, isMergeHoverSV, folders]);
 
+  const simulatedIndexRef = useRef<number | null>(null);
+
   useAnimatedReaction(
     () => {
       'worklet';
@@ -1268,10 +1274,15 @@ export function useIndexLogic() {
           isHovering: false,
           direction: 0,
           activeIndex: -1,
+          simulatedIndex: -1
         };
       }
 
       const activeIdx = Math.round(v.activeIndexAnim.value);
+      const spacerIdx = Math.round(v.spacerIndexAnim?.value ?? activeIdx);
+
+      // hover = spostamento in px della cella trascinata rispetto al confine con la cella vicina (non dal centro).
+      // Zero = linea di bordo tra le due celle; 48.75–upperBound = finestra merge misurata da quel bordo.
       const hover = v.hoverAnim?.value ?? 0;
       const direction = hover === 0 ? 0 : (hover < 0 ? -1 : 1);
       const absHover = Math.abs(hover);
@@ -1279,20 +1290,60 @@ export function useIndexLogic() {
       // Block the merge indicator if the TARGET (the folder being approached) is empty.
       // We check the neighbor slot, not activeIdx, because after a swap the dragged item
       // occupies the slot that originally belonged to another folder, and
-      // emptyFoldersIndicesSV (built from the pre-drag order) would wrongly flag it as empty.
+      // folderTaskCountsSV (built from the pre-drag order) would wrongly flag it as empty.
       // The neighbor one step ahead has never been displaced, so its original index is still valid.
+      let upperBound = 75.5;
+      let virtualHover = absHover;
+      let currentSimulatedIndex = activeIdx;
+      let currentDir = direction;
+      let isTargetEmpty = false;
+      let isValidTarget = false;
+      
       if (direction !== 0) {
-        const neighborIdx = activeIdx + direction;
-        if (neighborIdx >= 0 && neighborIdx < emptyFoldersIndicesSV.value.length &&
-          emptyFoldersIndicesSV.value[neighborIdx] === 1) {
-          return { isHovering: false, direction, activeIndex: activeIdx };
+        // Cicliamo per vedere quante cartelle abbiamo effettivamente "scavalcato" con il nostro hover
+        while (true) {
+          const nextIdx = currentSimulatedIndex + currentDir;
+          
+          if (nextIdx < 0 || nextIdx >= folderTaskCountsSV.value.length) {
+            break; // Siamo fuori dai limiti
+          }
+          
+          const taskCount = folderTaskCountsSV.value[nextIdx];
+          const isNextEmpty = taskCount === 0;
+          
+          // Use exact measured height if available, fallback to estimate
+          const exactHeight = folderHeightsSV.value[nextIdx];
+          const estimatedHeight = isNextEmpty ? 34 : 34 + (taskCount * 79) + 4;
+          const targetHeight = (exactHeight && exactHeight > 0) ? exactHeight : estimatedHeight;
+          
+          // upperBound per questa cartella target
+          const currentUpperBound = isNextEmpty ? 0 : 75.5 + (taskCount - 1) * 87;
+          
+          // Distanza totale prima di fare il reset: l'utente ha chiesto di fare reset dopo aver superato la cartella
+          // We use the real height of the folder block to avoid accumulation drift during autoscroll!
+          const fullFolderDistance = targetHeight;
+          
+          if (virtualHover >= fullFolderDistance) {
+            // Abbiamo scavalcato completamente questa cartella! Reset
+            virtualHover -= fullFolderDistance;
+            currentSimulatedIndex = nextIdx; // Il nostro spacer si sposta dopo questa cartella
+          } else {
+            // Siamo "sopra" questa cartella. Ci fermiamo qui.
+            isValidTarget = true;
+            isTargetEmpty = isNextEmpty;
+            if (!isTargetEmpty) {
+               upperBound = currentUpperBound;
+            }
+            break;
+          }
         }
       }
 
       return {
-        isHovering: absHover > 44 && absHover < 60,
-        direction,
+        isHovering: isValidTarget && !isTargetEmpty && (virtualHover > 48.75 && virtualHover < upperBound),
+        direction: currentDir,
         activeIndex: activeIdx,
+        simulatedIndex: currentSimulatedIndex,
       };
     },
     (res) => {
@@ -1300,7 +1351,7 @@ export function useIndexLogic() {
       dragDirectionSV.value = res.direction;
       runOnJS(updateOverlapHoverState)({
         isOverlapping: res.isHovering,
-        activeIndex: res.activeIndex,
+        activeIndex: res.simulatedIndex, // Usiamo l'indice simulato scavalcato per la UI (i numeri)
         direction: res.direction,
       });
       if (res.isHovering && res.direction !== 0) {
@@ -1362,9 +1413,11 @@ export function useIndexLogic() {
     lastMergeHoverTimeRef,
     mergeDirectionRef,
     overlapHoverStateRef,
+    overlapHoverState,
     animVals,
     setAnimVals,
-    emptyFoldersIndicesSV,
+    folderTaskCountsSV,
+    folderHeightsSV,
     displayList,
     setDisplayList,
     sectionOrder,
