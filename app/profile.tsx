@@ -9,10 +9,11 @@ import {
 import { canAskLocationPermission, getLocationPermissionStatusAsync, requestLocationPermissionsAsync, type LocationPermissionStatus } from '@/lib/location';
 import { buildCsv } from '@/lib/csv';
 import { useHabits } from '@/lib/habits/Provider';
+import { getFallbackCity, setFallbackCity, clearWeatherCache, searchCities, type CityInfo } from '@/lib/weather';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -26,6 +27,28 @@ export default function ProfileScreen() {
   const [calendarImporting, setCalendarImporting] = useState(false);
   const [locationStatus, setLocationStatus] = useState<LocationPermissionStatus>('none');
   const [locationLoading, setLocationLoading] = useState(false);
+  const [weatherCity, setWeatherCity] = useState<CityInfo | null>(null);
+  const [citySearch, setCitySearch] = useState('');
+  const [cityResults, setCityResults] = useState<CityInfo[]>([]);
+  const [citySearching, setCitySearching] = useState(false);
+
+  useEffect(() => {
+    getFallbackCity().then(c => setWeatherCity(c));
+  }, []);
+
+  useEffect(() => {
+    if (citySearch.trim().length < 2) {
+      setCityResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setCitySearching(true);
+      const results = await searchCities(citySearch);
+      setCityResults(results);
+      setCitySearching(false);
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [citySearch]);
 
   const todayKey = new Date().toISOString().split('T')[0];
   const todayCompleted = useMemo(() => Object.values(history[todayKey]?.completedByHabitId ?? {}).filter(Boolean).length, [history, todayKey]);
@@ -297,6 +320,67 @@ export default function ProfileScreen() {
               </View>
             )}
             <View style={styles.feedbackBox}>
+              <Text style={styles.feedbackLabel}>Meteo</Text>
+              <Text style={styles.feedbackSublabel}>
+                Posizione per le previsioni meteo nella vista Oggi.
+              </Text>
+              <View style={styles.weatherCurrentRow}>
+                <Ionicons name={weatherCity ? 'location' : 'navigate'} size={18} color={THEME.primary} />
+                <Text style={styles.weatherCurrentText}>
+                  {weatherCity?.name ?? 'GPS (posizione attuale)'}
+                </Text>
+                {weatherCity && (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      setWeatherCity(null);
+                      await setFallbackCity(null);
+                      await clearWeatherCache();
+                    }}
+                    style={styles.weatherGpsBtn}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="navigate" size={14} color="#fff" />
+                    <Text style={styles.weatherGpsBtnText}>Usa GPS</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TextInput
+                style={styles.weatherSearchInput}
+                placeholder="Cerca città..."
+                placeholderTextColor={THEME.textMuted}
+                value={citySearch}
+                onChangeText={setCitySearch}
+                autoCorrect={false}
+              />
+              {citySearching && (
+                <ActivityIndicator color={THEME.primary} size="small" style={{ marginVertical: 8 }} />
+              )}
+              {cityResults.map((city, idx) => (
+                <TouchableOpacity
+                  key={`${city.name}-${idx}`}
+                  style={[
+                    styles.weatherCityItem,
+                    weatherCity?.name === city.name && styles.weatherCityItemActive,
+                  ]}
+                  onPress={async () => {
+                    setWeatherCity(city);
+                    setCitySearch('');
+                    setCityResults([]);
+                    await setFallbackCity(city);
+                    await clearWeatherCache();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="location" size={16} color={weatherCity?.name === city.name ? '#fff' : THEME.textMuted} />
+                  <Text style={[
+                    styles.weatherCityItemText,
+                    weatherCity?.name === city.name && { color: '#fff' },
+                  ]}>{city.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.feedbackBox}>
               <Text style={styles.feedbackLabel}>Feedback</Text>
               <Text style={styles.feedbackSublabel}>Scrivi un messaggio allo sviluppatore</Text>
               <TextInput
@@ -400,6 +484,14 @@ const styles = StyleSheet.create({
   leaderBarFill: { height: '100%', backgroundColor: THEME.cyan, borderRadius: 3 },
   leaderPct: { color: THEME.textMuted, fontWeight: '700', fontSize: 14, minWidth: 36, textAlign: 'right' },
 
+  weatherCurrentRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 10 },
+  weatherCurrentText: { color: THEME.text, fontSize: 15, fontWeight: '600', flex: 1 },
+  weatherGpsBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1d4ed8', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  weatherGpsBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+  weatherSearchInput: { backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 14, color: THEME.text, fontSize: 16, marginBottom: 4 },
+  weatherCityItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, marginTop: 4 },
+  weatherCityItemActive: { backgroundColor: '#1d4ed8' },
+  weatherCityItemText: { color: THEME.textMuted, fontSize: 15, fontWeight: '500' },
   feedbackBox: { marginTop: 8 },
   calendarImportBtn: { marginBottom: 4 },
   feedbackLabel: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 4 },

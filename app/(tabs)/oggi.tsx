@@ -6,6 +6,8 @@ import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
 import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
 import { BASE_VERTICAL_OFFSET, isLightColor, LEFT_MARGIN, minutesToTime, OggiEvent, toMinutes } from '@/lib/oggi/oggiHelpers';
 import { useTimelineSettings } from '@/lib/oggi/useTimelineSettings';
+import { useWeather } from '@/lib/oggi/useWeather';
+import { weatherCodeToColor, weatherCodeToIcon } from '@/lib/weather';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -42,6 +44,7 @@ export default function OggiScreen() {
   
   const [showSettings, setShowSettings] = useState(false);
   const { windowStart, setWindowStart, windowEnd, setWindowEnd, visibleHours, setVisibleHours, dragMode, setDragMode } = useTimelineSettings();
+  const { todayWeather } = useWeather(currentDate);
 
   const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
   const [pendingEventPositions, setPendingEventPositions] = useState<Record<string, number>>({});
@@ -635,6 +638,16 @@ export default function OggiScreen() {
           {todayDate}
         </Text>
         <View style={styles.headerRight}>
+          {todayWeather ? (
+            <Ionicons
+              name={weatherCodeToIcon(todayWeather.code) as any}
+              size={24}
+              color={weatherCodeToColor(todayWeather.code)}
+              style={{ marginRight: 2 }}
+            />
+          ) : (
+            <View style={styles.weatherPlaceholder} />
+          )}
           <TouchableOpacity onPress={() => navigateDate('next')} style={styles.navButton}>
              <Ionicons name="chevron-forward" size={24} color={THEME.text} />
           </TouchableOpacity>
@@ -887,6 +900,7 @@ export default function OggiScreen() {
                     </View>
                 </View>
 
+
                <TouchableOpacity style={styles.closeBtn} onPress={() => setShowSettings(false)}>
                   <Text style={styles.closeBtnText}>Chiudi</Text>
                </TouchableOpacity>
@@ -931,6 +945,11 @@ const styles = StyleSheet.create({
   },
   settingsButton: {
     padding: 4,
+  },
+  weatherPlaceholder: {
+    width: 24,
+    height: 24,
+    marginRight: 2,
   },
   
   // All Day
