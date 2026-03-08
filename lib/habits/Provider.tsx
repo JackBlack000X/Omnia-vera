@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
+import { getHabitsAppearingOnDate } from './habitsForDate';
 import { Habit, HabitsState } from './schema';
 import { loadPlaces } from '@/lib/places';
 import { canAskLocationPermission, getLocationPermissionStatusAsync, startGeofencingForRegions, stopGeofencingAsync } from '@/lib/location';
@@ -83,6 +84,8 @@ export type HabitsContextType = {
   setDayResetTime: (time: string) => Promise<void>;
   setHabits: React.Dispatch<React.SetStateAction<Habit[]>>;
   resetStorage: () => Promise<void>;
+  /** Persist completion for a day (used by calendar). Uses same "habits for that day" as tasks tab. */
+  setDayCompletion: (ymd: string, completedCount: number) => void;
 };
 
 const HabitsContext = createContext<HabitsContextType | undefined>(undefined);
@@ -477,6 +480,21 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return getLogicalDayKey(date, dayResetTime);
   }, [dayResetTime]);
 
+  const setDayCompletion = useCallback((ymd: string, completedCount: number) => {
+    setHistory((prev) => {
+      const habitsForDay = getHabitsAppearingOnDate(habitsRef.current, ymd);
+      const sorted = [...habitsForDay].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      const completedByHabitId: Record<string, boolean> = {};
+      sorted.forEach((h, i) => {
+        completedByHabitId[h.id] = i < completedCount;
+      });
+      return {
+        ...prev,
+        [ymd]: { date: ymd, completedByHabitId },
+      };
+    });
+  }, []);
+
   const setTimeOverride = useCallback((id: string, date: string, hhmm: string | null) => {
     setHabits(prev => {
       const next = prev.map(h => {
@@ -628,9 +646,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime,
-    addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay,
+    addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
     setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
-  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
+  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }
