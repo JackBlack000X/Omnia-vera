@@ -28,9 +28,11 @@ export default function ProfileScreen() {
   const [locationStatus, setLocationStatus] = useState<LocationPermissionStatus>('none');
   const [locationLoading, setLocationLoading] = useState(false);
   const [weatherCity, setWeatherCity] = useState<CityInfo | null>(null);
+  const [cityEditing, setCityEditing] = useState(false);
   const [citySearch, setCitySearch] = useState('');
   const [cityResults, setCityResults] = useState<CityInfo[]>([]);
   const [citySearching, setCitySearching] = useState(false);
+  const cityInputRef = React.useRef<TextInput>(null);
 
   useEffect(() => {
     getFallbackCity().then(c => setWeatherCity(c));
@@ -324,15 +326,48 @@ export default function ProfileScreen() {
               <Text style={styles.feedbackSublabel}>
                 Posizione per le previsioni meteo nella vista Oggi.
               </Text>
-              <View style={styles.weatherCurrentRow}>
+              <TouchableOpacity
+                style={styles.weatherCurrentRow}
+                onPress={() => {
+                  setCityEditing(true);
+                  setCitySearch('');
+                  setCityResults([]);
+                  setTimeout(() => cityInputRef.current?.focus(), 100);
+                }}
+                activeOpacity={0.7}
+              >
                 <Ionicons name={weatherCity ? 'location' : 'navigate'} size={18} color={THEME.primary} />
-                <Text style={styles.weatherCurrentText}>
-                  {weatherCity?.name ?? 'GPS (posizione attuale)'}
-                </Text>
-                {weatherCity && (
+                {cityEditing ? (
+                  <TextInput
+                    ref={cityInputRef}
+                    style={styles.weatherSearchInline}
+                    placeholder="Cerca città..."
+                    placeholderTextColor={THEME.textMuted}
+                    value={citySearch}
+                    onChangeText={setCitySearch}
+                    autoCorrect={false}
+                    autoFocus
+                    onBlur={() => {
+                      // Delay so tap on result registers first
+                      setTimeout(() => {
+                        setCityEditing(false);
+                        setCitySearch('');
+                        setCityResults([]);
+                      }, 200);
+                    }}
+                  />
+                ) : (
+                  <Text style={styles.weatherCurrentText}>
+                    {weatherCity?.name ?? 'GPS (posizione attuale)'}
+                  </Text>
+                )}
+                {(weatherCity || cityEditing) && (
                   <TouchableOpacity
                     onPress={async () => {
                       setWeatherCity(null);
+                      setCityEditing(false);
+                      setCitySearch('');
+                      setCityResults([]);
                       await setFallbackCity(null);
                       await clearWeatherCache();
                     }}
@@ -340,30 +375,20 @@ export default function ProfileScreen() {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="navigate" size={14} color="#fff" />
-                    <Text style={styles.weatherGpsBtnText}>Usa GPS</Text>
+                    <Text style={styles.weatherGpsBtnText}>GPS</Text>
                   </TouchableOpacity>
                 )}
-              </View>
-              <TextInput
-                style={styles.weatherSearchInput}
-                placeholder="Cerca città..."
-                placeholderTextColor={THEME.textMuted}
-                value={citySearch}
-                onChangeText={setCitySearch}
-                autoCorrect={false}
-              />
+              </TouchableOpacity>
               {citySearching && (
                 <ActivityIndicator color={THEME.primary} size="small" style={{ marginVertical: 8 }} />
               )}
               {cityResults.map((city, idx) => (
                 <TouchableOpacity
                   key={`${city.name}-${idx}`}
-                  style={[
-                    styles.weatherCityItem,
-                    weatherCity?.name === city.name && styles.weatherCityItemActive,
-                  ]}
+                  style={styles.weatherCityItem}
                   onPress={async () => {
                     setWeatherCity(city);
+                    setCityEditing(false);
                     setCitySearch('');
                     setCityResults([]);
                     await setFallbackCity(city);
@@ -371,11 +396,8 @@ export default function ProfileScreen() {
                   }}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="location" size={16} color={weatherCity?.name === city.name ? '#fff' : THEME.textMuted} />
-                  <Text style={[
-                    styles.weatherCityItemText,
-                    weatherCity?.name === city.name && { color: '#fff' },
-                  ]}>{city.name}</Text>
+                  <Ionicons name="location" size={16} color={THEME.textMuted} />
+                  <Text style={styles.weatherCityItemText}>{city.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -484,14 +506,13 @@ const styles = StyleSheet.create({
   leaderBarFill: { height: '100%', backgroundColor: THEME.cyan, borderRadius: 3 },
   leaderPct: { color: THEME.textMuted, fontWeight: '700', fontSize: 14, minWidth: 36, textAlign: 'right' },
 
-  weatherCurrentRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 10 },
+  weatherCurrentRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 14 },
   weatherCurrentText: { color: THEME.text, fontSize: 15, fontWeight: '600', flex: 1 },
+  weatherSearchInline: { color: THEME.text, fontSize: 15, fontWeight: '600', flex: 1, padding: 0 },
   weatherGpsBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1d4ed8', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   weatherGpsBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
-  weatherSearchInput: { backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1, borderRadius: 12, padding: 14, color: THEME.text, fontSize: 16, marginBottom: 4 },
-  weatherCityItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, marginTop: 4 },
-  weatherCityItemActive: { backgroundColor: '#1d4ed8' },
-  weatherCityItemText: { color: THEME.textMuted, fontSize: 15, fontWeight: '500' },
+  weatherCityItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#0f172a', marginTop: 4 },
+  weatherCityItemText: { color: THEME.text, fontSize: 15, fontWeight: '500' },
   feedbackBox: { marginTop: 8 },
   calendarImportBtn: { marginBottom: 4 },
   feedbackLabel: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 4 },

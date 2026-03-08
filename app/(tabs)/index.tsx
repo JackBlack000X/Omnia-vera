@@ -13,7 +13,7 @@ import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-nativ
 import Animated, { FadeInDown, Layout, SharedValue, useAnimatedStyle, withTiming, runOnUI } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const MergeIcon = ({ isActive, isMergeHoverSV, debugAboveCount, debugBelowCount }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean>, debugAboveCount?: number | null, debugBelowCount?: number | null }) => {
+const MergeIcon = ({ isActive, isMergeHoverSV, debugAboveCount, debugBelowCount }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean>, debugAboveCount?: number | string | null, debugBelowCount?: number | string | null }) => {
   const animatedStyle = useAnimatedStyle(() => {
     const isVisible = isActive && isMergeHoverSV.value;
     return {
@@ -24,11 +24,11 @@ const MergeIcon = ({ isActive, isMergeHoverSV, debugAboveCount, debugBelowCount 
 
   return (
     <View style={[styles.mergePlusIcon, { flexDirection: 'row', alignItems: 'center' }]}>
-      {isActive && debugAboveCount != null && <Text style={{ color: 'blue', marginRight: 4, fontWeight: 'bold' }}>{debugAboveCount}</Text>}
+      {/* {isActive && debugAboveCount != null && <Text style={{ color: 'blue', marginRight: 4, fontWeight: 'bold' }}>{debugAboveCount}</Text>} */}
       <Animated.View style={animatedStyle}>
         <Ionicons name="add" size={24} color={THEME.success} />
       </Animated.View>
-      {isActive && debugBelowCount != null && <Text style={{ color: 'yellow', marginLeft: 4, fontWeight: 'bold' }}>{debugBelowCount}</Text>}
+      {/* {isActive && debugBelowCount != null && <Text style={{ color: 'yellow', marginLeft: 4, fontWeight: 'bold' }}>{debugBelowCount}</Text>} */}
     </View>
   );
 };
@@ -223,8 +223,8 @@ export default function IndexScreen() {
         }
       }
 
-      let debugAboveCount: number | null = null;
-      let debugBelowCount: number | null = null;
+      let debugAboveCount: number | string | null = null;
+      let debugBelowCount: number | string | null = null;
       if (isActive && typeof getIndex === 'function') {
         const originalIdx = getIndex() ?? -1;
         const currentIdx = overlapState.activeIndex; // Indice visivo calcolato
@@ -247,7 +247,8 @@ export default function IndexScreen() {
         if (aboveOriginalIdx >= 0 && aboveOriginalIdx < listData.length) {
           const aboveItem = listData[aboveOriginalIdx];
           if (aboveItem && aboveItem.type === 'folderBlock') {
-            debugAboveCount = aboveItem.tasks.length;
+            const isEmptyOrCollapsed = aboveItem.tasks.length === 0 || collapsedFolderIds.has(aboveItem.folderId);
+            debugAboveCount = isEmptyOrCollapsed ? 'V' : aboveItem.tasks.length;
           }
         } else {
           debugAboveCount = 0;
@@ -256,7 +257,8 @@ export default function IndexScreen() {
         if (belowOriginalIdx >= 0 && belowOriginalIdx < listData.length) {
           const belowItem = listData[belowOriginalIdx];
           if (belowItem && belowItem.type === 'folderBlock') {
-            debugBelowCount = belowItem.tasks.length;
+            const isEmptyOrCollapsed = belowItem.tasks.length === 0 || collapsedFolderIds.has(belowItem.folderId);
+            debugBelowCount = isEmptyOrCollapsed ? 'V' : belowItem.tasks.length;
           }
         } else {
           debugBelowCount = 0;
@@ -322,7 +324,9 @@ export default function IndexScreen() {
               </View>
             </View>
             {/* The Folder Tasks */}
-            {!isCollapsed && (
+            {isCollapsed ? (
+              <View style={{ height: 4 }} />
+            ) : (
               <View style={styles.folderDebugBoxWrap}>
                 <View style={styles.folderTaskGroup}>
                   {item.tasks.map((h, index) => (

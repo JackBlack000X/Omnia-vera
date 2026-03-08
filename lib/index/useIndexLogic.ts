@@ -765,8 +765,10 @@ export function useIndexLogic() {
   }, [habits, habitsAppearingToday, folders, activeFolder, sortMode, sortModeByFolder, sortedHabits, sortHabitsWithMode, sectionOrder, singleHabitsHiddenAfterReset]);
 
   useEffect(() => {
-    // Keep the UI thread synchronously updated with which active indices correspond to empty folders
-    folderTaskCountsSV.value = sectionedList.map(x => x.type === 'folderBlock' ? x.tasks.length : -1);
+    // Keep the UI thread synchronously updated with which active indices correspond to empty/collapsed folders
+    folderTaskCountsSV.value = sectionedList.map(x => 
+      x.type === 'folderBlock' ? (collapsedFolderIds.has(x.folderId) ? 0 : x.tasks.length) : -1
+    );
 
     const nextVisualKey = sectionedListVisualKey(sectionedList);
     const displayVisualKey = displayList ? sectionedListVisualKey(displayList) : null;
@@ -799,7 +801,7 @@ export function useIndexLogic() {
       pendingDisplayRef.current = null;
       setDisplayList(sectionedList);
     }
-  }, [sectionedList, displayList, sectionedListVisualKey]);
+  }, [sectionedList, displayList, sectionedListVisualKey, collapsedFolderIds]);
 
   const completedByHabitId = useMemo(
     () => history[today]?.completedByHabitId ?? {},
@@ -1215,6 +1217,16 @@ export function useIndexLogic() {
                 text: 'Sì', onPress: () => {
                   const targetFolder = actualTarget!.folderName === null ? undefined : (actualTarget!.folderName as string);
                   sourceTasks.forEach(h => updateHabitFolder(h.id, targetFolder));
+                  
+                  // Se la cartella di destinazione era collassata, la apriamo
+                  if (actualTarget!.folderId) {
+                    setCollapsedFolderIds(prev => {
+                      const next = new Set(prev);
+                      next.delete(actualTarget!.folderId as string);
+                      return next;
+                    });
+                  }
+                  
                   isPostDragRef.current = false;
                   preDragSnapshotRef.current = null;
                   commitDragEnd();
@@ -1293,6 +1305,7 @@ export function useIndexLogic() {
       // folderTaskCountsSV (built from the pre-drag order) would wrongly flag it as empty.
       // The neighbor one step ahead has never been displaced, so its original index is still valid.
       let upperBound = 75.5;
+      let lowerBound = 48.75;
       let virtualHover = absHover;
       let currentSimulatedIndex = activeIdx;
       let currentDir = direction;
@@ -1321,7 +1334,7 @@ export function useIndexLogic() {
           
           // Distanza totale prima di fare il reset: l'utente ha chiesto di fare reset dopo aver superato la cartella
           // We use the real height of the folder block to avoid accumulation drift during autoscroll!
-          const fullFolderDistance = targetHeight;
+          const fullFolderDistance = isNextEmpty ? 37 : targetHeight;
           
           if (virtualHover >= fullFolderDistance) {
             // Abbiamo scavalcato completamente questa cartella! Reset
@@ -1333,6 +1346,10 @@ export function useIndexLogic() {
             isTargetEmpty = isNextEmpty;
             if (!isTargetEmpty) {
                upperBound = currentUpperBound;
+               lowerBound = 48.75;
+            } else {
+               upperBound = 19;
+               lowerBound = 12;
             }
             break;
           }
@@ -1340,7 +1357,7 @@ export function useIndexLogic() {
       }
 
       return {
-        isHovering: isValidTarget && !isTargetEmpty && (virtualHover > 48.75 && virtualHover < upperBound),
+        isHovering: isValidTarget && (virtualHover > lowerBound && virtualHover < upperBound),
         direction: currentDir,
         activeIndex: activeIdx,
         simulatedIndex: currentSimulatedIndex,
