@@ -288,7 +288,7 @@ export default function IndexScreen() {
       }
 
       return (
-        <Animated.View layout={Layout} onLayout={(e) => {
+        <Animated.View onLayout={(e) => {
           if (typeof getIndex === 'function') {
             const idx = getIndex();
             if (idx != null && idx >= 0) {
