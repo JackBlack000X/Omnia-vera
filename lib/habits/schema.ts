@@ -21,6 +21,8 @@ export type TravelMeta = {
   /** Se true, l'arrivo dell'andata è il giorno dopo (orarioArrivo è in formato HH:MM del giorno dopo) */
   arrivoGiornoDopo?: boolean;
   orarioPartenzaRitorno?: string; // 'HH:MM' (ritorno, opzionale)
+  /** Se true, la partenza del ritorno e' il giorno dopo rispetto a giornoRitorno */
+  partenzaRitornoGiornoDopo?: boolean;
   orarioArrivoRitorno?: string; // 'HH:MM' (ritorno, opzionale)
   /** Se true, l'arrivo del ritorno è il giorno dopo (orarioArrivoRitorno è in formato HH:MM del giorno dopo) */
   arrivoRitornoGiornoDopo?: boolean;

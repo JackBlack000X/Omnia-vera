@@ -79,6 +79,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [travelOrarioArrivo, setTravelOrarioArrivo] = useState<string>(existing?.travel?.orarioArrivo ?? '10:00');
   const [travelArrivoGiornoDopo, setTravelArrivoGiornoDopo] = useState<boolean>(Boolean(existing?.travel?.arrivoGiornoDopo));
   const [travelOrarioPartenzaRitorno, setTravelOrarioPartenzaRitorno] = useState<string>(existing?.travel?.orarioPartenzaRitorno ?? existing?.travel?.orarioPartenza ?? '17:00');
+  const [travelPartenzaRitornoGiornoDopo, setTravelPartenzaRitornoGiornoDopo] = useState<boolean>(Boolean(existing?.travel?.partenzaRitornoGiornoDopo));
   const [travelOrarioArrivoRitorno, setTravelOrarioArrivoRitorno] = useState<string>(existing?.travel?.orarioArrivoRitorno ?? existing?.travel?.orarioArrivo ?? '18:00');
   const [travelArrivoRitornoGiornoDopo, setTravelArrivoRitornoGiornoDopo] = useState<boolean>(Boolean(existing?.travel?.arrivoRitornoGiornoDopo));
   const [currentCityName, setCurrentCityName] = useState<string | null>(null);
@@ -640,6 +641,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 orarioArrivo: travelOrarioArrivo,
                 arrivoGiornoDopo: travelArrivoGiornoDopo,
                 orarioPartenzaRitorno: travelOrarioPartenzaRitorno,
+                partenzaRitornoGiornoDopo: travelPartenzaRitornoGiornoDopo,
                 orarioArrivoRitorno: travelOrarioArrivoRitorno,
                 arrivoRitornoGiornoDopo: travelArrivoRitornoGiornoDopo,
               };
@@ -916,6 +918,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               orarioArrivo: travelOrarioArrivo,
               arrivoGiornoDopo: travelArrivoGiornoDopo,
               orarioPartenzaRitorno: travelOrarioPartenzaRitorno,
+              partenzaRitornoGiornoDopo: travelPartenzaRitornoGiornoDopo,
               orarioArrivoRitorno: travelOrarioArrivoRitorno,
               arrivoRitornoGiornoDopo: travelArrivoRitornoGiornoDopo,
             };
@@ -1241,6 +1244,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setTravelArrivoGiornoDopo,
     travelOrarioPartenzaRitorno,
     setTravelOrarioPartenzaRitorno,
+    travelPartenzaRitornoGiornoDopo,
+    setTravelPartenzaRitornoGiornoDopo,
     travelOrarioArrivoRitorno,
     setTravelOrarioArrivoRitorno,
     travelArrivoRitornoGiornoDopo,

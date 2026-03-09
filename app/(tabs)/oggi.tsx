@@ -5,6 +5,7 @@ import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
 import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
 import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
+import { calculateEventVerticalMetrics } from '@/lib/oggi/eventLayout';
 import { BASE_VERTICAL_OFFSET, isLightColor, LEFT_MARGIN, minutesToTime, OggiEvent, toMinutes } from '@/lib/oggi/oggiHelpers';
 import { useTimelineSettings } from '@/lib/oggi/useTimelineSettings';
 import { useWeather } from '@/lib/oggi/useWeather';
@@ -13,10 +14,41 @@ import { FALLBACK_CITIES, fetchWeather, weatherCodeToColor, weatherCodeToIcon, W
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, LayoutChangeEvent, Modal, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, LayoutChangeEvent, Modal, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const HOLD_DELAY_MS = 350;
+const HOLD_INTERVAL_MS = 60;
+
+function HoldableButton({ onPress, style, children }: { onPress: () => void; style: any; children: React.ReactNode }) {
+  const onPressRef = useRef(onPress);
+  const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => { onPressRef.current = onPress; }, [onPress]);
+
+  const clearTimers = () => {
+    if (holdTimeoutRef.current) { clearTimeout(holdTimeoutRef.current); holdTimeoutRef.current = null; }
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+  };
+
+  const handlePressIn = () => {
+    onPressRef.current();
+    holdTimeoutRef.current = setTimeout(() => {
+      intervalRef.current = setInterval(() => onPressRef.current(), HOLD_INTERVAL_MS);
+    }, HOLD_DELAY_MS);
+  };
+
+  useEffect(() => clearTimers, []);
+
+  return (
+    <Pressable style={({ pressed }) => [style, pressed && { opacity: 0.85 }]} onPress={() => {}} onPressIn={handlePressIn} onPressOut={clearTimers} onResponderTerminate={clearTimers}>
+      {children}
+    </Pressable>
+  );
+}
 
 const TZ = 'Europe/Zurich';
 /** Bordo autoscroll in px: sopra questa distanza da top/bottom della timeline parte lo scroll */
@@ -98,38 +130,6 @@ export default function OggiScreen() {
     registerForPushNotificationsAsync();
   }, []);
 
-  // Sync notifications for today's habits (solo eventi "normali", non i viaggi)
-  useEffect(() => {
-    (async () => {
-      // Only schedule notifications if we are looking at today
-      if (!isToday(currentDate, TZ)) return;
-
-      await cancelAllScheduledNotifications();
-      
-      const now = new Date();
-      for (const ev of layoutEvents) {
-        if (ev.isAllDay) continue;
-        
-        const [h, m] = ev.startTime.split(':').map(Number);
-        const eventTime = new Date();
-        eventTime.setHours(h, m, 0, 0);
-
-        // Schedule if it's in the future (within today)
-        if (eventTime > now) {
-          // Send notification 10 minutes before
-          const triggerTime = new Date(eventTime.getTime() - 10 * 60000);
-          if (triggerTime > now) {
-            await scheduleHabitNotification(
-              'Abitudine in arrivo!',
-              `${ev.title} inizia alle ${ev.startTime}`,
-              { type: 'date', date: triggerTime } as any
-            );
-          }
-        }
-      }
-    })();
-  }, [layoutEvents, currentDate]);
-
   const today = getDay(currentDate);
   const todayDate = useMemo(() => formatDateLong(currentDate, TZ), [currentDate]);
 
@@ -139,11 +139,18 @@ export default function OggiScreen() {
   const [allDayHeight, setAllDayHeight] = useState(0);
 
 
-  const hourHeight = useMemo(() => {
+  const timelineBaseHeight = useMemo(() => {
     const factor = activeTheme === 'futuristic' ? 0.78 : 0.775;
-    const base = Dimensions.get('window').height * factor;
-    return (base - allDayHeight) / visibleHours;
-  }, [allDayHeight, visibleHours, activeTheme]);
+    return Dimensions.get('window').height * factor - allDayHeight;
+  }, [allDayHeight, activeTheme]);
+
+  const hourHeight = useMemo(() => {
+    return timelineBaseHeight / visibleHours;
+  }, [timelineBaseHeight, visibleHours]);
+
+  const fiveHourReferenceHeight = useMemo(() => {
+    return timelineBaseHeight / 5;
+  }, [timelineBaseHeight]);
 
   const totalMinutes = windowEndMin - windowStartMin;
   const totalHeight = (totalMinutes / 60) * hourHeight;
@@ -257,7 +264,7 @@ export default function OggiScreen() {
 
           items.push({
             id: `${h.id}-out`,
-            title: `${fromLabel} ↓ ${toLabel}`,
+            title: `${fromLabel}\n↓\n${toLabel}`,
             startTime: start,
             endTime: finalEnd,
             isAllDay: false,
@@ -280,7 +287,7 @@ export default function OggiScreen() {
 
           items.push({
             id: `${h.id}-ret`,
-            title: `${fromLabel} ↓ ${toLabel}`,
+            title: `${fromLabel}\n↓\n${toLabel}`,
             startTime: start,
             endTime: finalEnd,
             isAllDay: false,
@@ -362,6 +369,38 @@ export default function OggiScreen() {
     () => timedEvents.filter(ev => ev.tipo !== 'viaggio'),
     [timedEvents]
   );
+
+  // Sync notifications for today's habits (solo eventi "normali", non i viaggi)
+  useEffect(() => {
+    (async () => {
+      // Only schedule notifications if we are looking at today
+      if (!isToday(currentDate, TZ)) return;
+
+      await cancelAllScheduledNotifications();
+
+      const now = new Date();
+      for (const ev of layoutEvents) {
+        if (ev.isAllDay) continue;
+
+        const [h, m] = ev.startTime.split(':').map(Number);
+        const eventTime = new Date();
+        eventTime.setHours(h, m, 0, 0);
+
+        // Schedule if it's in the future (within today)
+        if (eventTime > now) {
+          // Send notification 10 minutes before
+          const triggerTime = new Date(eventTime.getTime() - 10 * 60000);
+          if (triggerTime > now) {
+            await scheduleHabitNotification(
+              'Abitudine in arrivo!',
+              `${ev.title} inizia alle ${ev.startTime}`,
+              { type: 'date', date: triggerTime } as any
+            );
+          }
+        }
+      }
+    })();
+  }, [layoutEvents, currentDate]);
 
   // Initialise column rank for any task that doesn't yet have one.
   // Rank determines left-to-right order: lower rank = leftmost column.
@@ -738,12 +777,15 @@ export default function OggiScreen() {
     
     if (endM <= windowStartMin || startM >= windowEndMin) return null;
     
-    const visibleStart = Math.max(startM, windowStartMin);
-    const visibleEnd = Math.min(endM, windowEndMin);
-    
-    const top = ((visibleStart - windowStartMin) / 60) * hourHeight;
-    const durationMin = visibleEnd - visibleStart;
-    const height = Math.max(1, (durationMin / 60) * hourHeight);
+    const verticalMetrics = calculateEventVerticalMetrics({
+      startM,
+      endM,
+      windowStartMin,
+      windowEndMin,
+      hourHeight,
+      fiveHourReferenceHeight,
+    });
+    if (!verticalMetrics) return null;
     
     let lay = layoutById[event.id] || { col: 0, columns: 1, span: 1 };
     
@@ -753,14 +795,9 @@ export default function OggiScreen() {
     const left = LEFT_MARGIN + (lay.col * colWidth);
     const width = (colWidth * lay.span) - 2;
     
-    const endsOnHour = endM % 60 === 0;
-    const heightBuffer = endsOnHour ? 3.75 : 4;
-    const adjustedTop = top + 2;
-    const adjustedHeight = Math.max(1, height - heightBuffer);
-
     return {
-      top: adjustedTop,
-      height: adjustedHeight,
+      top: verticalMetrics.top,
+      height: verticalMetrics.height,
       left,
       width,
     };
@@ -921,7 +958,35 @@ export default function OggiScreen() {
                if (!style) return null;
                const bg = e.color;
                const light = isLightColor(bg);
-             const lines = e.title.split('\n');
+             const titleParts = e.title.split('\n');
+               // 3 righe (~42px) servono per il formato verticale (da / ↓ / a).
+               // Se non c'è spazio, usiamo una riga con freccia orizzontale.
+               const useMultiLine = style.height >= 55;
+               const displayLines = useMultiLine
+                 ? titleParts
+                 : [titleParts.filter(p => p !== '↓').join(' → ')];
+
+               // Allinea la freccia (↓) con la linea oraria più vicina al centro,
+               // così "partenza" sta sopra e "destinazione" sotto l'etichetta dell'ora.
+               // Se non ci sono linee orarie dentro la strip, il testo resta centrato.
+               const tripStartM = toMinutes(e.startTime);
+               const tripEndM = toMinutes(e.endTime);
+               let titleOffset = 0;
+               if (useMultiLine) {
+                 const stripCenter = style.height / 2;
+                 let bestLine = -1;
+                 let bestDist = Infinity;
+                 for (let m = Math.ceil(tripStartM / 60) * 60; m <= Math.floor(tripEndM / 60) * 60; m += 60) {
+                   if (m > tripStartM && m < tripEndM) {
+                     const linePos = ((m - tripStartM) / 60) * hourHeight + 8;
+                     const dist = Math.abs(linePos - stripCenter);
+                     if (dist < bestDist) { bestDist = dist; bestLine = linePos; }
+                   }
+                 }
+                 if (bestLine >= 0) {
+                   titleOffset = bestLine - stripCenter;
+                 }
+               }
                return (
                <View
                  key={e.id}
@@ -949,8 +1014,8 @@ export default function OggiScreen() {
                     opacity: 0.6,
                   }}
                 />
-                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                   {lines.map((line, idx) => (
+                 <View style={{ alignItems: 'center', justifyContent: 'center', transform: [{ translateY: titleOffset }] }}>
+                   {displayLines.map((line, idx) => (
                      <Text
                        key={idx}
                        style={[
@@ -1043,11 +1108,11 @@ export default function OggiScreen() {
                <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>Inizio: {windowStart}</Text>
                   <View style={styles.settingControls}>
-                     <TouchableOpacity style={styles.controlBtn} onPress={() => {
+                     <HoldableButton style={styles.controlBtn} onPress={() => {
                         const m = toMinutes(windowStart);
                         if (m > 0) setWindowStart(`${String(Math.floor((m-60)/60)).padStart(2, '0')}:00`);
-                     }}><Text style={styles.controlBtnText}>-</Text></TouchableOpacity>
-                     <TouchableOpacity style={styles.controlBtn} onPress={() => {
+                     }}><Text style={styles.controlBtnText}>-</Text></HoldableButton>
+                     <HoldableButton style={styles.controlBtn} onPress={() => {
                         const startM = toMinutes(windowStart);
                         const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
                         if (startM < endM - 300) {
@@ -1058,7 +1123,7 @@ export default function OggiScreen() {
                             }
                             setWindowStart(`${String(Math.floor(nextStartM/60)).padStart(2, '0')}:00`);
                         }
-                     }}><Text style={styles.controlBtnText}>+</Text></TouchableOpacity>
+                     }}><Text style={styles.controlBtnText}>+</Text></HoldableButton>
                   </View>
                </View>
 
@@ -1066,7 +1131,7 @@ export default function OggiScreen() {
                <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>Fine: {windowEnd}</Text>
                   <View style={styles.settingControls}>
-                     <TouchableOpacity style={styles.controlBtn} onPress={() => {
+                     <HoldableButton style={styles.controlBtn} onPress={() => {
                         const startM = toMinutes(windowStart);
                         const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
                         if (endM > startM + 300) {
@@ -1077,47 +1142,47 @@ export default function OggiScreen() {
                              }
                              setWindowEnd(nextEndM === 1440 ? '24:00' : `${String(Math.floor(nextEndM/60)).padStart(2, '0')}:00`);
                         }
-                     }}><Text style={styles.controlBtnText}>-</Text></TouchableOpacity>
-                     <TouchableOpacity style={styles.controlBtn} onPress={() => {
+                     }}><Text style={styles.controlBtnText}>-</Text></HoldableButton>
+                     <HoldableButton style={styles.controlBtn} onPress={() => {
                         const m = toMinutes(windowEnd);
                         if (m < 1440) {
                            const next = Math.min(24, Math.floor((m+60)/60));
                            setWindowEnd(next === 24 ? '24:00' : `${String(next).padStart(2, '0')}:00`);
                         }
-                     }}><Text style={styles.controlBtnText}>+</Text></TouchableOpacity>
+                     }}><Text style={styles.controlBtnText}>+</Text></HoldableButton>
                   </View>
                </View>
 
                 <View style={styles.settingRow}>
                     <Text style={styles.settingLabel}>Ore Visibili: {visibleHours}</Text>
                     <View style={styles.settingControls}>
-                       <TouchableOpacity style={styles.controlBtn} onPress={() => {
+                       <HoldableButton style={styles.controlBtn} onPress={() => {
                           if (visibleHours > 5) setVisibleHours(prev => prev - 1);
-                       }}><Text style={styles.controlBtnText}>-</Text></TouchableOpacity>
-                       <TouchableOpacity style={styles.controlBtn} onPress={() => {
+                       }}><Text style={styles.controlBtnText}>-</Text></HoldableButton>
+                       <HoldableButton style={styles.controlBtn} onPress={() => {
                           if (visibleHours < 24) {
                               const nextVisible = visibleHours + 1;
                               setVisibleHours(nextVisible);
-                              
+
                               const startM = toMinutes(windowStart);
                               const endM = windowEnd === '24:00' ? 1440 : toMinutes(windowEnd);
                               const currentDuration = (endM - startM) / 60;
-                              
+
                               if (nextVisible > currentDuration) {
                                    let newEndM = startM + (nextVisible * 60);
                                    let newStartM = startM;
-                                   
+
                                    if (newEndM > 1440) {
                                        newEndM = 1440;
                                        newStartM = Math.max(0, 1440 - (nextVisible * 60));
                                    }
-                                   
+
                                    const fmt = (m: number) => `${String(Math.floor(m/60)).padStart(2, '0')}:00`;
                                    setWindowStart(fmt(newStartM));
                                    setWindowEnd(newEndM === 1440 ? '24:00' : fmt(newEndM));
                               }
                           }
-                       }}><Text style={styles.controlBtnText}>+</Text></TouchableOpacity>
+                       }}><Text style={styles.controlBtnText}>+</Text></HoldableButton>
                     </View>
                 </View>
 
@@ -1232,7 +1297,8 @@ const styles = StyleSheet.create({
   travelStrip: {
     position: 'absolute',
     borderRadius: 6,
-    paddingHorizontal: 4,
+    paddingLeft: 0,
+    paddingRight: 4,
     paddingVertical: 2,
     justifyContent: 'center',
   },
