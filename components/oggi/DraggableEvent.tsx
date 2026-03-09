@@ -17,12 +17,14 @@ export type DraggableEventProps = {
   baseTop: number;
   dragY: SharedValue<number>;
   dragInitialTop: SharedValue<number>;
+  scrollOffsetY: SharedValue<number>;
   draggingEventId: string | null;
   setDraggingEventId: (id: string | null) => void;
   dragClearedOriginalOverlap: boolean;
   setDragClearedOriginalOverlap: (value: boolean) => void;
   setDragSizingLocked: (value: boolean) => void;
   windowStartMin: number;
+  windowEndMin: number;
   hourHeight: number;
   visibleHours: number;
   currentDate: Date;
@@ -44,7 +46,7 @@ export type DraggableEventProps = {
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
   onDoubleTap?: () => void;
-  onDragAutoScroll?: (pageY: number | null) => void;
+  onDragAutoScroll?: (dragBounds: { top: number; bottom: number } | null) => void;
 };
 
 function getSnapStepMinutes(visibleHours: number, hourHeight: number): 5 | 10 | 15 {
@@ -61,12 +63,14 @@ function DraggableEvent({
   baseTop,
   dragY,
   dragInitialTop,
+  scrollOffsetY,
   draggingEventId,
   setDraggingEventId,
   dragClearedOriginalOverlap,
   setDragClearedOriginalOverlap,
   setDragSizingLocked,
   windowStartMin,
+  windowEndMin,
   hourHeight,
   visibleHours,
   currentDate,
@@ -96,6 +100,7 @@ function DraggableEvent({
 
   const dragWidthValue = useSharedValue(layoutStyle.width);
   const dragLeftValue = useSharedValue(layoutStyle.left);
+  const dragStartScrollOffset = useSharedValue(0);
 
   const layoutStyleRef = useRef(layoutStyle);
   const timedEventsRef = useRef(timedEvents);
@@ -125,6 +130,10 @@ function DraggableEvent({
         if (isDragActiveRef.current) return true;
         return Math.abs(gestureState.dy) > 5;
       },
+      // Keep the active drag bound to this responder even when the finger reaches
+      // the scroll edge; otherwise the parent can terminate the gesture and the
+      // drag resets exactly when autoscroll should kick in.
+      onPanResponderTerminationRequest: () => !isDragActiveRef.current,
       onShouldBlockNativeResponder: () => isDragActiveRef.current,
 
       onPanResponderGrant: (evt) => {
@@ -172,6 +181,7 @@ function DraggableEvent({
           dragWidthValue.value = currentLayout.width;
           dragLeftValue.value = currentLayout.left;
           dragInitialTop.value = baseTop;
+          dragStartScrollOffset.value = scrollOffsetY.value;
           dragY.value = 0;
 
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -191,15 +201,17 @@ function DraggableEvent({
 
         if (!isDragActiveRef.current) return;
 
-        onDragAutoScroll?.(evt.nativeEvent.pageY);
-
         if (initialTouchYRef.current === null) initialTouchYRef.current = evt.nativeEvent.pageY;
         const currentTouchY = evt.nativeEvent.pageY;
         const touchDeltaY = currentTouchY - initialTouchYRef.current;
+        const scrollDelta = scrollOffsetY.value - dragStartScrollOffset.value;
 
         const initialBaseTop = dragInitialTop.value;
-        const currentTop = initialBaseTop + touchDeltaY;
-        const clampedTop = Math.max(DRAG_VISUAL_OFFSET, currentTop);
+        const currentTop = initialBaseTop + touchDeltaY + scrollDelta;
+        const durationMin = toMinutes(event.endTime) - toMinutes(event.startTime);
+        const relativeTopMax = Math.max(0, ((windowEndMin - durationMin) - windowStartMin) / 60 * hourHeight);
+        const maxClampedTop = DRAG_VISUAL_OFFSET + relativeTopMax;
+        const clampedTop = Math.max(DRAG_VISUAL_OFFSET, Math.min(maxClampedTop, currentTop));
         const relativeTop = Math.max(0, clampedTop - DRAG_VISUAL_OFFSET);
         const minutesFromStart = (relativeTop / hourHeight) * 60;
         const newStartMinutes = windowStartMin + minutesFromStart;
@@ -207,7 +219,11 @@ function DraggableEvent({
 
         // Movimento fluido: la posizione segue il dito senza scatti,
         // lo snap avviene solo in onPanResponderRelease.
-        dragY.value = clampedTop - initialBaseTop;
+        dragY.value = clampedTop - initialBaseTop - scrollDelta;
+        onDragAutoScroll?.({
+          top: clampedTop - scrollOffsetY.value,
+          bottom: clampedTop - scrollOffsetY.value + layoutStyleRef.current.height,
+        });
 
         const initialStartM = initialStartMinutesRef.current ?? toMinutes(event.startTime);
         const movedMinutes = Math.abs(clampedMinutes - initialStartM);
@@ -320,13 +336,19 @@ function DraggableEvent({
         if (!isDragActiveRef.current) return;
 
         const finalY = dragY.value;
-        const finalTop = dragInitialTop.value + finalY;
+        const scrollDelta = scrollOffsetY.value - dragStartScrollOffset.value;
+        let finalTop = dragInitialTop.value + finalY + scrollDelta;
+        const durationMin = toMinutes(event.endTime) - toMinutes(event.startTime);
+        const relativeTopMaxRelease = Math.max(0, ((windowEndMin - durationMin) - windowStartMin) / 60 * hourHeight);
+        const maxClampedTopRelease = DRAG_VISUAL_OFFSET + relativeTopMaxRelease;
+        finalTop = Math.max(DRAG_VISUAL_OFFSET, Math.min(maxClampedTopRelease, finalTop));
         const relativeFinalTop = Math.max(0, finalTop - DRAG_VISUAL_OFFSET);
         const minutesFromStart = (relativeFinalTop / hourHeight) * 60;
         const newStartMinutes = windowStartMin + minutesFromStart;
         const snapStep = getSnapStepMinutes(visibleHours, hourHeight);
         const snappedMinutes = Math.round(newStartMinutes / snapStep) * snapStep;
-        const clampedMinutes = Math.max(0, Math.min(1440, snappedMinutes));
+        const maxStartMin = windowEndMin - durationMin;
+        const clampedMinutes = Math.max(0, Math.min(1440, Math.min(snappedMinutes, maxStartMin)));
 
         const originalStartM = toMinutes(event.startTime);
         const originalEndM = toMinutes(event.endTime);
@@ -396,6 +418,7 @@ function DraggableEvent({
     event.endTime,
     baseTop,
     windowStartMin,
+    windowEndMin,
     hourHeight,
     visibleHours,
     dragInitialTop,
@@ -420,13 +443,13 @@ function DraggableEvent({
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
-      top: isDragging ? dragInitialTop.value + dragY.value : baseTop,
+      top: isDragging ? dragInitialTop.value + dragY.value + (scrollOffsetY.value - dragStartScrollOffset.value) : baseTop,
       opacity: isDragging ? 0.8 : 1,
       zIndex: isDragging ? 1000 : 1,
       width: isDragging ? dragWidthValue.value : layoutStyle.width,
       left: isDragging ? dragLeftValue.value : layoutStyle.left,
     };
-  }, [isDragging, baseTop, layoutStyle.width, layoutStyle.left]);
+  }, [isDragging, baseTop, layoutStyle.width, layoutStyle.left, scrollOffsetY, dragStartScrollOffset]);
 
   const eventStyle = [
     styles.eventItem,

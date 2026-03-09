@@ -1,16 +1,16 @@
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
 import {
-  FOLDER_COLORS,
-  FOLDER_ICONS,
-  FolderBlockItem,
-  FolderFilters,
-  FolderItem,
-  MultiDragBlockItem,
-  OGGI_TODAY_KEY,
-  SectionItem,
-  SortModeType,
-  TUTTE_KEY,
+    FOLDER_COLORS,
+    FOLDER_ICONS,
+    FolderBlockItem,
+    FolderFilters,
+    FolderItem,
+    MultiDragBlockItem,
+    OGGI_TODAY_KEY,
+    SectionItem,
+    SortModeType,
+    TUTTE_KEY,
 } from '@/lib/index/indexTypes';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -1148,6 +1148,41 @@ export function useIndexLogic() {
       return;
     }
 
+    const applyFolderReorder = (nextData: SectionItem[]) => {
+      const folderItems = nextData.filter((x): x is FolderBlockItem => x.type === 'folderBlock');
+      isPostDragRef.current = true;
+      const folderOrder = folderItems.map(f => f.folderName);
+      setSectionOrder(folderOrder);
+      AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(folderOrder.map(n => n === null ? TUTTE_KEY : n))).catch(() => { });
+
+      pendingDisplayRef.current = nextData;
+      setDisplayList(nextData);
+
+      const newFoldersOrder = folderOrder.filter((n): n is string => n !== null);
+      if (newFoldersOrder.length > 0) {
+        setFolders(prev => {
+          const orderMap = new Map(newFoldersOrder.map((n, i) => [n, i]));
+          const next = [...prev].sort((a, b) => {
+            const ia = orderMap.get((a.name ?? '').trim()) ?? 999;
+            const ib = orderMap.get((b.name ?? '').trim()) ?? 999;
+            return ia - ib;
+          });
+          AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
+          return next;
+        });
+      }
+
+      // Safety net: release guard after 2s if convergence never happens.
+      // Normal release happens in the sync useEffect when sectionedList catches up.
+      if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
+      dragEndTimeoutRef.current = setTimeout(() => {
+        isPostDragRef.current = false;
+        pendingDisplayRef.current = null;
+        preDragSnapshotRef.current = null;
+        commitDragEnd();
+      }, 2000);
+    };
+
     // FOLDER DRAG LOGIC
     // Determine if we dropped inside the hover radius
     if (isMergeHoverAtReleaseRef.current && snapshot) {
@@ -1207,6 +1242,11 @@ export function useIndexLogic() {
             [
               {
                 text: 'No', style: 'cancel', onPress: () => {
+                  if (from !== to) {
+                    applyFolderReorder(data);
+                    return;
+                  }
+                  pendingDisplayRef.current = null;
                   setDisplayList(snapshot);
                   isPostDragRef.current = false;
                   preDragSnapshotRef.current = null;
@@ -1240,38 +1280,7 @@ export function useIndexLogic() {
     }
 
     // Simple Folder Reorder
-    const folderItems = data.filter((x): x is FolderBlockItem => x.type === 'folderBlock');
-    isPostDragRef.current = true;
-    const folderOrder = folderItems.map(f => f.folderName);
-    setSectionOrder(folderOrder);
-    AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(folderOrder.map(n => n === null ? TUTTE_KEY : n))).catch(() => { });
-
-    pendingDisplayRef.current = data;
-    setDisplayList(data);
-
-    const newFoldersOrder = folderOrder.filter((n): n is string => n !== null);
-    if (newFoldersOrder.length > 0) {
-      setFolders(prev => {
-        const orderMap = new Map(newFoldersOrder.map((n, i) => [n, i]));
-        const next = [...prev].sort((a, b) => {
-          const ia = orderMap.get((a.name ?? '').trim()) ?? 999;
-          const ib = orderMap.get((b.name ?? '').trim()) ?? 999;
-          return ia - ib;
-        });
-        AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
-        return next;
-      });
-    }
-
-    // Safety net: release guard after 2s if convergence never happens.
-    // Normal release happens in the sync useEffect when sectionedList catches up.
-    if (dragEndTimeoutRef.current != null) clearTimeout(dragEndTimeoutRef.current);
-    dragEndTimeoutRef.current = setTimeout(() => {
-      isPostDragRef.current = false;
-      pendingDisplayRef.current = null;
-      preDragSnapshotRef.current = null;
-      commitDragEnd();
-    }, 2000);
+    applyFolderReorder(data);
 
   }, [updateHabitsOrder, updateHabitFolder, commitDragEnd, activeFolder, isMergeHoverSV, folders]);
 

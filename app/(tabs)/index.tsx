@@ -6,12 +6,21 @@ import { OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { useIndexLogic } from '@/lib/index/useIndexLogic';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef } from 'react';
 import { Alert, InteractionManager, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import Animated, { FadeInDown, Layout, SharedValue, useAnimatedStyle, withTiming, runOnUI } from 'react-native-reanimated';
+import Animated, { FadeInDown, Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const TASKS_DRAG_AUTOSCROLL_THRESHOLD = 108;
+const TASKS_DRAG_AUTOSCROLL_SPEED = 72;
+const TASKS_DRAG_AUTOSCROLL_TOP_THRESHOLD = 28;
+const TASKS_DRAG_ANIMATION_CONFIG = {
+  damping: 26,
+  stiffness: 165,
+} as const;
 
 const MergeIcon = ({ isActive, isMergeHoverSV, debugAboveCount, debugBelowCount }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean>, debugAboveCount?: number | string | null, debugBelowCount?: number | string | null }) => {
   const animatedStyle = useAnimatedStyle(() => {
@@ -25,8 +34,19 @@ const MergeIcon = ({ isActive, isMergeHoverSV, debugAboveCount, debugBelowCount 
   return (
     <View style={[styles.mergePlusIcon, { flexDirection: 'row', alignItems: 'center' }]}>
       {/* {isActive && debugAboveCount != null && <Text style={{ color: 'blue', marginRight: 4, fontWeight: 'bold' }}>{debugAboveCount}</Text>} */}
-      <Animated.View style={animatedStyle}>
-        <Ionicons name="add" size={24} color={THEME.success} />
+      <Animated.View style={[animatedStyle, { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }]}>
+        <View style={{
+          position: 'absolute',
+          left: 1,
+          top: 1,
+          width: 16,
+          height: 16,
+          borderRadius: 8,
+          backgroundColor: '#fff',
+        }} />
+        <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="add" size={18} color={THEME.success} />
+        </View>
       </Animated.View>
       {/* {isActive && debugBelowCount != null && <Text style={{ color: 'yellow', marginLeft: 4, fontWeight: 'bold' }}>{debugBelowCount}</Text>} */}
     </View>
@@ -132,6 +152,7 @@ export default function IndexScreen() {
   const isDraggingRef = useRef(false);
   const [isDraggingFolder, setIsDraggingFolder] = React.useState(false);
   const dragInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.createInteractionHandle> | null>(null);
+  const lastPlaceholderIndexRef = useRef<number | null>(null);
 
   // Never collapse the list data. Changing keys triggers the library's reset()
   // which freezes shared values, breaking multi-drag. Instead, we keep the same
@@ -142,8 +163,9 @@ export default function IndexScreen() {
 
   // Forziamo il re-render delle celle durante il drag quando l'overlap cambia
   const extraDataForDrag = useMemo(() => ({
-    overlapHoverState
-  }), [overlapHoverState]);
+    overlapHoverState,
+    collapsedFolderIds,
+  }), [overlapHoverState, collapsedFolderIds]);
 
   // Determine the anchor task for multi-drag (first selected in selection order)
   const multiDragAnchorId = useMemo(() => {
@@ -289,7 +311,7 @@ export default function IndexScreen() {
                   disabled={isActive}
                   activeOpacity={0.7}
                   delayLongPress={200}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
                 >
                   <Text style={[
                     styles.folderSeparatorText,
@@ -298,10 +320,12 @@ export default function IndexScreen() {
                   ]}>
                     {label}
                   </Text>
+                  <View style={{ marginLeft: 20 }}>
+                    <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} debugAboveCount={debugAboveCount} debugBelowCount={debugBelowCount} />
+                  </View>
                 </TouchableOpacity>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <MergeIcon isActive={isActive} isMergeHoverSV={isMergeHoverSV} debugAboveCount={debugAboveCount} debugBelowCount={debugBelowCount} />
                   <View
                     pointerEvents={isActive ? 'none' : 'auto'}
                     style={isActive ? { opacity: 0 } : undefined}
@@ -701,22 +725,21 @@ export default function IndexScreen() {
               item.type === 'folderBlock' ? `folder-${item.folderId}` :
               item.type === 'multiDragBlock' ? `task-${item.habits[0].id}` :
               `task-${item.habit.id}`}
-            extraData={extraDataForDrag}
             renderItem={renderSectionItem}
-            extraData={collapsedFolderIds}
+            extraData={extraDataForDrag}
             contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
             style={[activeTheme === 'futuristic' && { marginHorizontal: -16 }]}
             containerStyle={styles.dragListContainer}
             showsVerticalScrollIndicator={false}
             dragItemOverflow
-            autoscrollThreshold={83}
-            autoscrollSpeed={100}
+            autoscrollThreshold={TASKS_DRAG_AUTOSCROLL_THRESHOLD}
+            autoscrollSpeed={TASKS_DRAG_AUTOSCROLL_SPEED}
             // @ts-ignore — patched prop for separate top threshold
-            autoscrollTopThreshold={1}
+            autoscrollTopThreshold={TASKS_DRAG_AUTOSCROLL_TOP_THRESHOLD}
             windowSize={60}
             initialNumToRender={12}
             removeClippedSubviews={false}
-            animationConfig={{ damping: 20, stiffness: 200 }}
+            animationConfig={TASKS_DRAG_ANIMATION_CONFIG}
             onAnimValInit={(v) => setAnimVals(v)}
             // @ts-ignore — patched prop: override cell measurements inside drag()
             onCellMeasureOverride={(index: number, _key: string, cellData: any, _cellDataMap: Map<string, any>) => {
@@ -731,6 +754,8 @@ export default function IndexScreen() {
               return null;
             }}
             onDragBegin={(idx) => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+              lastPlaceholderIndexRef.current = idx;
               isDraggingRef.current = true;
               setIsDraggingFolder(listData[idx]?.type === 'folderBlock');
               dragInteractionHandleRef.current = InteractionManager.createInteractionHandle();
@@ -743,6 +768,12 @@ export default function IndexScreen() {
               preDragSnapshotRef.current = [...list];
               recordDragStartSelection(selectedIds);
             }}
+            onPlaceholderIndexChange={(index) => {
+              if (lastPlaceholderIndexRef.current !== null && lastPlaceholderIndexRef.current !== index) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              }
+              lastPlaceholderIndexRef.current = index;
+            }}
             onRelease={(index) => {
               // Capture exactly what the UI thread values are at the moment of finger lift,
               // BEFORE any snap-back animations destroy the hover state.
@@ -752,6 +783,8 @@ export default function IndexScreen() {
                 mergeDirectionRef.current !== 0 ? mergeDirectionRef.current : dragDirectionSV.value;
             }}
             onDragEnd={(params) => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+              lastPlaceholderIndexRef.current = null;
               isDraggingRef.current = false;
               setIsDraggingFolder(false);
               // Release the interaction handle so any pending reset() can fire

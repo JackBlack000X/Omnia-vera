@@ -7,17 +7,22 @@ import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, sch
 import { BASE_VERTICAL_OFFSET, isLightColor, LEFT_MARGIN, minutesToTime, OggiEvent, toMinutes } from '@/lib/oggi/oggiHelpers';
 import { useTimelineSettings } from '@/lib/oggi/useTimelineSettings';
 import { useWeather } from '@/lib/oggi/useWeather';
-import { weatherCodeToColor, weatherCodeToIcon } from '@/lib/weather';
 import { useAppTheme } from '@/lib/theme-context';
+import { weatherCodeToColor, weatherCodeToIcon } from '@/lib/weather';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Modal, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, LayoutChangeEvent, Modal, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const TZ = 'Europe/Zurich';
+/** Bordo autoscroll in px: sopra questa distanza da top/bottom della timeline parte lo scroll */
+const OGGI_DRAG_AUTOSCROLL_THRESHOLD = 0;
+const OGGI_DRAG_AUTOSCROLL_THRESHOLD_BOTTOM = 82;
+const OGGI_DRAG_AUTOSCROLL_BASE_SPEED = 4;
+const OGGI_DRAG_AUTOSCROLL_EXTRA_SPEED = 9;
 
 // -- Helper Functions --
 
@@ -52,12 +57,12 @@ export default function OggiScreen() {
   const [currentDragPosition, setCurrentDragPosition] = useState<number | null>(null);
   const [dragClearedOriginalOverlap, setDragClearedOriginalOverlap] = useState(false);
   const [dragSizingLocked, setDragSizingLocked] = useState(false);
+  const [dragAreaHeight, setDragAreaHeight] = useState(0);
   const dragY = useSharedValue(0);
   const dragInitialTop = useSharedValue(0);
+  const scrollOffsetY = useSharedValue(0);
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollOffsetRef = useRef(0);
-  const dragAreaRef = useRef<View | null>(null);
-  const dragAreaWindowLayoutRef = useRef<{ top: number; bottom: number }>({ top: 0, bottom: 0 });
   const viewportHeightRef = useRef(0);
   const autoScrollDirRef = useRef<-1 | 0 | 1>(0);
   const autoScrollIntensityRef = useRef(0);
@@ -297,8 +302,8 @@ export default function OggiScreen() {
     }
 
     const maxOffset = totalContentHeight - viewportHeight;
-    const baseSpeed = 8;
-    const extra = 18;
+    const baseSpeed = OGGI_DRAG_AUTOSCROLL_BASE_SPEED;
+    const extra = OGGI_DRAG_AUTOSCROLL_EXTRA_SPEED;
     const delta = dir * (baseSpeed + extra * intensity);
     const current = scrollOffsetRef.current;
 
@@ -334,53 +339,51 @@ export default function OggiScreen() {
     [ensureAutoScrollLoop]
   );
 
-  const handleDragAreaLayout = useCallback(() => {
-    if (!dragAreaRef.current) return;
-    dragAreaRef.current.measureInWindow((_, y, __, height) => {
-      dragAreaWindowLayoutRef.current = { top: y, bottom: y + height };
-      viewportHeightRef.current = height;
-    });
+  const handleDragAreaLayout = useCallback((e: LayoutChangeEvent) => {
+    const layoutHeight = e.nativeEvent.layout.height;
+    setDragAreaHeight(layoutHeight);
+    viewportHeightRef.current = layoutHeight;
   }, []);
 
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+      const nextOffset = e.nativeEvent.contentOffset.y;
+      scrollOffsetRef.current = nextOffset;
+      scrollOffsetY.value = nextOffset;
     },
-    []
+    [scrollOffsetY]
   );
 
   const handleDragAutoScroll = useCallback(
-    (pageY: number | null) => {
-      if (pageY === null) {
+    (dragBounds: { top: number; bottom: number } | null) => {
+      if (dragBounds === null) {
         handleAutoScrollRequest(0, 0);
         return;
       }
 
-      const { top, bottom } = dragAreaWindowLayoutRef.current;
-      if (bottom <= top) {
+      const viewportHeight = viewportHeightRef.current || dragAreaHeight;
+      if (viewportHeight <= 0) {
         handleAutoScrollRequest(0, 0);
         return;
       }
 
-      const threshold = 80;
       let direction: -1 | 0 | 1 = 0;
-      let intensity = 0;
+      const inTopZone = dragBounds.top < OGGI_DRAG_AUTOSCROLL_THRESHOLD;
+      const inBottomZone = dragBounds.bottom > viewportHeight - OGGI_DRAG_AUTOSCROLL_THRESHOLD_BOTTOM;
 
-      if (pageY < top + threshold) {
+      if (inTopZone) {
         direction = -1;
-        intensity = (top + threshold - pageY) / threshold;
-      } else if (pageY > bottom - threshold) {
+      } else if (inBottomZone) {
         direction = 1;
-        intensity = (pageY - (bottom - threshold)) / threshold;
       }
 
-      if (intensity <= 0.05) {
+      if (direction === 0) {
         handleAutoScrollRequest(0, 0);
       } else {
-        handleAutoScrollRequest(direction, Math.min(1, intensity));
+        handleAutoScrollRequest(direction, 1);
       }
     },
-    [handleAutoScrollRequest]
+    [dragAreaHeight, handleAutoScrollRequest]
   );
 
   useEffect(() => {
@@ -686,7 +689,6 @@ export default function OggiScreen() {
         style={{ flex: 1 }}
       >
         <View
-          ref={dragAreaRef}
           style={{ flex: 1 }}
           onLayout={handleDragAreaLayout}
         >
@@ -755,6 +757,7 @@ export default function OggiScreen() {
                    baseTop={baseTop}
                    dragY={dragY}
                    dragInitialTop={dragInitialTop}
+                   scrollOffsetY={scrollOffsetY}
                    draggingEventId={draggingEventId}
                    onDragStart={handleDragStart}
                    onDragEnd={handleDragEnd}
@@ -763,6 +766,7 @@ export default function OggiScreen() {
                    setDragClearedOriginalOverlap={setDragClearedOriginalOverlap}
                   setDragSizingLocked={setDragSizingLocked}
                    windowStartMin={windowStartMin}
+                   windowEndMin={windowEndMin}
                    hourHeight={hourHeight}
                    visibleHours={visibleHours}
                    currentDate={currentDate}
@@ -1032,7 +1036,6 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: '#FF3B30',
   },
-
   // Modal
   modalBackdrop: {
     flex: 1,

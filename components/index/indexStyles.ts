@@ -415,8 +415,6 @@ export const styles = StyleSheet.create({
     shadowRadius: 15,
   },
   mergePlusIcon: {
-    position: 'absolute',
-    right: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
