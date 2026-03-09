@@ -97,6 +97,7 @@ function DraggableEvent({
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
   const light = isLightColor(bg);
+  const isTravel = event.tipo === 'viaggio';
 
   const dragWidthValue = useSharedValue(layoutStyle.width);
   const dragLeftValue = useSharedValue(layoutStyle.left);
@@ -125,8 +126,9 @@ function DraggableEvent({
 
   const panResponder = useMemo(() => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => !isTravel,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
+        if (isTravel) return false;
         if (isDragActiveRef.current) return true;
         return Math.abs(gestureState.dy) > 5;
       },
@@ -137,6 +139,7 @@ function DraggableEvent({
       onShouldBlockNativeResponder: () => isDragActiveRef.current,
 
       onPanResponderGrant: (evt) => {
+        if (isTravel) return;
         const now = Date.now();
         if (now - lastTapTimeRef.current < 300) {
           if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -191,6 +194,7 @@ function DraggableEvent({
       },
 
       onPanResponderMove: (evt, gestureState) => {
+        if (isTravel) return;
         if (!isDragActiveRef.current && Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy)) {
           if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
@@ -307,6 +311,7 @@ function DraggableEvent({
       },
 
       onPanResponderTerminate: () => {
+        if (isTravel) return;
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
@@ -328,6 +333,7 @@ function DraggableEvent({
       },
 
       onPanResponderRelease: (evt, gestureState) => {
+        if (isTravel) return;
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
@@ -458,6 +464,7 @@ function DraggableEvent({
       backgroundColor: bg,
     },
     animatedStyle,
+    !isDragging && isTravel && { opacity: 0.7 },
   ];
 
   return (

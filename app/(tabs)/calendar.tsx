@@ -1,9 +1,10 @@
 import { getCalendarDays, getMonthName, getMonthYear, isToday } from '@/lib/date';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
-import type { Habit } from '@/lib/habits/schema';
 import { useHabits } from '@/lib/habits/Provider';
+import type { Habit } from '@/lib/habits/schema';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -117,28 +118,13 @@ function AnimatedStreakFlame() {
   );
 }
 
-// Test state - temporary completion override for testing
-type TestCompletion = {
-  completed: number;
-  total: number;
-};
-
-function calculateCompletedForLevel(level: CompletionLevel, total: number): number {
-  switch (level) {
-    case 'perfect': return total; // 100%
-    case 'good': return Math.ceil(total * 0.75); // 75%+
-    case 'medium': return Math.ceil(total * 0.5); // 50%+
-    case 'low': return Math.floor(total * 0.25); // < 50%
-  }
-}
-
 type MonthData = { year: number; month: number; date: Date; numWeeks: number };
 
 type MonthViewProps = {
   item: MonthData;
   isCurrentMonthActive: boolean;
+  logicalTodayYmd: string;
   habits: Habit[];
-  testCompletions: Record<string, TestCompletion>;
   recentHistory: Record<string, { date: string; completedByHabitId: Record<string, boolean> }>;
   streakInfo: Map<string, 'start' | 'middle' | 'end' | 'single'>;
   onDayPress: (day: { date: Date; isCurrentMonth: boolean; ymd: string }) => void;
@@ -146,7 +132,7 @@ type MonthViewProps = {
 };
 
 const MonthView = React.memo(function MonthView({
-  item, isCurrentMonthActive, habits, testCompletions, recentHistory, streakInfo, onDayPress, isFirst,
+  item, isCurrentMonthActive, logicalTodayYmd, habits, recentHistory, streakInfo, onDayPress, isFirst,
 }: MonthViewProps) {
   const { year, month } = item;
   const days = useMemo(() => getCalendarDays(year, month), [year, month]);
@@ -161,23 +147,19 @@ const MonthView = React.memo(function MonthView({
     for (const day of days) {
       const habitsForDay = getHabitsAppearingOnDate(habits, day.ymd);
       const total = habitsForDay.length;
-      const testCompletion = testCompletions[day.ymd];
       let completed: number;
-      if (testCompletion) {
-        completed = testCompletion.completed;
+      const completion = recentHistory[day.ymd];
+      if (completion) {
+        completed = habitsForDay.filter((h) => completion.completedByHabitId[h.id]).length;
       } else {
-        const completion = recentHistory[day.ymd];
-        if (completion) {
-          completed = habitsForDay.filter((h) => completion.completedByHabitId[h.id]).length;
-        } else {
-          completed = 0;
-        }
+        completed = 0;
       }
-      const level = getCompletionLevel(completed, total);
+      const isTodayYmd = day.ymd === logicalTodayYmd;
+      const level = isTodayYmd ? 'low' : getCompletionLevel(completed, total);
       stats[day.ymd] = { completed, total, level };
     }
     return stats;
-  }, [days, habits, testCompletions, recentHistory]);
+  }, [days, habits, recentHistory, logicalTodayYmd]);
 
   return (
     <View style={[styles.calendarMonth, isFirst && { marginTop: 4 }]}>
@@ -311,8 +293,9 @@ function getNumWeeksInMonth(year: number, month: number): number {
 }
 
 export default function CalendarScreen() {
-  const { habits, history, getDay, setDayCompletion } = useHabits();
+  const { habits, history, getDay } = useHabits();
   const { activeTheme } = useAppTheme();
+  const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
   const today = new Date();
   const { year: currentYear, month: currentMonth } = getMonthYear(today);
@@ -336,7 +319,6 @@ export default function CalendarScreen() {
     return { year, month };
   }, [history, currentYear, currentMonth]);
 
-  const [testCompletions, setTestCompletions] = useState<Record<string, TestCompletion>>({});
   const [showLegend, setShowLegend] = useState(false);
 
   const logicalTodayYmd = useMemo(
@@ -401,13 +383,10 @@ export default function CalendarScreen() {
 
     const allDates = new Set<string>();
     Object.keys(recentHistory).forEach(d => allDates.add(d));
-    Object.keys(testCompletions).forEach(d => allDates.add(d));
     const sortedDates = Array.from(allDates).sort();
     if (sortedDates.length === 0) return streakMap;
 
     const getCompletedForDate = (date: string) => {
-      const testCompletion = testCompletions[date];
-      if (testCompletion) return testCompletion.completed;
       const completion = recentHistory[date];
       const habitsForDay = getHabitsAppearingOnDate(habits, date);
       if (completion) return habitsForDay.filter((h) => completion.completedByHabitId[h.id]).length;
@@ -429,6 +408,8 @@ export default function CalendarScreen() {
 
     for (let i = 0; i < sortedDates.length; i++) {
       const date = sortedDates[i];
+      // Non considerare il giorno \"aperto\" (oggi) nella streak
+      if (date === logicalTodayYmd) continue;
       const totalForDay = getTotalForDate(date);
       const isPerfect = totalForDay > 0 && getCompletedForDate(date) === totalForDay;
       if (isPerfect) {
@@ -447,13 +428,14 @@ export default function CalendarScreen() {
     }
     if (currentStreak.length >= 2) registerStreak(currentStreak);
     return streakMap;
-  }, [recentHistory, testCompletions, habits]);
+  }, [recentHistory, habits, logicalTodayYmd]);
 
   const currentPerfectStreak = useMemo(() => {
     // Use real history + per-day habits so streak matches tasks tab
     const perfectDates: string[] = [];
     for (const [ymd, completion] of Object.entries(recentHistory)) {
-      if (ymd > logicalTodayYmd) continue;
+      // Conta solo i giorni COMPLETAMENTE chiusi (prima dell'oggi logico)
+      if (ymd >= logicalTodayYmd) continue;
       const habitsForDay = getHabitsAppearingOnDate(habits, ymd);
       const total = habitsForDay.length;
       if (total === 0) continue;
@@ -484,31 +466,22 @@ export default function CalendarScreen() {
   }, [recentHistory, habits, logicalTodayYmd]);
 
   const handleDayPress = useCallback((day: { date: Date; isCurrentMonth: boolean; ymd: string }) => {
-    const habitsForDay = getHabitsAppearingOnDate(habits, day.ymd);
-    const total = habitsForDay.length;
-    if (total === 0) { Alert.alert('Test', 'Nessuna abitudine in programma per questo giorno'); return; }
-    Alert.alert('Imposta Completamento', 'Scegli il livello (viene salvato e sincronizzato con Tasks):', [
-      { text: '100% - Giorno perfetto', onPress: () => { setDayCompletion(day.ymd, total); setTestCompletions(prev => { const next = { ...prev }; delete next[day.ymd]; return next; }); } },
-      { text: '75%+ - Buon progresso', onPress: () => { setDayCompletion(day.ymd, calculateCompletedForLevel('good', total)); setTestCompletions(prev => { const next = { ...prev }; delete next[day.ymd]; return next; }); } },
-      { text: '50%+ - Progresso medio', onPress: () => { setDayCompletion(day.ymd, calculateCompletedForLevel('medium', total)); setTestCompletions(prev => { const next = { ...prev }; delete next[day.ymd]; return next; }); } },
-      { text: 'Sotto il 50%', onPress: () => { setDayCompletion(day.ymd, calculateCompletedForLevel('low', total)); setTestCompletions(prev => { const next = { ...prev }; delete next[day.ymd]; return next; }); } },
-      { text: 'Rimuovi (usa dati reali)', onPress: () => setTestCompletions(prev => { const next = { ...prev }; delete next[day.ymd]; return next; }), style: 'destructive' },
-      { text: 'Annulla', style: 'cancel' },
-    ]);
-  }, [habits, setDayCompletion]);
+    // Vai alla tab OGGI mostrando la timeline di quel giorno specifico
+    router.push({ pathname: '/oggi', params: { ymd: day.ymd } });
+  }, [router]);
 
   const renderItem = useCallback(({ item, index }: { item: MonthData; index: number }) => (
     <MonthView
       item={item}
       isCurrentMonthActive={item.year === currentYear && item.month === currentMonth}
+      logicalTodayYmd={logicalTodayYmd}
       habits={habits}
-      testCompletions={testCompletions}
       recentHistory={recentHistory}
       streakInfo={streakInfo}
       onDayPress={handleDayPress}
       isFirst={index === 0}
     />
-  ), [currentYear, currentMonth, habits, testCompletions, recentHistory, streakInfo, handleDayPress]);
+  ), [currentYear, currentMonth, logicalTodayYmd, habits, recentHistory, streakInfo, handleDayPress]);
 
   return (
     <SafeAreaView style={styles.screen}>

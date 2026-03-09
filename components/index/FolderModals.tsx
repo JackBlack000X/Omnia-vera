@@ -26,10 +26,11 @@ export type FolderModalsProps = {
   performDeleteFolder: (folderName: string) => void;
 };
 
-const TIPO_OPTIONS: { value: 'task' | 'abitudine' | 'evento'; label: string; icon: string }[] = [
+const TIPO_OPTIONS: { value: 'task' | 'abitudine' | 'evento' | 'viaggio'; label: string; icon: string }[] = [
   { value: 'task', label: 'Task', icon: 'checkbox-outline' },
   { value: 'evento', label: 'Eventi', icon: 'calendar-outline' },
   { value: 'abitudine', label: 'Abitudini', icon: 'repeat-outline' },
+  { value: 'viaggio', label: 'Viaggi', icon: 'airplane-outline' },
 ];
 
 const FREQ_OPTIONS: { value: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; label: string }[] = [

@@ -122,6 +122,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const swipeableRef = useRef<Swipeable>(null);
   const [cardDimensions, setCardDimensions] = React.useState({ width: 0, height: 0 });
   const [checkDimensions, setCheckDimensions] = React.useState({ width: 0, height: 0 });
+  const isTravel = habit.tipo === 'viaggio';
 
   // Close menu when shouldCloseMenu becomes true
   useEffect(() => {
@@ -297,57 +298,65 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
       {activeTheme === 'futuristic' && cardDimensions.width > 0 && cardDimensions.height > 0 && (
         <NoiseOverlay width={cardDimensions.width} height={cardDimensions.height} darkColor={noiseColor} />
       )}
-      <TouchableOpacity
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: selectionMode ? isSelected : isDone }}
-        onPress={() => {
-          if (selectionMode && onToggleSelect) {
-            onToggleSelect(habit);
-          } else {
-            toggleDone(habit.id);
-          }
-        }}
-        style={[
-          styles.checkContainer,
-          activeTheme === 'futuristic' && { marginLeft: 10 }
-        ]}
-      >
-        <View
-          style={[
-            styles.check,
-            isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
-            !selectionMode && isDone && styles.checkDone,
-            selectionMode && isSelected && (isWhiteBg ? styles.checkSelectedWhite : styles.checkSelected),
-            activeTheme === 'futuristic' && {
-              borderRadius: 0,
-              aspectRatio: 1,
-              transform: [{ skewX: '-2deg' }]
-            }
-          ]}
-          onLayout={(e) => {
-            if (activeTheme === 'futuristic' && !isDone) {
-              const { width, height } = e.nativeEvent.layout;
-              setCheckDimensions({ width, height });
+      {/* Cerchio completamento/selezone:
+          - Per i viaggi nascosto in modalità normale (niente completamento)
+          - In modalità selezione visibile per tutti (anche viaggi) per poter selezionare */}
+      {(!isTravel || selectionMode) && (
+        <TouchableOpacity
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: selectionMode ? isSelected : isDone }}
+          onPress={() => {
+            if (selectionMode && onToggleSelect) {
+              onToggleSelect(habit);
+            } else if (!isTravel) {
+              toggleDone(habit.id);
             }
           }}
+          style={[
+            styles.checkContainer,
+            activeTheme === 'futuristic' && { marginLeft: 10 }
+          ]}
         >
-          {activeTheme === 'futuristic' && !isDone && checkDimensions.width > 0 && checkDimensions.height > 0 && (
-            <View style={{ position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, overflow: 'hidden', borderRadius: 10 }}>
-              <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
-            </View>
-          )}
-          {!selectionMode && isDone && (
-            <Ionicons
-              name="checkmark"
-              size={16}
-              color="white"
-            />
-          )}
-        </View>
-      </TouchableOpacity>
+          <View
+            style={[
+              styles.check,
+              isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
+              !selectionMode && isDone && styles.checkDone,
+              selectionMode && isSelected && (isWhiteBg ? styles.checkSelectedWhite : styles.checkSelected),
+              activeTheme === 'futuristic' && {
+                borderRadius: 0,
+                aspectRatio: 1,
+                transform: [{ skewX: '-2deg' }]
+              }
+            ]}
+            onLayout={(e) => {
+              if (activeTheme === 'futuristic' && !isDone) {
+                const { width, height } = e.nativeEvent.layout;
+                setCheckDimensions({ width, height });
+              }
+            }}
+          >
+            {activeTheme === 'futuristic' && !isDone && checkDimensions.width > 0 && checkDimensions.height > 0 && (
+              <View style={{ position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, overflow: 'hidden', borderRadius: 10 }}>
+                <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
+              </View>
+            )}
+            {!selectionMode && !isTravel && isDone && (
+              <Ionicons
+                name="checkmark"
+                size={16}
+                color="white"
+              />
+            )}
+          </View>
+        </TouchableOpacity>
+      )}
 
       <View style={[styles.content, timeText === 'Tutto il giorno' && { justifyContent: 'center' }]}>
-        <Text style={[styles.habitText, { color: textPrimaryColor }, isDone && styles.habitDone]} numberOfLines={1}>
+        <Text
+          style={[styles.habitText, { color: textPrimaryColor }, isDone && styles.habitDone]}
+          numberOfLines={isTravel ? 2 : 1}
+        >
           {habit.text}
         </Text>
         {timeText !== 'Tutto il giorno' && (

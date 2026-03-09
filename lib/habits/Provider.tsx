@@ -1,10 +1,10 @@
+import { canAskLocationPermission, getLocationPermissionStatusAsync, startGeofencingForRegions, stopGeofencingAsync } from '@/lib/location';
+import { loadPlaces } from '@/lib/places';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
 import { getHabitsAppearingOnDate } from './habitsForDate';
 import { Habit, HabitsState } from './schema';
-import { loadPlaces } from '@/lib/places';
-import { canAskLocationPermission, getLocationPermissionStatusAsync, startGeofencingForRegions, stopGeofencingAsync } from '@/lib/location';
 
 const STORAGE_HABITS = 'habitcheck_habits_v1';
 const STORAGE_HISTORY = 'habitcheck_history_v1';
@@ -100,8 +100,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   habitsRef.current = habits;
   const historyRef = useRef<HabitsState['history']>({});
   historyRef.current = history;
+  // Ora di reset effettiva per il ciclo corrente (usata per getDay / reset automatici)
   const dayResetTimeRef = useRef<string>('00:00');
-  dayResetTimeRef.current = dayResetTime;
+  // Ora di reset configurata dall'utente (che potrà valere da oggi o da domani a seconda del caso)
+  const dayResetConfiguredRef = useRef<string>('00:00');
 
   // Load persisted state with robust error handling
   useEffect(() => {
@@ -133,6 +135,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         }
 
         const effectiveResetTime = rawDayResetTime || '00:00';
+        // All'avvio, reset effettivo e configurato coincidono
+        dayResetTimeRef.current = effectiveResetTime;
+        dayResetConfiguredRef.current = effectiveResetTime;
+        setDayResetTimeState(effectiveResetTime);
         const today = getLogicalDayKey(new Date(), effectiveResetTime);
         if (rawLast !== today) {
           setLastResetDate(today);
@@ -140,11 +146,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         } else {
           setLastResetDate(rawLast);
         }
-
-        if (rawDayResetTime) {
-          setDayResetTimeState(rawDayResetTime);
-        }
-
         dateRef.current = today;
       } catch (error) {
         console.error('Failed to load data:', error);
@@ -225,6 +226,8 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       if (currentYmd !== dateRef.current) {
         resetToday();
         dateRef.current = currentYmd;
+        // Quando si apre un nuovo giorno logico, applica l'ora di reset configurata più recente
+        dayResetTimeRef.current = dayResetConfiguredRef.current;
       }
     };
 
@@ -474,11 +477,13 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     });
     setLastResetDate(today);
     await AsyncStorage.setItem(STORAGE_LASTRESET, today);
+    // Dopo un reset manuale, il nuovo ciclo usa l'ora di reset configurata più recente
+    dayResetTimeRef.current = dayResetConfiguredRef.current;
   }, []);
 
   const getDay = useCallback((date: Date | string) => {
-    return getLogicalDayKey(date, dayResetTime);
-  }, [dayResetTime]);
+    return getLogicalDayKey(date, dayResetTimeRef.current);
+  }, []);
 
   const setDayCompletion = useCallback((ymd: string, completedCount: number) => {
     setHistory((prev) => {
@@ -622,8 +627,50 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setDayResetTime = useCallback(async (time: string) => {
-    setDayResetTimeState(time);
-    await AsyncStorage.setItem(STORAGE_DAYRESETTIME, time);
+    // Nuova configurazione scelta dall'utente
+    const newTime = time;
+    const [nh, nm] = newTime.split(':').map(Number);
+    const newMinutes = nh * 60 + nm;
+
+    // Reset effettivo attuale (usato per il giorno logico corrente)
+    const oldTime = dayResetTimeRef.current;
+    const [oh, om] = oldTime.split(':').map(Number);
+    const oldMinutes = oh * 60 + om;
+
+    // Ora attuale in minuti (timezone app)
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(now);
+    const curH = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    const curM = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+    const currentMinutes = curH * 60 + curM;
+
+    // Applica le regole descritte dall'utente:
+    // - Se siamo PRIMA del vecchio reset:
+    //   - Se il nuovo orario è dopo adesso -> vale già per oggi.
+    //   - Se il nuovo orario è prima di adesso -> vale solo da domani.
+    // - Se siamo DOPO il vecchio reset: il nuovo orario vale solo da domani.
+    let effectiveForToday = oldTime;
+    if (currentMinutes < oldMinutes) {
+      if (newMinutes > currentMinutes) {
+        // Caso tipo: vecchio 22:00, ora 20:00, nuovo 21:00 -> oggi si chiude alle 21:00
+        effectiveForToday = newTime;
+      } else {
+        // Caso tipo: vecchio 22:00, ora 20:00, nuovo 19:00 -> oggi resta 22:00
+        effectiveForToday = oldTime;
+      }
+    } else {
+      // Vecchio reset già passato (giorno chiuso): nuovo vale dal prossimo giorno
+      effectiveForToday = oldTime;
+    }
+
+    // Aggiorna configurazione e reset effettivo
+    setDayResetTimeState(newTime);
+    dayResetConfiguredRef.current = newTime;
+    dayResetTimeRef.current = effectiveForToday;
+
+    await AsyncStorage.setItem(STORAGE_DAYRESETTIME, newTime);
   }, []);
 
   const resetStorage = useCallback(async () => {

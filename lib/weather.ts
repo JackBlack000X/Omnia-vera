@@ -137,7 +137,9 @@ async function setCachedWeather(cache: WeatherCache): Promise<void> {
   await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(cache));
 }
 
-export async function fetchWeather(): Promise<WeatherDay[] | null> {
+export async function fetchWeather(
+  coordsOverride?: { latitude: number; longitude: number }
+): Promise<WeatherDay[] | null> {
   // Check cache first (valid for 3 hours)
   const cached = await getCachedWeather();
   if (cached && Date.now() - cached.fetchedAt < 3 * 60 * 60 * 1000) {
@@ -147,7 +149,7 @@ export async function fetchWeather(): Promise<WeatherDay[] | null> {
     if (validDays.length > 0) return validDays;
   }
 
-  const coords = await getCoordinates();
+  const coords = coordsOverride ?? (await getCoordinates());
   if (!coords) return cached?.days ?? null;
 
   try {

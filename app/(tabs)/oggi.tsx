@@ -2,15 +2,16 @@ import DraggableEvent from '@/components/oggi/DraggableEvent';
 import { THEME } from '@/constants/theme';
 import { isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
+import type { Habit } from '@/lib/habits/schema';
 import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
 import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
 import { BASE_VERTICAL_OFFSET, isLightColor, LEFT_MARGIN, minutesToTime, OggiEvent, toMinutes } from '@/lib/oggi/oggiHelpers';
 import { useTimelineSettings } from '@/lib/oggi/useTimelineSettings';
 import { useWeather } from '@/lib/oggi/useWeather';
 import { useAppTheme } from '@/lib/theme-context';
-import { weatherCodeToColor, weatherCodeToIcon } from '@/lib/weather';
+import { FALLBACK_CITIES, fetchWeather, weatherCodeToColor, weatherCodeToIcon, WeatherDay } from '@/lib/weather';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, LayoutChangeEvent, Modal, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -40,16 +41,25 @@ function formatDateLong(date: Date, tz: string): string {
   }
 }
 
+function shortPlaceLabel(name: string | null | undefined): string {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return '';
+  const first = trimmed.split(',')[0];
+  return first ? first.trim() : trimmed;
+}
+
 export default function OggiScreen() {
   const { habits, getDay, setTimeOverrideRange, updateScheduleFromDate } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
+  const { ymd } = useLocalSearchParams<{ ymd?: string }>();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
   
   const [showSettings, setShowSettings] = useState(false);
   const { windowStart, setWindowStart, windowEnd, setWindowEnd, visibleHours, setVisibleHours, dragMode, setDragMode } = useTimelineSettings();
-  const { todayWeather } = useWeather(currentDate);
+  const { todayWeather: baseTodayWeather } = useWeather(currentDate);
+  const [travelTodayWeather, setTravelTodayWeather] = useState<WeatherDay | null>(null);
 
   const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
   const [pendingEventPositions, setPendingEventPositions] = useState<Record<string, number>>({});
@@ -88,7 +98,7 @@ export default function OggiScreen() {
     registerForPushNotificationsAsync();
   }, []);
 
-  // Sync notifications for today's habits
+  // Sync notifications for today's habits (solo eventi "normali", non i viaggi)
   useEffect(() => {
     (async () => {
       // Only schedule notifications if we are looking at today
@@ -97,7 +107,7 @@ export default function OggiScreen() {
       await cancelAllScheduledNotifications();
       
       const now = new Date();
-      for (const ev of timedEvents) {
+      for (const ev of layoutEvents) {
         if (ev.isAllDay) continue;
         
         const [h, m] = ev.startTime.split(':').map(Number);
@@ -118,7 +128,7 @@ export default function OggiScreen() {
         }
       }
     })();
-  }, [timedEvents, currentDate]);
+  }, [layoutEvents, currentDate]);
 
   const today = getDay(currentDate);
   const todayDate = useMemo(() => formatDateLong(currentDate, TZ), [currentDate]);
@@ -157,17 +167,133 @@ export default function OggiScreen() {
     newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1));
     setCurrentDate(newDate);
     hasAutoScrolled.current = false;
+    setTravelTodayWeather(null);
   };
 
   const weekday = useMemo(() => currentDate.getDay(), [currentDate]);
   const dayOfMonth = useMemo(() => currentDate.getDate(), [currentDate]);
   const monthIndex1 = useMemo(() => currentDate.getMonth() + 1, [currentDate]);
 
+  // -- Meteo collegato ai viaggi --
+  useEffect(() => {
+    let cancelled = false;
+
+    const compute = async () => {
+      const selectedYmd = getDay(currentDate);
+      // Trova un viaggio "attivo" per questa data
+      const travels = habits.filter(
+        (h: Habit) =>
+          h.tipo === 'viaggio' &&
+          h.travel &&
+          h.travel.destinazioneNome &&
+          h.travel.giornoPartenza &&
+          selectedYmd >= h.travel.giornoPartenza &&
+          (!h.travel.giornoRitorno || selectedYmd <= h.travel.giornoRitorno)
+      ) as Habit[];
+
+      if (travels.length === 0) {
+        if (!cancelled) setTravelTodayWeather(null);
+        return;
+      }
+
+      // Se ce ne sono più di uno, prendi quello con giornoPartenza più vicino
+      travels.sort((a, b) => {
+        const da = a.travel!.giornoPartenza;
+        const db = b.travel!.giornoPartenza;
+        return da < db ? -1 : da > db ? 1 : 0;
+      });
+
+      const activeTravel = travels[0]!;
+      const destName = activeTravel.travel!.destinazioneNome.trim().toLowerCase();
+
+      // Mappa destinazione su una città nota (FALLBACK_CITIES contiene Zurigo, ecc.)
+      const city = FALLBACK_CITIES.find(c =>
+        c.name.toLowerCase().includes(destName) || destName.includes(c.name.toLowerCase())
+      );
+
+      if (!city) {
+        if (!cancelled) setTravelTodayWeather(null);
+        return;
+      }
+
+      const days = await fetchWeather({
+        latitude: city.latitude,
+        longitude: city.longitude,
+      } as any);
+      if (!days || cancelled) return;
+
+      const match = days.find(d => d.date === selectedYmd) ?? null;
+      if (!cancelled) setTravelTodayWeather(match);
+    };
+
+    compute();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDate, habits, getDay]);
+
   const { timedEvents, allDayEvents } = useMemo(() => {
     const items: OggiEvent[] = [];
     const allDay: OggiEvent[] = [];
     
     for (const h of habits) {
+      // Viaggi: gestiti manualmente con andata/ritorno nella timeline
+      if (h.tipo === 'viaggio' && h.travel) {
+        const travel = h.travel;
+        const selectedYmd = getDay(currentDate);
+        const color = h.color ?? '#3b82f6';
+
+        // Andata nel giorno di partenza
+        if (selectedYmd === travel.giornoPartenza) {
+          const start = travel.orarioPartenza;
+          const finalEnd = travel.arrivoGiornoDopo ? '24:00' : travel.orarioArrivo;
+          const rawFrom = travel.partenzaTipo === 'attuale'
+            ? (travel.partenzaNome || 'Qui')
+            : (travel.partenzaNome || '').trim() || 'Partenza';
+          const rawTo = (travel.destinazioneNome || '').trim() || 'Destinazione';
+          const fromLabel = shortPlaceLabel(rawFrom) || rawFrom;
+          const toLabel = shortPlaceLabel(rawTo) || rawTo;
+
+          items.push({
+            id: `${h.id}-out`,
+            title: `${fromLabel} ↓ ${toLabel}`,
+            startTime: start,
+            endTime: finalEnd,
+            isAllDay: false,
+            color,
+            createdAt: h.createdAt,
+            tipo: h.tipo,
+          });
+        }
+
+        // Ritorno nel giorno di ritorno (se impostato)
+        if (travel.giornoRitorno && selectedYmd === travel.giornoRitorno) {
+          const start = travel.orarioPartenzaRitorno ?? travel.orarioPartenza;
+          const finalEnd = travel.arrivoRitornoGiornoDopo ? '24:00' : (travel.orarioArrivoRitorno ?? travel.orarioArrivo);
+          const rawFrom = (travel.destinazioneNome || '').trim() || 'Destinazione';
+          const rawTo = travel.partenzaTipo === 'attuale'
+            ? (travel.partenzaNome || 'Qui')
+            : (travel.partenzaNome || '').trim() || 'Partenza';
+          const fromLabel = shortPlaceLabel(rawFrom) || rawFrom;
+          const toLabel = shortPlaceLabel(rawTo) || rawTo;
+
+          items.push({
+            id: `${h.id}-ret`,
+            title: `${fromLabel} ↓ ${toLabel}`,
+            startTime: start,
+            endTime: finalEnd,
+            isAllDay: false,
+            color,
+            createdAt: h.createdAt,
+            tipo: h.tipo,
+          });
+        }
+
+        // Nessun altro rendering standard per i viaggi
+        continue;
+      }
+
       const selectedYmd = getDay(currentDate);
       const hasOverrideForSelected = !!h.timeOverrides?.[selectedYmd];
       if (h.createdAt && selectedYmd < h.createdAt && !hasOverrideForSelected) continue;
@@ -211,7 +337,7 @@ export default function OggiScreen() {
       const title = h.text;
 
       if (isAllDayMarker || (!start && !end)) {
-        allDay.push({ id: h.id, title, startTime: '00:00', endTime: '24:00', isAllDay: true, color, createdAt: h.createdAt });
+        allDay.push({ id: h.id, title, startTime: '00:00', endTime: '24:00', isAllDay: true, color, createdAt: h.createdAt, tipo: h.tipo });
       } else if (start) {
         let finalEnd = end;
         if (!end) {
@@ -221,15 +347,21 @@ export default function OggiScreen() {
         } else if (end === '23:59') {
           finalEnd = '24:00';
         }
-        items.push({ id: h.id, title, startTime: start, endTime: finalEnd!, isAllDay: false, color, createdAt: h.createdAt });
+        items.push({ id: h.id, title, startTime: start, endTime: finalEnd!, isAllDay: false, color, createdAt: h.createdAt, tipo: h.tipo });
       } else if (!start && end) {
         const [eh] = end.split(':').map(Number);
         const startHour = Math.max(0, eh - 1);
-        items.push({ id: h.id, title, startTime: `${String(startHour).padStart(2, '0')}:00`, endTime: end === '23:59' ? '24:00' : end, isAllDay: false, color, createdAt: h.createdAt });
+        items.push({ id: h.id, title, startTime: `${String(startHour).padStart(2, '0')}:00`, endTime: end === '23:59' ? '24:00' : end, isAllDay: false, color, createdAt: h.createdAt, tipo: h.tipo });
       }
     }
     return { timedEvents: items, allDayEvents: allDay };
   }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1]);
+
+  // Eventi usati per layout/drag/colonne: escludiamo i viaggi, che hanno una colonna visiva a parte
+  const layoutEvents = useMemo(
+    () => timedEvents.filter(ev => ev.tipo !== 'viaggio'),
+    [timedEvents]
+  );
 
   // Initialise column rank for any task that doesn't yet have one.
   // Rank determines left-to-right order: lower rank = leftmost column.
@@ -239,7 +371,7 @@ export default function OggiScreen() {
   // making it permanently rightmost until another task is moved after it.
   useEffect(() => {
     const ranks = columnRankRef.current;
-    const newTasks = timedEvents.filter(ev => ranks[ev.id] === undefined);
+    const newTasks = layoutEvents.filter(ev => ranks[ev.id] === undefined);
     if (newTasks.length === 0) return;
 
     // Sort new tasks by createdAt then id to assign ranks in creation order
@@ -256,7 +388,7 @@ export default function OggiScreen() {
       ranks[ev.id] = next++;
     }
     rankCounterRef.current = next - 1;
-  }, [timedEvents]);
+  }, [layoutEvents]);
 
   // Reset all-day section height when there are no all-day events so hourHeight is unaffected
   useEffect(() => {
@@ -265,6 +397,17 @@ export default function OggiScreen() {
 
   // Auto-scroll to current time on mount / when layout changes
   const hasAutoScrolled = useRef(false);
+
+  useEffect(() => {
+    if (typeof ymd === 'string') {
+      const parsed = new Date(`${ymd}T12:00:00.000Z`);
+      if (!Number.isNaN(parsed.getTime())) {
+        setCurrentDate(parsed);
+        hasAutoScrolled.current = false;
+      }
+    }
+  }, [ymd]);
+
   useEffect(() => {
     if (hasAutoScrolled.current) return;
     if (!hourHeight || hourHeight <= 0) return;
@@ -443,7 +586,7 @@ export default function OggiScreen() {
   // --- LAYOUT MANAGEMENT ---
   
   const layoutById = useMemo<Record<string, LayoutInfo>>(() => {
-    const events = timedEvents.map(e => {
+    const events = layoutEvents.map(e => {
       const pendingStart = pendingEventPositions[e.id];
       const startM = pendingStart !== undefined ? pendingStart : toMinutes(e.startTime);
       const origS = toMinutes(e.startTime);
@@ -474,13 +617,13 @@ export default function OggiScreen() {
     } 
     
     return calculateLayoutCallback(events, null);
-  }, [timedEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayoutCallback]);
+  }, [layoutEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayoutCallback]);
 
   // Tasks entirely outside the visible window — used to color first/last hour lines
   const { overflowBefore, overflowAfter } = useMemo(() => {
     const before: OggiEvent[] = [];
     const after: OggiEvent[] = [];
-    for (const ev of timedEvents) {
+    for (const ev of layoutEvents) {
       const s = pendingEventPositions[ev.id] ?? toMinutes(ev.startTime);
       const origEnd = toMinutes(ev.endTime);
       const e = pendingEventPositions[ev.id] !== undefined
@@ -501,19 +644,19 @@ export default function OggiScreen() {
     before.sort(sortByStartThenCol);
     after.sort(sortByStartThenCol);
     return { overflowBefore: before, overflowAfter: after };
-  }, [timedEvents, windowStartMin, windowEndMin, pendingEventPositions, layoutById]);
+  }, [layoutEvents, windowStartMin, windowEndMin, pendingEventPositions, layoutById]);
 
   const handleDragStart = useCallback((id: string) => {
       stableLayoutRef.current = layoutById;
     
     // Calculate initial overlaps when drag starts
     const initialOv = new Set<string>();
-    for (let i = 0; i < timedEvents.length; i++) {
-      const e1 = timedEvents[i];
+    for (let i = 0; i < layoutEvents.length; i++) {
+      const e1 = layoutEvents[i];
       const s1 = toMinutes(e1.startTime);
       const end1 = toMinutes(e1.endTime);
-      for (let j = i + 1; j < timedEvents.length; j++) {
-        const e2 = timedEvents[j];
+      for (let j = i + 1; j < layoutEvents.length; j++) {
+        const e2 = layoutEvents[j];
         const s2 = toMinutes(e2.startTime);
         const end2 = toMinutes(e2.endTime);
         if (Math.max(s1, s2) < Math.min(end1, end2)) {
@@ -523,7 +666,7 @@ export default function OggiScreen() {
       }
     }
     initialOverlapsRef.current = initialOv;
-  }, [layoutById, timedEvents]);
+  }, [layoutById, layoutEvents]);
 
   const handleDragEnd = useCallback(() => {
       setDraggingEventId(null);
@@ -531,7 +674,7 @@ export default function OggiScreen() {
   }, [stopAutoScroll]);
   
   const calculateDragLayout = useCallback((draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean): { width: number; left: number } => {
-    const draggedEvent = timedEvents.find(e => e.id === draggedEventId);
+    const draggedEvent = layoutEvents.find(e => e.id === draggedEventId);
     if (!draggedEvent) {
       const screenWidth = Dimensions.get('window').width;
       const availableWidth = screenWidth - LEFT_MARGIN;
@@ -549,7 +692,7 @@ export default function OggiScreen() {
       endTime: minutesToTime(newEndMinutes),
     };
 
-    const events = timedEvents.map(e => {
+    const events = layoutEvents.map(e => {
       if (e.id === draggedEventId) return {
           ...tempDraggedEvent,
           s: newStartMinutes,
@@ -584,7 +727,7 @@ export default function OggiScreen() {
       width: (colWidth * draggedLayout.span) - 2,
       left,
     };
-  }, [timedEvents, layoutById, calculateLayoutCallback, lastMovedEventId]);
+  }, [layoutEvents, layoutById, calculateLayoutCallback, lastMovedEventId]);
 
   const getEventStyle = (event: OggiEvent) => {
     const originalStart = toMinutes(event.startTime);
@@ -622,6 +765,35 @@ export default function OggiScreen() {
       width,
     };
   };
+
+  const getTravelStripStyle = (event: OggiEvent) => {
+    const startM = toMinutes(event.startTime);
+    const endM = toMinutes(event.endTime);
+
+    if (endM <= windowStartMin || startM >= windowEndMin) return null;
+
+    const visibleStart = Math.max(startM, windowStartMin);
+    const visibleEnd = Math.min(endM, windowEndMin);
+
+    // Posiziona la striscia un po' oltre le linee orarie:
+    // leggermente sopra l'inizio e sotto la fine, così non coincide
+    // esattamente con lo spessore della linea grigia.
+    const baseTop = ((visibleStart - windowStartMin) / 60) * hourHeight + BASE_VERTICAL_OFFSET;
+    const durationMin = visibleEnd - visibleStart;
+    const baseHeight = (durationMin / 60) * hourHeight;
+    const top = baseTop - 8;
+    const height = Math.max(14, baseHeight + 16);
+
+    // Allinea il bordo destro del viaggio alla timeline lasciando
+    // lo stesso piccolo gap che c'è tra le colonne delle task (~2px)
+    // Leggermente staccato dal bordo sinistro (5px), mantenendo lo stesso bordo destro.
+    return {
+      top,
+      height,
+      left: 5,
+      width: LEFT_MARGIN - 7,
+    };
+  };
   
   const getCurrentTimeTop = () => {
      const now = currentTime;
@@ -629,6 +801,8 @@ export default function OggiScreen() {
      if (min < windowStartMin || min > windowEndMin) return null;
      return ((min - windowStartMin) / 60) * hourHeight;
   };
+
+  const todayWeather = travelTodayWeather ?? baseTodayWeather;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -741,8 +915,61 @@ export default function OggiScreen() {
                 );
              })}
 
-             {/* Events */}
-             {timedEvents.map(e => {
+             {/* Travel strip in hours column */}
+             {timedEvents.filter(e => e.tipo === 'viaggio').map(e => {
+               const style = getTravelStripStyle(e);
+               if (!style) return null;
+               const bg = e.color;
+               const light = isLightColor(bg);
+             const lines = e.title.split('\n');
+               return (
+               <View
+                 key={e.id}
+                 style={[
+                   styles.travelStrip,
+                   {
+                     top: style.top,
+                     height: style.height,
+                     left: style.left,
+                     width: style.width,
+                   },
+                 ]}
+               >
+                {/* Background semi-trasparente, testo pieno */}
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    borderRadius: 6,
+                    backgroundColor: bg,
+                    opacity: 0.6,
+                  }}
+                />
+                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                   {lines.map((line, idx) => (
+                     <Text
+                       key={idx}
+                       style={[
+                         styles.travelStripText,
+                         { color: light ? '#000' : '#FFF' },
+                       ]}
+                       numberOfLines={1}
+                       ellipsizeMode="clip"
+                     >
+                       {line}
+                     </Text>
+                   ))}
+                 </View>
+               </View>
+               );
+             })}
+
+             {/* Normal timed events (tasks/abitudini/eventi) */}
+             {timedEvents.filter(e => e.tipo !== 'viaggio').map(e => {
                const style = getEventStyle(e);
                if (!style) return null;
                const bg = e.color;
@@ -1001,6 +1228,19 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     height: 3,
+  },
+  travelStrip: {
+    position: 'absolute',
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    justifyContent: 'center',
+  },
+  travelStripText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 12,
   },
   
   // Events

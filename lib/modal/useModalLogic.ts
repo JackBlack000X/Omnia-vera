@@ -1,6 +1,7 @@
 import { useHabits } from '@/lib/habits/Provider';
-import { Habit } from '@/lib/habits/schema';
+import { Habit, TravelMeta } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
+import { getFallbackCity } from '@/lib/weather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -19,12 +20,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const validFolder = (folder && folder !== '__oggi__' && folder !== '__tutte__') ? folder : null;
   const [selectedFolder, setSelectedFolder] = useState<string | null>(existing?.folder ?? validFolder ?? null);
   const [availableFolders, setAvailableFolders] = useState<string[]>([]);
-  const [tipo, setTipo] = useState<'task' | 'abitudine' | 'evento'>(existing?.tipo ?? 'task');
+  const [tipo, setTipo] = useState<'task' | 'abitudine' | 'evento' | 'viaggio'>(existing?.tipo ?? 'task');
   useEffect(() => {
     if (existing?.tipo) setTipo(existing.tipo);
   }, [existing?.tipo]);
 
-  const inferredExistingTipo: 'task' | 'abitudine' | 'evento' = (existing?.tipo ?? 'task');
+  const inferredExistingTipo: 'task' | 'abitudine' | 'evento' | 'viaggio' = (existing?.tipo ?? 'task');
   const todayForInit = useMemo(() => new Date(), []);
   const todayYmdForInit = useMemo(() => getDay(todayForInit), [getDay, todayForInit]);
   const todayWeekdayForInit = useMemo(() => todayForInit.getDay(), [todayForInit]);
@@ -67,6 +68,21 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
   const [locationRule, setLocationRule] = useState<Habit['locationRule'] | null>(existing?.locationRule ?? null);
 
+  // Stato specifico per i viaggi
+  const [travelMezzo, setTravelMezzo] = useState<TravelMeta['mezzo']>(existing?.travel?.mezzo ?? 'aereo');
+  const [travelPartenzaTipo, setTravelPartenzaTipo] = useState<TravelMeta['partenzaTipo']>(existing?.travel?.partenzaTipo ?? 'attuale');
+  const [travelPartenzaNome, setTravelPartenzaNome] = useState<string>(existing?.travel?.partenzaNome ?? '');
+  const [travelDestinazioneNome, setTravelDestinazioneNome] = useState<string>(existing?.travel?.destinazioneNome ?? '');
+  const [travelGiornoPartenza, setTravelGiornoPartenza] = useState<string>(existing?.travel?.giornoPartenza ?? todayYmdForInit);
+  const [travelGiornoRitorno, setTravelGiornoRitorno] = useState<string | undefined>(existing?.travel?.giornoRitorno);
+  const [travelOrarioPartenza, setTravelOrarioPartenza] = useState<string>(existing?.travel?.orarioPartenza ?? '09:00');
+  const [travelOrarioArrivo, setTravelOrarioArrivo] = useState<string>(existing?.travel?.orarioArrivo ?? '10:00');
+  const [travelArrivoGiornoDopo, setTravelArrivoGiornoDopo] = useState<boolean>(Boolean(existing?.travel?.arrivoGiornoDopo));
+  const [travelOrarioPartenzaRitorno, setTravelOrarioPartenzaRitorno] = useState<string>(existing?.travel?.orarioPartenzaRitorno ?? existing?.travel?.orarioPartenza ?? '17:00');
+  const [travelOrarioArrivoRitorno, setTravelOrarioArrivoRitorno] = useState<string>(existing?.travel?.orarioArrivoRitorno ?? existing?.travel?.orarioArrivo ?? '18:00');
+  const [travelArrivoRitornoGiornoDopo, setTravelArrivoRitornoGiornoDopo] = useState<boolean>(Boolean(existing?.travel?.arrivoRitornoGiornoDopo));
+  const [currentCityName, setCurrentCityName] = useState<string | null>(null);
+
   useEffect(() => {
     (async () => {
       try {
@@ -89,8 +105,20 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           }
         }
       } catch {}
+      // Recupera il nome della città corrente/fallback usata per il meteo
+      try {
+        const city = await getFallbackCity();
+        if (city?.name) setCurrentCityName(city.name);
+      } catch {}
     })();
   }, []);
+
+  const shortenPlaceName = (value: string | null | undefined): string => {
+    const trimmed = (value ?? '').trim();
+    if (!trimmed) return '';
+    const first = trimmed.split(',')[0];
+    return first ? first.trim() : trimmed;
+  };
 
   // Confirmation modal state
   const [confirmationModal, setConfirmationModal] = useState<{
@@ -280,7 +308,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   // otherwise tasks created from Oggi appear as "Nessun orario" in edit.
   useEffect(() => {
     if (!existing) return;
-    const exTipo: 'task' | 'abitudine' | 'evento' = (existing.tipo ?? 'task');
+    const exTipo: 'task' | 'abitudine' | 'evento' | 'viaggio' = (existing.tipo ?? 'task');
     if (exTipo !== 'task') return;
 
     const hasAnyOverrides = Object.keys(existing.timeOverrides ?? {}).length > 0;
@@ -560,7 +588,19 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
 
     if (type === 'new' || (type === 'edit' && existing)) {
-      const t = text.trim();
+      let t = text.trim();
+      if (tipo === 'viaggio') {
+        const rawFrom =
+          travelPartenzaTipo === 'attuale'
+            ? (currentCityName || 'Qui')
+            : (travelPartenzaNome || '').trim();
+        const rawTo = (travelDestinazioneNome || '').trim();
+        const from = shortenPlaceName(rawFrom);
+        const to = shortenPlaceName(rawTo);
+        // In Tasks il titolo resta con la freccia → (come prima)
+        if (from && to) t = `${from} → ${to}`;
+        else if (to) t = to;
+      }
       if (t.length <= 100) {
         // New task "Tutto il giorno" + Singola: create with timeOverrides/schedule in one go so it persists
         const isNewAllDaySingle = type === 'new' && mode === 'allDay' && (tipo !== 'task' || taskHasTime) && freq === 'single';
@@ -576,7 +616,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           // Single update to avoid React batching overwriting tipo
           setHabits(prev => prev.map(h => {
             if (h.id !== existing.id) return h;
-            return {
+            const base: Habit = {
               ...h,
               text: t,
               color,
@@ -584,9 +624,31 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               tipo,
               locationRule: locationRule ?? undefined,
             };
+            if (tipo === 'viaggio') {
+              const storedPartenzaNome =
+                travelPartenzaTipo === 'personalizzata'
+                  ? travelPartenzaNome.trim() || undefined
+                  : currentCityName || h.travel?.partenzaNome;
+              const travel: TravelMeta = {
+                mezzo: travelMezzo,
+                partenzaTipo: travelPartenzaTipo,
+                partenzaNome: storedPartenzaNome,
+                destinazioneNome: travelDestinazioneNome.trim(),
+                giornoPartenza: travelGiornoPartenza,
+                giornoRitorno: travelGiornoRitorno,
+                orarioPartenza: travelOrarioPartenza,
+                orarioArrivo: travelOrarioArrivo,
+                arrivoGiornoDopo: travelArrivoGiornoDopo,
+                orarioPartenzaRitorno: travelOrarioPartenzaRitorno,
+                orarioArrivoRitorno: travelOrarioArrivoRitorno,
+                arrivoRitornoGiornoDopo: travelArrivoRitornoGiornoDopo,
+              };
+              return { ...base, travel };
+            }
+            return base;
           }));
         }
-        // Se è una task temporizzata, aggiungi anche la programmazione
+        // Se è una task/evento/viaggio temporizzato, aggiungi anche la programmazione
         if (mode === 'timed' && (tipo !== 'task' || taskHasTime)) {
           const time = minutesToHhmm(startMin) as string;
           // Se c'è orario di inizio ma nessuna fine, salva fine = inizio + 1 ora
@@ -829,13 +891,38 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           });
         }
         // Persist explicit flags so the modal restores them correctly on re-open
-        setHabits(prev => prev.map(h => h.id === newHabitId ? {
-          ...h,
-          isAllDay: mode === 'allDay',
-          habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
-          tipo,
-          locationRule: locationRule ?? undefined,
-        } : h));
+        setHabits(prev => prev.map(h => {
+          if (h.id !== newHabitId) return h;
+          const base: Habit = {
+            ...h,
+            isAllDay: mode === 'allDay',
+            habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
+            tipo,
+            locationRule: locationRule ?? undefined,
+          };
+          if (tipo === 'viaggio') {
+            const storedPartenzaNome =
+              travelPartenzaTipo === 'personalizzata'
+                ? travelPartenzaNome.trim() || undefined
+                : currentCityName || h.travel?.partenzaNome;
+            const travel: TravelMeta = {
+              mezzo: travelMezzo,
+              partenzaTipo: travelPartenzaTipo,
+              partenzaNome: storedPartenzaNome,
+              destinazioneNome: travelDestinazioneNome.trim(),
+              giornoPartenza: travelGiornoPartenza,
+              giornoRitorno: travelGiornoRitorno,
+              orarioPartenza: travelOrarioPartenza,
+              orarioArrivo: travelOrarioArrivo,
+              arrivoGiornoDopo: travelArrivoGiornoDopo,
+              orarioPartenzaRitorno: travelOrarioPartenzaRitorno,
+              orarioArrivoRitorno: travelOrarioArrivoRitorno,
+              arrivoRitornoGiornoDopo: travelArrivoRitornoGiornoDopo,
+            };
+            return { ...base, travel };
+          }
+          return base;
+        }));
       }
     } else if (type === 'rename' && existing) {
       const t = text.trim();
@@ -1133,5 +1220,30 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     close,
     closeConfirmationModal,
     setLocationRule,
+    // Viaggio
+    travelMezzo,
+    setTravelMezzo,
+    travelPartenzaTipo,
+    setTravelPartenzaTipo,
+    travelPartenzaNome,
+    setTravelPartenzaNome,
+    travelDestinazioneNome,
+    setTravelDestinazioneNome,
+    travelGiornoPartenza,
+    setTravelGiornoPartenza,
+    travelGiornoRitorno,
+    setTravelGiornoRitorno,
+    travelOrarioPartenza,
+    setTravelOrarioPartenza,
+    travelOrarioArrivo,
+    setTravelOrarioArrivo,
+    travelArrivoGiornoDopo,
+    setTravelArrivoGiornoDopo,
+    travelOrarioPartenzaRitorno,
+    setTravelOrarioPartenzaRitorno,
+    travelOrarioArrivoRitorno,
+    setTravelOrarioArrivoRitorno,
+    travelArrivoRitornoGiornoDopo,
+    setTravelArrivoRitornoGiornoDopo,
   };
 }

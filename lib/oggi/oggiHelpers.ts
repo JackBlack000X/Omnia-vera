@@ -8,6 +8,7 @@ export type OggiEvent = {
   isAllDay: boolean;
   color: string;
   createdAt?: string;
+  tipo?: 'task' | 'abitudine' | 'evento' | 'viaggio';
 };
 
 // -- Constants for Layout --
