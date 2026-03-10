@@ -868,38 +868,13 @@ export default function ModalScreen() {
                     };
 
                     return (
-                      <View style={{ marginTop: 8, position: 'relative' }}>
-                        <TouchableOpacity
-                          onPress={() => m.setTravelGiornoRitorno(undefined)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          style={{
-                            position: 'absolute',
-                            right: 8,
-                            bottom: 276,
-                            zIndex: 1,
-                          }}
-                        >
-                          <View
-                            style={{
-                              width: 32,
-                              height: 32,
-                              borderRadius: 16,
-                              backgroundColor: '#ff3b30',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Ionicons name="close" size={16} color="#ffffff" />
-                          </View>
-                        </TouchableOpacity>
+                      <View style={{ marginTop: 8 }}>
                         <View
                           style={[
                             {
                               flexDirection: 'row',
-                              gap: 12,
-                              justifyContent: 'center',
-                              alignItems: 'center',
-                              flexWrap: 'wrap',
+                              alignItems: 'flex-end',
+                              justifyContent: 'space-between',
                             },
                             isToday && {
                               borderWidth: 2,
@@ -910,6 +885,16 @@ export default function ModalScreen() {
                             },
                           ]}
                         >
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              gap: 12,
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              flex: 1,
+                            }}
+                          >
                           <View style={{ alignItems: 'center' }}>
                             <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1008,6 +993,25 @@ export default function ModalScreen() {
                               </HoldableStepperButton>
                             </View>
                           </View>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => m.setTravelGiornoRitorno(undefined)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={{ marginRight: 8 }}
+                          >
+                            <View
+                              style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 16,
+                                backgroundColor: '#ff3b30',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <Ionicons name="close" size={16} color="#ffffff" />
+                            </View>
+                          </TouchableOpacity>
                         </View>
 
                         {/* Orari di ritorno: Partenza / Arrivo separati */}
