@@ -244,8 +244,7 @@ export default function ModalScreen() {
 
     // Stesso giorno o giorno dopo con arrivo overnight: spinge avanti partenza/arrivo ritorno.
     // Se supera 23:55 → avanza giorno ritorno e riparte da 00:00.
-    const currentReturnDep = hhmmToMinutesSafe(m.travelOrarioPartenzaRitorno, 17 * 60)
-      + (m.travelPartenzaRitornoGiornoDopo ? 24 * 60 : 0);
+    const currentReturnDep = hhmmToMinutesSafe(m.travelOrarioPartenzaRitorno, 17 * 60);
     if (arriveOutMin >= currentReturnDep) {
       // Partenza ritorno = arrivo andata (stesso orario), arrivo ritorno = +5
       if (arriveOutMin >= 24 * 60) {
@@ -284,7 +283,6 @@ export default function ModalScreen() {
     m.travelOrarioPartenza,
     m.travelOrarioArrivo,
     m.travelOrarioPartenzaRitorno,
-    m.travelPartenzaRitornoGiornoDopo,
   ]);
 
   return (
@@ -698,7 +696,7 @@ export default function ModalScreen() {
                     const dR = new Date(rDate.year, rDate.month - 1, rDate.day);
                     const dd = Math.round((dR.getTime() - dS.getTime()) / (1000 * 60 * 60 * 24));
                     const retDepMin = hhmmToMinutesSafe(m.travelOrarioPartenzaRitorno, 17 * 60);
-                    const absRetDep = dd * 24 * 60 + retDepMin + (m.travelPartenzaRitornoGiornoDopo ? 24 * 60 : 0);
+                    const absRetDep = dd * 24 * 60 + retDepMin;
                     if (newArrivalAbs < absRetDep) return;
                     // Partenza ritorno = arrivo andata (stesso orario), arrivo ritorno = +5
                     const relRetDep = newArrivalAbs - dd * 24 * 60;
@@ -743,7 +741,7 @@ export default function ModalScreen() {
                       m.setTravelArrivoGiornoDopo(false);
                       m.setTravelOrarioArrivo(minutesToHhmmSafe(capped));
                     }
-                    pushReturnIfNeeded(capped);
+                    if (capped !== endMin) pushReturnIfNeeded(capped);
                   };
 
                   const setEnd = (next: number) => {
@@ -1045,7 +1043,7 @@ export default function ModalScreen() {
                               m.travelOrarioPartenzaRitorno,
                               earliestReturnMin > 0 ? earliestReturnMin : 17 * 60
                             );
-                            const rawStartR = rawStartRToday + (m.travelPartenzaRitornoGiornoDopo ? 24 * 60 : 0);
+                            const rawStartR = rawStartRToday;
                             // Applica il vincolo solo nel calcolo locale; gli state update
                             // avvengono nelle funzioni setStartR/setEndR per evitare loop di render.
                             let baseStartR = Math.max(rawStartR, earliestReturnMin);
@@ -1057,37 +1055,25 @@ export default function ModalScreen() {
                             const baseEndR = Math.max(rawEndR, baseStartR + 5);
                             const startMinR = Math.min(baseStartR, baseEndR - 5);
                             const endMinR = Math.max(baseEndR, startMinR + 5);
-                            const startShownR = startMinR >= 24 * 60 ? (startMinR - 24 * 60) : startMinR;
-                            const startIsNextDayR = startMinR >= 24 * 60;
                             const endShownR = endMinR >= 24 * 60 ? (endMinR - 24 * 60) : endMinR;
                             const endIsNextDayR = endMinR >= 24 * 60;
 
                             const setStartR = (next: number) => {
                               const lowerBound = Math.max(earliestReturnMin, 0);
-                              const upperBound = endMinR - 5;
+                              const upperBound = Math.min(endMinR - 5, 24 * 60 - 5);
                               const clamped = Math.max(lowerBound, Math.min(upperBound, next));
                               if (clamped === startMinR) return;
-                              if (clamped >= 24 * 60) {
-                                m.setTravelPartenzaRitornoGiornoDopo(true);
-                                m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(clamped - 24 * 60));
-                              } else {
-                                m.setTravelPartenzaRitornoGiornoDopo(false);
-                                m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(clamped));
-                              }
+                              m.setTravelPartenzaRitornoGiornoDopo(false);
+                              m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(clamped));
                             };
 
                             const setEndR = (next: number) => {
                               const clamped = Math.max(5, Math.min(24 * 60 + (24 * 60 - 5), next));
-                              let nextStart = startMinR;
-                              if (clamped < startMinR + 5) {
-                                nextStart = Math.max(earliestReturnMin, clamped - 5);
-                                if (nextStart >= 24 * 60) {
-                                  m.setTravelPartenzaRitornoGiornoDopo(true);
-                                  m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(nextStart - 24 * 60));
-                                } else {
-                                  m.setTravelPartenzaRitornoGiornoDopo(false);
-                                  m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(nextStart));
-                                }
+                              if (clamped < endMinR) {
+                                // Scende: trascina giù anche la partenza mantenendo il gap
+                                const newStart = Math.max(earliestReturnMin, startMinR - (endMinR - clamped));
+                                m.setTravelPartenzaRitornoGiornoDopo(false);
+                                m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(newStart));
                               }
                               if (clamped >= 24 * 60) {
                                 m.setTravelArrivoRitornoGiornoDopo(true);
@@ -1106,7 +1092,7 @@ export default function ModalScreen() {
                                 <View style={styles.timeColumn}>
                                   <View style={styles.timeSection}>
                                     <Text style={styles.timeSectionTitle}>
-                                      Partenza (ritorno){startIsNextDayR ? ' (giorno dopo)' : ''}
+                                      Partenza (ritorno)
                                     </Text>
                                     <View style={styles.timePicker}>
                                       <View style={styles.timeControls}>
@@ -1115,7 +1101,7 @@ export default function ModalScreen() {
                                           <HoldableStepperButton onPress={() => setStartR(startMinR - 60)}>
                                             −
                                           </HoldableStepperButton>
-                                          <Text style={styles.timeValue}>{Math.floor(startShownR / 60)}</Text>
+                                          <Text style={styles.timeValue}>{Math.floor(startMinR / 60)}</Text>
                                           <HoldableStepperButton onPress={() => setStartR(startMinR + 60)}>
                                             +
                                           </HoldableStepperButton>
@@ -1127,7 +1113,7 @@ export default function ModalScreen() {
                                           <HoldableStepperButton onPress={() => setStartR(startMinR - 5)}>
                                             −
                                           </HoldableStepperButton>
-                                          <Text style={styles.timeValue}>{startShownR % 60}</Text>
+                                          <Text style={styles.timeValue}>{startMinR % 60}</Text>
                                           <HoldableStepperButton onPress={() => setStartR(startMinR + 5)}>
                                             +
                                           </HoldableStepperButton>

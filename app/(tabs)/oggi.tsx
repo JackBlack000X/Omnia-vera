@@ -251,6 +251,13 @@ export default function OggiScreen() {
         const selectedYmd = getDay(currentDate);
         const color = h.color ?? '#3b82f6';
 
+        // Helper: aggiunge 1 giorno a una stringa YYYY-MM-DD
+        const nextYmd = (ymd: string) => {
+          const d = new Date(ymd + 'T12:00:00.000Z');
+          d.setUTCDate(d.getUTCDate() + 1);
+          return d.toISOString().slice(0, 10);
+        };
+
         // Andata nel giorno di partenza
         if (selectedYmd === travel.giornoPartenza) {
           const start = travel.orarioPartenza;
@@ -274,8 +281,33 @@ export default function OggiScreen() {
           });
         }
 
-        // Ritorno nel giorno di ritorno (se impostato)
-        if (travel.giornoRitorno && selectedYmd === travel.giornoRitorno) {
+        // Continuazione andata il giorno dopo (se arrivoGiornoDopo)
+        if (travel.arrivoGiornoDopo && selectedYmd === nextYmd(travel.giornoPartenza)) {
+          const rawTo = (travel.destinazioneNome || '').trim() || 'Destinazione';
+          const toLabel = shortPlaceLabel(rawTo) || rawTo;
+          items.push({
+            id: `${h.id}-out-cont`,
+            title: `↓\n${toLabel}`,
+            startTime: '00:00',
+            endTime: travel.orarioArrivo,
+            isAllDay: false,
+            color,
+            createdAt: h.createdAt,
+            tipo: h.tipo,
+          });
+        }
+
+        // Ritorno nel giorno di ritorno (se impostato).
+        // Se partenzaRitornoGiornoDopo è true, la partenza del ritorno
+        // è il giorno successivo a giornoRitorno.
+        const ritornoPartenzaGiorno = (() => {
+          if (!travel.giornoRitorno) return null;
+          if (travel.partenzaRitornoGiornoDopo) {
+            return nextYmd(travel.giornoRitorno);
+          }
+          return travel.giornoRitorno;
+        })();
+        if (ritornoPartenzaGiorno && selectedYmd === ritornoPartenzaGiorno) {
           const start = travel.orarioPartenzaRitorno ?? travel.orarioPartenza;
           const finalEnd = travel.arrivoRitornoGiornoDopo ? '24:00' : (travel.orarioArrivoRitorno ?? travel.orarioArrivo);
           const rawFrom = (travel.destinazioneNome || '').trim() || 'Destinazione';
@@ -290,6 +322,24 @@ export default function OggiScreen() {
             title: `${fromLabel}\n↓\n${toLabel}`,
             startTime: start,
             endTime: finalEnd,
+            isAllDay: false,
+            color,
+            createdAt: h.createdAt,
+            tipo: h.tipo,
+          });
+        }
+
+        // Continuazione ritorno il giorno dopo (se arrivoRitornoGiornoDopo)
+        if (travel.arrivoRitornoGiornoDopo && ritornoPartenzaGiorno && selectedYmd === nextYmd(ritornoPartenzaGiorno)) {
+          const rawTo = travel.partenzaTipo === 'attuale'
+            ? (travel.partenzaNome || 'Qui')
+            : (travel.partenzaNome || '').trim() || 'Partenza';
+          const toLabel = shortPlaceLabel(rawTo) || rawTo;
+          items.push({
+            id: `${h.id}-ret-cont`,
+            title: `↓\n${toLabel}`,
+            startTime: '00:00',
+            endTime: travel.orarioArrivoRitorno ?? travel.orarioArrivo,
             isAllDay: false,
             color,
             createdAt: h.createdAt,
