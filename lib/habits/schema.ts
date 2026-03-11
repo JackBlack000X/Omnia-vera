@@ -8,6 +8,7 @@ export type HabitSchedule = {
   weeklyTimes?: Record<number, { start: string | null; end: string | null }>; // per-dow times
   monthlyTimes?: Record<number, { start: string | null; end: string | null }>; // per-day-of-month times
   repeatEndDate?: string | null; // 'YYYY-MM-DD' — last day of recurrence (inclusive)
+  repeatStartDate?: string | null; // 'YYYY-MM-DD' — first day of recurrence (inclusive)
 };
 
 export type TravelMeta = {

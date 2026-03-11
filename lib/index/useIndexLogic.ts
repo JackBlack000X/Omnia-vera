@@ -491,6 +491,10 @@ export function useIndexLogic() {
     return habits.filter((h) => {
       const hasOverrideForToday = !!h.timeOverrides?.[today];
       if (h.createdAt && today < h.createdAt && !hasOverrideForToday) return false;
+      const repeatStartDate = h.schedule?.repeatStartDate;
+      if (repeatStartDate && today < repeatStartDate && !hasOverrideForToday) return false;
+      const repeatEndDate = h.schedule?.repeatEndDate;
+      if (repeatEndDate && today > repeatEndDate && !hasOverrideForToday) return false;
       const isSingle =
         h.habitFreq === 'single' ||
         (!h.habitFreq &&

@@ -19,6 +19,10 @@ export function getHabitsAppearingOnDate(habits: Habit[], ymd: string): Habit[] 
   return habits.filter((h) => {
     const hasOverrideForDay = !!h.timeOverrides?.[ymd];
     if (h.createdAt && ymd < h.createdAt && !hasOverrideForDay) return false;
+    const repeatStartDate = h.schedule?.repeatStartDate;
+    if (repeatStartDate && ymd < repeatStartDate && !hasOverrideForDay) return false;
+    const repeatEndDate = h.schedule?.repeatEndDate;
+    if (repeatEndDate && ymd > repeatEndDate && !hasOverrideForDay) return false;
     const isSingle =
       h.habitFreq === 'single' ||
       (!h.habitFreq &&

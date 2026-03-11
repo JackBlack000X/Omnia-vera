@@ -363,6 +363,10 @@ export default function OggiScreen() {
       const selectedYmd = getDay(currentDate);
       const hasOverrideForSelected = !!h.timeOverrides?.[selectedYmd];
       if (h.createdAt && selectedYmd < h.createdAt && !hasOverrideForSelected) continue;
+      const repeatStartDate = h.schedule?.repeatStartDate;
+      if (repeatStartDate && selectedYmd < repeatStartDate && !hasOverrideForSelected) continue;
+      const repeatEndDate = h.schedule?.repeatEndDate;
+      if (repeatEndDate && selectedYmd > repeatEndDate && !hasOverrideForSelected) continue;
 
       // Single-frequency tasks only appear on days that have an explicit override
       const isSingle = h.habitFreq === 'single' || (

@@ -4,7 +4,7 @@ import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/moda
 import { getFallbackCity } from '@/lib/weather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 
 const STORAGE_HABITS = 'habitcheck_habits_v1';
@@ -214,8 +214,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     return base;
   });
   const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(monthDays[0] ?? null);
-  // For single tasks, get date from timeOverrides (YYYY-MM-DD keys); for annual from schedule
+  // For single tasks, get date from timeOverrides (YYYY-MM-DD keys); for recurring from repeatStartDate; for annual from schedule
   const initialSingleDate = useMemo(() => {
+    const startYmd = existing?.schedule?.repeatStartDate;
+    if (startYmd && /^\d{4}-\d{2}-\d{2}$/.test(startYmd)) {
+      const [y, m, d] = startYmd.split('-').map(Number);
+      return { year: y, month: m, day: d };
+    }
     const keys = existing?.timeOverrides ? Object.keys(existing.timeOverrides).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)) : [];
     if (keys.length > 0) {
       const [y, m, d] = keys[0].split('-').map(Number);
@@ -223,13 +228,54 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
-  }, [existing?.timeOverrides]);
+  }, [existing?.timeOverrides, existing?.schedule?.repeatStartDate]);
   const [annualMonth, setAnnualMonth] = useState<number>(() =>
     existing?.schedule?.yearMonth ?? initialSingleDate.month);
   const [annualDay, setAnnualDay] = useState<number>(() =>
     existing?.schedule?.yearDay ?? initialSingleDate.day);
   const [annualYear, setAnnualYear] = useState<number>(() =>
     (existing?.schedule?.yearMonth && existing?.schedule?.yearDay) ? new Date().getFullYear() : initialSingleDate.year);
+
+  // Data inizio non può essere oltre data fine ripetizione (quando "Data personalizzata" è impostata)
+  const maxStartYmd = repeatEndType === 'personalizzata' && repeatEndCustomDate && /^\d{4}-\d{2}-\d{2}$/.test(repeatEndCustomDate)
+    ? repeatEndCustomDate
+    : null;
+  const setAnnualDayClamped = useCallback((updater: (d: number) => number) => {
+    const newD = Math.max(1, Math.min(31, updater(annualDay)));
+    const ymd = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(newD).padStart(2, '0')}`;
+    if (maxStartYmd && ymd > maxStartYmd) {
+      const [, , d] = maxStartYmd.split('-').map(Number);
+      setAnnualYear(Number(maxStartYmd.slice(0, 4)));
+      setAnnualMonth(Number(maxStartYmd.slice(5, 7)));
+      setAnnualDay(d);
+      return;
+    }
+    setAnnualDay(newD);
+  }, [annualYear, annualMonth, annualDay, maxStartYmd]);
+  const setAnnualMonthClamped = useCallback((updater: (m: number) => number) => {
+    const newM = Math.max(1, Math.min(12, updater(annualMonth)));
+    const ymd = `${annualYear}-${String(newM).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+    if (maxStartYmd && ymd > maxStartYmd) {
+      const [, m, d] = maxStartYmd.split('-').map(Number);
+      setAnnualYear(Number(maxStartYmd.slice(0, 4)));
+      setAnnualMonth(m);
+      setAnnualDay(d);
+      return;
+    }
+    setAnnualMonth(newM);
+  }, [annualYear, annualMonth, annualDay, maxStartYmd]);
+  const setAnnualYearClamped = useCallback((updater: (y: number) => number) => {
+    const newY = updater(annualYear);
+    const ymd = `${newY}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+    if (maxStartYmd && ymd > maxStartYmd) {
+      const [y, m, d] = maxStartYmd.split('-').map(Number);
+      setAnnualYear(y);
+      setAnnualMonth(m);
+      setAnnualDay(d);
+      return;
+    }
+    setAnnualYear(newY);
+  }, [annualYear, annualMonth, annualDay, maxStartYmd]);
 
   // Check if selected date is today
   const isToday = useMemo(() => {
@@ -908,11 +954,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             return next;
           });
         }
-        // Compute repeatEndDate from repeatEndType
+        // Compute repeatEndDate from repeatEndType (data inizio = annualYear/annualMonth/annualDay)
         const computedRepeatEndDateNew = (() => {
           if (repeatEndType === 'mai') return null;
           if (repeatEndType === 'durata') {
-            const d = new Date();
+            const d = new Date(annualYear, annualMonth - 1, annualDay);
             if (freq === 'daily') d.setDate(d.getDate() + repeatEndCount);
             else if (freq === 'weekly') d.setDate(d.getDate() + repeatEndCount * 7);
             else if (freq === 'monthly') d.setMonth(d.getMonth() + repeatEndCount);
@@ -922,6 +968,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           return repeatEndCustomDate ?? null;
         })();
         // Persist explicit flags so the modal restores them correctly on re-open
+        const repeatStartYmd = freq !== 'single' ? `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}` : null;
         setHabits(prev => prev.map(h => {
           if (h.id !== newHabitId) return h;
           const base: Habit = {
@@ -934,6 +981,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             schedule: {
               ...(h.schedule ?? { daysOfWeek: [] }),
               repeatEndDate: computedRepeatEndDateNew,
+              repeatStartDate: repeatStartYmd,
             },
           };
           if (tipo === 'viaggio') {
@@ -1184,11 +1232,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           }));
         }
       }
-      // Compute repeatEndDate from repeatEndType
+      // Compute repeatEndDate from repeatEndType (data inizio = annualYear/annualMonth/annualDay)
       const computedRepeatEndDate = (() => {
         if (repeatEndType === 'mai') return null;
         if (repeatEndType === 'durata') {
-          const d = new Date();
+          const d = new Date(annualYear, annualMonth - 1, annualDay);
           if (freq === 'daily') d.setDate(d.getDate() + repeatEndCount);
           else if (freq === 'weekly') d.setDate(d.getDate() + repeatEndCount * 7);
           else if (freq === 'monthly') d.setMonth(d.getMonth() + repeatEndCount);
@@ -1197,6 +1245,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         }
         return repeatEndCustomDate ?? null;
       })();
+      const repeatStartYmd = freq !== 'single' ? `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}` : null;
       // Persist explicit flags so the modal restores them correctly on re-open (preserve tipo)
       setHabits(prev => prev.map(h => h.id === existing.id ? {
         ...h,
@@ -1208,6 +1257,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         schedule: {
           ...(h.schedule ?? { daysOfWeek: [] }),
           repeatEndDate: computedRepeatEndDate,
+          repeatStartDate: repeatStartYmd,
         },
       } : h));
     }
@@ -1248,6 +1298,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setAnnualMonth,
     annualDay,
     setAnnualDay,
+    setAnnualDayClamped,
+    setAnnualMonthClamped,
+    setAnnualYearClamped,
     annualYear,
     setAnnualYear,
     isToday,

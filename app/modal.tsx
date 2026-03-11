@@ -1500,7 +1500,45 @@ export default function ModalScreen() {
             <View>
               {m.tipo !== 'viaggio' && (
                 <>
-                  <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Frequenza</Text></View>
+                  {/* Giorno / Data inizio: sempre visibile sopra Ripetizione */}
+                  <View style={[styles.sectionHeader, { marginTop: 16 }]}>
+                    <Text style={styles.sectionTitle}>
+                      {m.freq === 'single' ? 'Giorno specifico' : m.freq === 'annual' ? "Giorno dell'anno" : 'Data inizio ripetizione'}
+                    </Text>
+                  </View>
+                  <View style={[
+                    { flexDirection: 'row', gap: 12, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
+                    m.isToday && { borderWidth: 2, borderColor: '#ff3b30', borderRadius: 12, padding: 8 }
+                  ]}>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <HoldableStepperButton onPress={() => (m.setAnnualDayClamped ?? m.setAnnualDay)(d => Math.max(1, d - 1))}>−</HoldableStepperButton>
+                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualDay}</Text>
+                        <HoldableStepperButton onPress={() => (m.setAnnualDayClamped ?? m.setAnnualDay)(d => Math.min(31, d + 1))}>+</HoldableStepperButton>
+                      </View>
+                    </View>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <HoldableStepperButton onPress={() => (m.setAnnualMonthClamped ?? m.setAnnualMonth)(prev => Math.max(1, prev - 1))}>−</HoldableStepperButton>
+                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualMonth}</Text>
+                        <HoldableStepperButton onPress={() => (m.setAnnualMonthClamped ?? m.setAnnualMonth)(prev => Math.min(12, prev + 1))}>+</HoldableStepperButton>
+                      </View>
+                    </View>
+                    {m.freq !== 'annual' && (
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <HoldableStepperButton onPress={() => (m.setAnnualYearClamped ?? m.setAnnualYear)(y => y - 1)}>−</HoldableStepperButton>
+                          <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{m.annualYear}</Text>
+                          <HoldableStepperButton onPress={() => (m.setAnnualYearClamped ?? m.setAnnualYear)(y => y + 1)}>+</HoldableStepperButton>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Ripetizione</Text></View>
                   <View style={styles.row}>
                     <TouchableOpacity onPress={() => m.setFreqWithConfirmation('single')} style={[styles.chip, m.freq === 'single' ? styles.chipActive : styles.chipGhost]}>
                       <Text style={m.freq === 'single' ? styles.chipActiveText : styles.chipGhostText}>Singola</Text>
@@ -1591,68 +1629,6 @@ export default function ModalScreen() {
                 </View>
               )}
 
-
-              {m.freq === 'annual' && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Giorno dell&apos;anno</Text>
-                  <View style={[
-                    { flexDirection: 'row', gap: 12, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
-                    m.isToday && { borderWidth: 2, borderColor: '#ff3b30', borderRadius: 12, padding: 8 }
-                  ]}>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <HoldableStepperButton onPress={() => m.setAnnualDay(d => Math.max(1, d - 1))}>−</HoldableStepperButton>
-                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualDay}</Text>
-                        <HoldableStepperButton onPress={() => m.setAnnualDay(d => Math.min(31, d + 1))}>+</HoldableStepperButton>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <HoldableStepperButton onPress={() => m.setAnnualMonth(prev => Math.max(1, prev - 1))}>−</HoldableStepperButton>
-                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualMonth}</Text>
-                        <HoldableStepperButton onPress={() => m.setAnnualMonth(prev => Math.min(12, prev + 1))}>+</HoldableStepperButton>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {m.freq === 'single' && m.tipo !== 'viaggio' && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Giorno specifico</Text>
-                  <View style={[
-                    { flexDirection: 'row', gap: 12, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
-                    m.isToday && { borderWidth: 2, borderColor: '#ff3b30', borderRadius: 12, padding: 8 }
-                  ]}>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <HoldableStepperButton onPress={() => m.setAnnualDay(d => Math.max(1, d - 1))}>−</HoldableStepperButton>
-                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualDay}</Text>
-                        <HoldableStepperButton onPress={() => m.setAnnualDay(d => Math.min(31, d + 1))}>+</HoldableStepperButton>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <HoldableStepperButton onPress={() => m.setAnnualMonth(prev => Math.max(1, prev - 1))}>−</HoldableStepperButton>
-                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualMonth}</Text>
-                        <HoldableStepperButton onPress={() => m.setAnnualMonth(prev => Math.min(12, prev + 1))}>+</HoldableStepperButton>
-                      </View>
-                    </View>
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <HoldableStepperButton onPress={() => m.setAnnualYear(y => y - 1)}>−</HoldableStepperButton>
-                        <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{m.annualYear}</Text>
-                        <HoldableStepperButton onPress={() => m.setAnnualYear(y => y + 1)}>+</HoldableStepperButton>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              )}
 
               <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Orario</Text></View>
               <View style={styles.row}>
