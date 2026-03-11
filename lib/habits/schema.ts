@@ -7,6 +7,7 @@ export type HabitSchedule = {
   yearDay?: number; // 1-31 for annual recurrence day
   weeklyTimes?: Record<number, { start: string | null; end: string | null }>; // per-dow times
   monthlyTimes?: Record<number, { start: string | null; end: string | null }>; // per-day-of-month times
+  repeatEndDate?: string | null; // 'YYYY-MM-DD' — last day of recurrence (inclusive)
 };
 
 export type TravelMeta = {

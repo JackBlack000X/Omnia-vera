@@ -222,6 +222,153 @@ function NotificationCustomPicker({
   );
 }
 
+const REPEAT_END_ITEM_HEIGHT = 44;
+
+function WheelColumn({
+  items,
+  selectedIndex,
+  onSelect,
+  width,
+}: {
+  items: string[];
+  selectedIndex: number;
+  onSelect: (i: number) => void;
+  width: number;
+}) {
+  const ref = useRef<ScrollView>(null);
+  const [liveIndex, setLiveIndex] = React.useState(selectedIndex);
+
+  React.useEffect(() => {
+    ref.current?.scrollTo({ y: selectedIndex * REPEAT_END_ITEM_HEIGHT, animated: false });
+    setLiveIndex(selectedIndex);
+  }, []);
+
+  return (
+    <View style={{ width, height: REPEAT_END_ITEM_HEIGHT * 5, overflow: 'hidden' }}>
+      <View style={{ position: 'absolute', top: REPEAT_END_ITEM_HEIGHT * 2, left: 4, right: 4, height: REPEAT_END_ITEM_HEIGHT, backgroundColor: '#1e293b', borderRadius: 10, pointerEvents: 'none' }} />
+      <ScrollView
+        ref={ref}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={REPEAT_END_ITEM_HEIGHT}
+        decelerationRate="fast"
+        contentContainerStyle={{ paddingVertical: REPEAT_END_ITEM_HEIGHT * 2 }}
+        onScroll={e => {
+          const idx = Math.round(e.nativeEvent.contentOffset.y / REPEAT_END_ITEM_HEIGHT);
+          setLiveIndex(Math.max(0, Math.min(items.length - 1, idx)));
+        }}
+        scrollEventThrottle={16}
+        onMomentumScrollEnd={e => {
+          const idx = Math.round(e.nativeEvent.contentOffset.y / REPEAT_END_ITEM_HEIGHT);
+          const clamped = Math.max(0, Math.min(items.length - 1, idx));
+          setLiveIndex(clamped);
+          onSelect(clamped);
+        }}
+      >
+        {items.map((item, i) => (
+          <TouchableOpacity
+            key={item}
+            onPress={() => {
+              onSelect(i);
+              setLiveIndex(i);
+              ref.current?.scrollTo({ y: i * REPEAT_END_ITEM_HEIGHT, animated: true });
+            }}
+            style={{ height: REPEAT_END_ITEM_HEIGHT, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: i === liveIndex ? 'white' : '#475569', fontSize: 22, fontWeight: i === liveIndex ? '600' : '400' }}>
+              {item}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function RepeatEndDurationPicker({
+  count,
+  unitLabel,
+  onCountChange,
+}: {
+  count: number;
+  unitLabel: string;
+  onCountChange: (n: number) => void;
+}) {
+  const counts = Array.from({ length: 99 }, (_, i) => String(i + 1));
+
+  return (
+    <View style={{ borderTopWidth: 1, borderTopColor: '#1e293b', paddingVertical: 8, paddingHorizontal: 16 }}>
+      <Text style={{ color: '#94a3b8', fontSize: 15, marginBottom: 4 }}>{unitLabel.charAt(0).toUpperCase() + unitLabel.slice(1)}</Text>
+      <View style={{ alignItems: 'center' }}>
+        <WheelColumn
+          items={counts}
+          selectedIndex={count - 1}
+          onSelect={i => onCountChange(i + 1)}
+          width={100}
+        />
+      </View>
+    </View>
+  );
+}
+
+function RepeatEndCustomPicker({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (d: string | null) => void;
+}) {
+  const [showPicker, setShowPicker] = useState(false);
+
+  const formatDate = (d: string | null | undefined) => {
+    if (!d) return 'Scegli data';
+    const dt = new Date(d);
+    return dt.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  const dateDate = (() => {
+    if (value) return new Date(value);
+    const d = new Date(); d.setDate(d.getDate() + 30);
+    return d;
+  })();
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#1e293b' }}>
+      <TouchableOpacity
+        onPress={() => setShowPicker(v => !v)}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}
+      >
+        <Text style={{ color: '#94a3b8', fontSize: 15 }}>Data fine</Text>
+        <Text style={{ color: value ? 'white' : '#475569', fontSize: 15, fontWeight: '600' }}>
+          {formatDate(value)}
+        </Text>
+      </TouchableOpacity>
+      {showPicker && (
+        <View>
+          <DateTimePicker
+            value={dateDate}
+            mode="date"
+            display="inline"
+            themeVariant="dark"
+            textColor="white"
+            accentColor="#ec4899"
+            minimumDate={new Date()}
+            onChange={(_, date) => {
+              if (date) {
+                const y = date.getFullYear();
+                const mo = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                onChange(`${y}-${mo}-${d}`);
+                setShowPicker(false);
+              }
+            }}
+            style={{ backgroundColor: 'transparent' }}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
 // Modal multipurpose: type=new|rename|schedule|color
 export default function ModalScreen() {
   const { type = 'new', id, folder } = useLocalSearchParams<{ type?: string; id?: string; folder?: string }>();
@@ -1376,6 +1523,43 @@ export default function ModalScreen() {
                 </>
               )}
 
+              {m.freq !== 'single' && (
+                <View style={{ marginTop: 16 }}>
+                  <View style={[styles.sectionHeader]}><Text style={styles.sectionTitle}>Fine ripetizione</Text></View>
+                  <View style={{ backgroundColor: '#0f172a', borderRadius: 16, borderWidth: 1, borderColor: '#334155', overflow: 'hidden' }}>
+                    {([
+                      { label: 'Mai', value: 'mai' as const },
+                      { label: 'Tra', value: 'durata' as const },
+                      { label: 'Data personalizzata', value: 'personalizzata' as const },
+                    ]).map((opt, idx, arr) => {
+                      const isSelected = m.repeatEndType === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          onPress={() => m.setRepeatEndType(opt.value)}
+                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: (idx < arr.length - 1 || isSelected) ? 1 : 0, borderBottomColor: '#1e293b' }}
+                        >
+                          <Text style={{ color: '#e2e8f0', fontSize: 15 }}>{opt.label}</Text>
+                          {isSelected && <Ionicons name="checkmark" size={18} color="#ec4899" />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                    {m.repeatEndType === 'durata' && (
+                      <RepeatEndDurationPicker
+                        count={m.repeatEndCount}
+                        unitLabel={m.freq === 'daily' ? 'giorni' : m.freq === 'weekly' ? 'settimane' : m.freq === 'monthly' ? 'mesi' : 'anni'}
+                        onCountChange={m.setRepeatEndCount}
+                      />
+                    )}
+                    {m.repeatEndType === 'personalizzata' && (
+                      <RepeatEndCustomPicker
+                        value={m.repeatEndCustomDate}
+                        onChange={m.setRepeatEndCustomDate}
+                      />
+                    )}
+                  </View>
+                </View>
+              )}
 
               {m.freq === 'weekly' && (
                 <View style={{ marginTop: 12 }}>

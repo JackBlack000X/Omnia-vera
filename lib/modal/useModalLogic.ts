@@ -69,7 +69,19 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [locationRule, setLocationRule] = useState<Habit['locationRule'] | null>(existing?.locationRule ?? null);
 
   const [notification, setNotification] = useState<NotificationConfig>(
-    existing?.notification ?? { enabled: true, minutesBefore: 5, customTime: null, customDate: null }
+    existing?.notification ?? { enabled: false, minutesBefore: 5, customTime: null, customDate: null }
+  );
+
+  // Fine ripetizione
+  type RepeatEndType = 'mai' | 'durata' | 'personalizzata';
+  const [repeatEndType, setRepeatEndType] = useState<RepeatEndType>(() => {
+    const saved = existing?.schedule?.repeatEndDate;
+    if (!saved) return 'mai';
+    return 'personalizzata';
+  });
+  const [repeatEndCount, setRepeatEndCount] = useState<number>(4);
+  const [repeatEndCustomDate, setRepeatEndCustomDate] = useState<string | null>(
+    existing?.schedule?.repeatEndDate ?? null
   );
 
   // Stato specifico per i viaggi
@@ -896,6 +908,19 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             return next;
           });
         }
+        // Compute repeatEndDate from repeatEndType
+        const computedRepeatEndDateNew = (() => {
+          if (repeatEndType === 'mai') return null;
+          if (repeatEndType === 'durata') {
+            const d = new Date();
+            if (freq === 'daily') d.setDate(d.getDate() + repeatEndCount);
+            else if (freq === 'weekly') d.setDate(d.getDate() + repeatEndCount * 7);
+            else if (freq === 'monthly') d.setMonth(d.getMonth() + repeatEndCount);
+            else d.setFullYear(d.getFullYear() + repeatEndCount);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          }
+          return repeatEndCustomDate ?? null;
+        })();
         // Persist explicit flags so the modal restores them correctly on re-open
         setHabits(prev => prev.map(h => {
           if (h.id !== newHabitId) return h;
@@ -906,6 +931,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             tipo,
             locationRule: locationRule ?? undefined,
             notification,
+            schedule: {
+              ...(h.schedule ?? { daysOfWeek: [] }),
+              repeatEndDate: computedRepeatEndDateNew,
+            },
           };
           if (tipo === 'viaggio') {
             const storedPartenzaNome =
@@ -1155,6 +1184,19 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           }));
         }
       }
+      // Compute repeatEndDate from repeatEndType
+      const computedRepeatEndDate = (() => {
+        if (repeatEndType === 'mai') return null;
+        if (repeatEndType === 'durata') {
+          const d = new Date();
+          if (freq === 'daily') d.setDate(d.getDate() + repeatEndCount);
+          else if (freq === 'weekly') d.setDate(d.getDate() + repeatEndCount * 7);
+          else if (freq === 'monthly') d.setMonth(d.getMonth() + repeatEndCount);
+          else d.setFullYear(d.getFullYear() + repeatEndCount);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        return repeatEndCustomDate ?? null;
+      })();
       // Persist explicit flags so the modal restores them correctly on re-open (preserve tipo)
       setHabits(prev => prev.map(h => h.id === existing.id ? {
         ...h,
@@ -1163,6 +1205,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         tipo: existing.tipo ?? h.tipo,
         locationRule: locationRule ?? undefined,
         notification,
+        schedule: {
+          ...(h.schedule ?? { daysOfWeek: [] }),
+          repeatEndDate: computedRepeatEndDate,
+        },
       } : h));
     }
     close();
@@ -1214,6 +1260,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     currentEndMin,
     locationRule,
     notification,
+    repeatEndType,
+    setRepeatEndType,
+    repeatEndCount,
+    setRepeatEndCount,
+    repeatEndCustomDate,
+    setRepeatEndCustomDate,
     // Derived
     existing,
     usePerDayTimeWeekly,
