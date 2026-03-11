@@ -187,15 +187,20 @@ export default function OggiScreen() {
 
     const compute = async () => {
       const selectedYmd = getDay(currentDate);
-      // Trova un viaggio "attivo" per questa data
+      // Trova un viaggio "attivo" per questa data:
+      // il meteo della destinazione si mostra solo nei giorni in cui si è effettivamente lì,
+      // cioè dal giorno DOPO la partenza fino al giorno PRIMA del ritorno.
+      // Se ritorno == partenza (stesso giorno) non si cambia il meteo.
       const travels = habits.filter(
         (h: Habit) =>
           h.tipo === 'viaggio' &&
           h.travel &&
           h.travel.destinazioneNome &&
           h.travel.giornoPartenza &&
-          selectedYmd >= h.travel.giornoPartenza &&
-          (!h.travel.giornoRitorno || selectedYmd <= h.travel.giornoRitorno)
+          h.travel.giornoRitorno &&
+          h.travel.giornoRitorno > h.travel.giornoPartenza &&
+          selectedYmd > h.travel.giornoPartenza &&
+          selectedYmd < h.travel.giornoRitorno
       ) as Habit[];
 
       if (travels.length === 0) {
@@ -278,6 +283,7 @@ export default function OggiScreen() {
             color,
             createdAt: h.createdAt,
             tipo: h.tipo,
+            travelMezzo: travel.mezzo,
           });
         }
 
@@ -294,6 +300,7 @@ export default function OggiScreen() {
             color,
             createdAt: h.createdAt,
             tipo: h.tipo,
+            travelMezzo: travel.mezzo,
           });
         }
 
@@ -326,6 +333,7 @@ export default function OggiScreen() {
             color,
             createdAt: h.createdAt,
             tipo: h.tipo,
+            travelMezzo: travel.mezzo,
           });
         }
 
@@ -344,6 +352,7 @@ export default function OggiScreen() {
             color,
             createdAt: h.createdAt,
             tipo: h.tipo,
+            travelMezzo: travel.mezzo,
           });
         }
 
@@ -432,25 +441,37 @@ export default function OggiScreen() {
       for (const ev of layoutEvents) {
         if (ev.isAllDay) continue;
 
-        const [h, m] = ev.startTime.split(':').map(Number);
-        const eventTime = new Date();
-        eventTime.setHours(h, m, 0, 0);
+        const habit = habits.find(h => h.id === ev.id);
+        const notifCfg = habit?.notification;
 
-        // Schedule if it's in the future (within today)
-        if (eventTime > now) {
-          // Send notification 10 minutes before
-          const triggerTime = new Date(eventTime.getTime() - 10 * 60000);
-          if (triggerTime > now) {
-            await scheduleHabitNotification(
-              'Abitudine in arrivo!',
-              `${ev.title} inizia alle ${ev.startTime}`,
-              { type: 'date', date: triggerTime } as any
-            );
-          }
+        if (notifCfg && !notifCfg.enabled) continue;
+
+        let triggerTime: Date;
+
+        if (notifCfg?.minutesBefore === null && notifCfg.customTime) {
+          const [ch, cm] = notifCfg.customTime.split(':').map(Number);
+          const baseDate = notifCfg.customDate ? new Date(notifCfg.customDate) : new Date();
+          triggerTime = new Date(baseDate);
+          triggerTime.setHours(ch, cm, 0, 0);
+        } else {
+          const [h, m] = ev.startTime.split(':').map(Number);
+          const eventTime = new Date();
+          eventTime.setHours(h, m, 0, 0);
+          if (eventTime <= now) continue;
+          const minutesBefore = notifCfg?.minutesBefore ?? 5;
+          triggerTime = new Date(eventTime.getTime() - minutesBefore * 60000);
+        }
+
+        if (triggerTime > now) {
+          await scheduleHabitNotification(
+            'Abitudine in arrivo!',
+            `${ev.title} inizia alle ${ev.startTime}`,
+            { type: 'date', date: triggerTime } as any
+          );
         }
       }
     })();
-  }, [layoutEvents, currentDate]);
+  }, [layoutEvents, currentDate, habits]);
 
   // Initialise column rank for any task that doesn't yet have one.
   // Rank determines left-to-right order: lower rank = leftmost column.
@@ -834,6 +855,7 @@ export default function OggiScreen() {
       windowEndMin,
       hourHeight,
       fiveHourReferenceHeight,
+      visibleHours,
     });
     if (!verticalMetrics) return null;
     
@@ -1008,17 +1030,26 @@ export default function OggiScreen() {
                if (!style) return null;
                const bg = e.color;
                const light = isLightColor(bg);
-             const titleParts = e.title.split('\n');
-               // 3 righe (~42px) servono per il formato verticale (da / ↓ / a).
+               const iconColor = light ? '#000' : '#FFF';
+               const titleParts = e.title.split('\n');
+               const mezzoIconMap: Record<string, string> = {
+                 aereo: 'airplane-outline',
+                 treno: 'train-outline',
+                 auto: 'car-outline',
+                 nave: 'boat-outline',
+                 bici: 'bicycle-outline',
+                 bus: 'bus-outline',
+                 altro: 'ellipsis-horizontal-outline',
+               };
+               const mezzoIcon = (mezzoIconMap[e.travelMezzo ?? ''] ?? 'arrow-down-outline') as any;
+               // 3 righe (~42px) servono per il formato verticale (da / icona / a).
                // Se non c'è spazio, usiamo una riga con freccia orizzontale.
                const useMultiLine = style.height >= 55;
                const displayLines = useMultiLine
                  ? titleParts
                  : [titleParts.filter(p => p !== '↓').join(' → ')];
 
-               // Allinea la freccia (↓) con la linea oraria più vicina al centro,
-               // così "partenza" sta sopra e "destinazione" sotto l'etichetta dell'ora.
-               // Se non ci sono linee orarie dentro la strip, il testo resta centrato.
+               // Allinea l'icona con la linea oraria più vicina al centro
                const tripStartM = toMinutes(e.startTime);
                const tripEndM = toMinutes(e.endTime);
                let titleOffset = 0;
@@ -1068,10 +1099,7 @@ export default function OggiScreen() {
                    {displayLines.map((line, idx) => (
                      <Text
                        key={idx}
-                       style={[
-                         styles.travelStripText,
-                         { color: light ? '#000' : '#FFF' },
-                       ]}
+                       style={[styles.travelStripText, { color: iconColor }]}
                        numberOfLines={1}
                        ellipsizeMode="clip"
                      >

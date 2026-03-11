@@ -10,7 +10,7 @@ export type HabitSchedule = {
 };
 
 export type TravelMeta = {
-  mezzo: 'aereo' | 'treno' | 'auto' | 'nave' | 'altro';
+  mezzo: 'aereo' | 'treno' | 'auto' | 'nave' | 'bici' | 'bus' | 'altro';
   partenzaTipo: 'attuale' | 'personalizzata';
   partenzaNome?: string;
   destinazioneNome: string;
@@ -28,6 +28,13 @@ export type TravelMeta = {
   arrivoRitornoGiornoDopo?: boolean;
 };
 
+export type NotificationConfig = {
+  enabled: boolean;
+  minutesBefore: number | null; // null = custom time
+  customTime?: string | null; // 'HH:MM' if minutesBefore is null
+  customDate?: string | null; // 'YYYY-MM-DD' if set, overrides the event day
+};
+
 export type Habit = {
   id: string;
   text: string;
@@ -40,6 +47,7 @@ export type Habit = {
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; // explicit frequency flag
   folder?: string; // custom folder/category name
   tipo?: 'task' | 'abitudine' | 'evento' | 'viaggio'; // task type
+  notification?: NotificationConfig;
   /** Dati opzionali per i viaggi */
   travel?: TravelMeta;
   /** Set when habit was imported from Apple/device calendar; used to avoid duplicate imports */

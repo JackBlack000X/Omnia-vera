@@ -8,8 +8,10 @@ import { useLocalSearchParams } from 'expo-router';
 import { loadPlaces } from '@/lib/places';
 import { searchCities, type CityInfo } from '@/lib/weather';
 import { canAskLocationPermission, getLocationPermissionStatusAsync, type LocationPermissionStatus } from '@/lib/location';
-import React, { useEffect, useRef } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import type { NotificationConfig } from '@/lib/habits/schema';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import React, { useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type HoldableStepperButtonProps = {
@@ -114,6 +116,112 @@ function minutesToHhmmSafe(mins: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+function NotificationCustomPicker({
+  notification,
+  setNotification,
+}: {
+  notification: NotificationConfig;
+  setNotification: (n: NotificationConfig) => void;
+}) {
+  const [showTime, setShowTime] = useState(false);
+  const [showDate, setShowDate] = useState(false);
+
+  const timeDate = (() => {
+    if (notification.customTime) {
+      const [h, m] = notification.customTime.split(':').map(Number);
+      const d = new Date();
+      d.setHours(h, m, 0, 0);
+      return d;
+    }
+    return new Date();
+  })();
+
+  const dateDate = (() => {
+    if (notification.customDate) {
+      return new Date(notification.customDate);
+    }
+    return new Date();
+  })();
+
+  const formatTime = (t: string | null | undefined) =>
+    t ? t : 'Imposta orario';
+
+  const formatDate = (d: string | null | undefined) => {
+    if (!d) return 'Qualsiasi giorno';
+    const dt = new Date(d);
+    return dt.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#1e293b' }}>
+      <TouchableOpacity
+        onPress={() => { setShowTime(v => !v); setShowDate(false); }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}
+      >
+        <Text style={{ color: '#94a3b8', fontSize: 15 }}>Orario</Text>
+        <Text style={{ color: notification.customTime ? 'white' : '#475569', fontSize: 15, fontWeight: '600' }}>
+          {formatTime(notification.customTime)}
+        </Text>
+      </TouchableOpacity>
+      {showTime && (
+        <DateTimePicker
+          value={timeDate}
+          mode="time"
+          display="spinner"
+          themeVariant="dark"
+          textColor="white"
+          onChange={(_, date) => {
+            if (date) {
+              const hh = String(date.getHours()).padStart(2, '0');
+              const mm = String(date.getMinutes()).padStart(2, '0');
+              setNotification({ ...notification, customTime: `${hh}:${mm}` });
+            }
+          }}
+          style={{ height: 160 }}
+        />
+      )}
+      <View style={{ height: 1, backgroundColor: '#1e293b' }} />
+      <TouchableOpacity
+        onPress={() => { setShowDate(v => !v); setShowTime(false); }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}
+      >
+        <Text style={{ color: '#94a3b8', fontSize: 15 }}>Giorno</Text>
+        <Text style={{ color: notification.customDate ? 'white' : '#475569', fontSize: 15, fontWeight: '600' }}>
+          {formatDate(notification.customDate)}
+        </Text>
+      </TouchableOpacity>
+      {showDate && (
+        <View>
+          <DateTimePicker
+            value={dateDate}
+            mode="date"
+            display="inline"
+            themeVariant="dark"
+            textColor="white"
+            accentColor="#ec4899"
+            onChange={(_, date) => {
+              if (date) {
+                const y = date.getFullYear();
+                const mo = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                setNotification({ ...notification, customDate: `${y}-${mo}-${d}` });
+                setShowDate(false);
+              }
+            }}
+            style={{ backgroundColor: 'transparent' }}
+          />
+          <TouchableOpacity
+            onPress={() => { setNotification({ ...notification, customDate: null }); setShowDate(false); }}
+            style={{ alignItems: 'center', paddingVertical: 10 }}
+          >
+            <Text style={{ color: '#ec4899', fontSize: 14 }}>Rimuovi giorno</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // Modal multipurpose: type=new|rename|schedule|color
 export default function ModalScreen() {
   const { type = 'new', id, folder } = useLocalSearchParams<{ type?: string; id?: string; folder?: string }>();
@@ -129,10 +237,16 @@ export default function ModalScreen() {
   const [fromQuery, setFromQuery] = React.useState('');
   const [fromResults, setFromResults] = React.useState<CityInfo[]>([]);
   const [fromSearching, setFromSearching] = React.useState(false);
+  const fromSelectedRef = React.useRef(false);
+  const fromInputRef = React.useRef<TextInput>(null);
+  const [fromConfirmed, setFromConfirmed] = React.useState(false);
 
   const [toQuery, setToQuery] = React.useState('');
   const [toResults, setToResults] = React.useState<CityInfo[]>([]);
   const [toSearching, setToSearching] = React.useState(false);
+  const toSelectedRef = React.useRef(false);
+  const toInputRef = React.useRef<TextInput>(null);
+  const [toConfirmed, setToConfirmed] = React.useState(false);
 
   React.useEffect(() => {
     (async () => {
@@ -149,6 +263,7 @@ export default function ModalScreen() {
   }, [m.locationRule?.placeId]);
 
   React.useEffect(() => {
+    if (fromSelectedRef.current) { fromSelectedRef.current = false; return; }
     if (fromQuery.trim().length < 2) {
       setFromResults([]);
       return;
@@ -163,6 +278,7 @@ export default function ModalScreen() {
   }, [fromQuery]);
 
   React.useEffect(() => {
+    if (toSelectedRef.current) { toSelectedRef.current = false; return; }
     if (toQuery.trim().length < 2) {
       setToResults([]);
       return;
@@ -225,17 +341,18 @@ export default function ModalScreen() {
     // partenza ritorno = arrivo andata (stesso orario), arrivo ritorno = +5.
     const returnDayAfterArrival = dayDiff >= 1 && m.travelArrivoGiornoDopo;
     if (returnDayAfterArrival) {
-      // partenza ritorno = arrivo andata
-      m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(arriveOutMin));
-      m.setTravelPartenzaRitornoGiornoDopo(false);
-      // arrivo ritorno = arrivo andata + 5
-      const retArr = arriveOutMin + 5;
-      if (retArr >= 24 * 60) {
-        m.setTravelArrivoRitornoGiornoDopo(true);
-        m.setTravelOrarioArrivoRitorno(minutesToHhmmSafe(retArr - 24 * 60));
-      } else {
-        m.setTravelArrivoRitornoGiornoDopo(false);
-        m.setTravelOrarioArrivoRitorno(minutesToHhmmSafe(retArr));
+      const currentRetDep = hhmmToMinutesSafe(m.travelOrarioPartenzaRitorno, 17 * 60);
+      if (arriveOutMin > currentRetDep) {
+        m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(arriveOutMin));
+        m.setTravelPartenzaRitornoGiornoDopo(false);
+        const retArr = arriveOutMin + 5;
+        if (retArr >= 24 * 60) {
+          m.setTravelArrivoRitornoGiornoDopo(true);
+          m.setTravelOrarioArrivoRitorno(minutesToHhmmSafe(retArr - 24 * 60));
+        } else {
+          m.setTravelArrivoRitornoGiornoDopo(false);
+          m.setTravelOrarioArrivoRitorno(minutesToHhmmSafe(retArr));
+        }
       }
       return;
     }
@@ -244,6 +361,9 @@ export default function ModalScreen() {
 
     // Stesso giorno o giorno dopo con arrivo overnight: spinge avanti partenza/arrivo ritorno.
     // Se supera 23:55 → avanza giorno ritorno e riparte da 00:00.
+    // Non intervenire se l'arrivo ritorno è già giorno dopo (l'utente sta modificando manualmente).
+    if (m.travelArrivoRitornoGiornoDopo) return;
+
     const currentReturnDep = hhmmToMinutesSafe(m.travelOrarioPartenzaRitorno, 17 * 60);
     if (arriveOutMin >= currentReturnDep) {
       // Partenza ritorno = arrivo andata (stesso orario), arrivo ritorno = +5
@@ -376,6 +496,49 @@ export default function ModalScreen() {
             </View>
           )}
 
+          {(type === 'new' || type === 'edit') && (
+            <View style={{ marginTop: 20 }}>
+              <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                <Text style={styles.sectionTitle}>Notifiche</Text>
+                <Switch
+                  value={m.notification.enabled}
+                  onValueChange={v => m.setNotification({ ...m.notification, enabled: v })}
+                  trackColor={{ false: '#334155', true: '#ec4899' }}
+                  thumbColor="white"
+                />
+              </View>
+              {m.notification.enabled && (
+                <View style={{ marginTop: 12, backgroundColor: '#0f172a', borderRadius: 16, borderWidth: 1, borderColor: '#334155', overflow: 'hidden' }}>
+                  {([
+                    { label: 'Al momento dell\'evento', value: 0 },
+                    { label: '5 minuti prima', value: 5 },
+                    { label: '10 minuti prima', value: 10 },
+                    { label: '15 minuti prima', value: 15 },
+                    { label: '30 minuti prima', value: 30 },
+                    { label: '1 ora prima', value: 60 },
+                    { label: '2 ore prima', value: 120 },
+                    { label: 'Orario personalizzato', value: null },
+                  ] as { label: string; value: number | null }[]).map((opt, idx, arr) => {
+                    const isSelected = m.notification.minutesBefore === opt.value;
+                    return (
+                      <TouchableOpacity
+                        key={String(opt.value)}
+                        onPress={() => m.setNotification({ ...m.notification, minutesBefore: opt.value, customTime: opt.value !== null ? null : m.notification.customTime })}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: '#1e293b' }}
+                      >
+                        <Text style={{ color: '#e2e8f0', fontSize: 15 }}>{opt.label}</Text>
+                        {isSelected && <Ionicons name="checkmark" size={18} color="#ec4899" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {m.notification.minutesBefore === null && (
+                    <NotificationCustomPicker notification={m.notification} setNotification={m.setNotification} />
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+
           {(type === 'new' || type === 'edit') && m.tipo === 'task' && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>Orario</Text>
@@ -402,13 +565,76 @@ export default function ModalScreen() {
                 <Text style={styles.sectionTitle}>Dettagli viaggio</Text>
               </View>
 
-              <Text style={styles.subtle}>Mezzo</Text>
-              <View style={[styles.row, { marginTop: 8 }]}>
+              <View style={{ marginTop: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    ref={fromInputRef}
+                    value={m.travelPartenzaTipo === 'attuale' ? (m.currentCityName ?? '') : m.travelPartenzaNome}
+                    onChangeText={(v) => {
+                      m.setTravelPartenzaNome(v);
+                      setFromQuery(v);
+                      setFromConfirmed(false);
+                    }}
+                    editable={m.travelPartenzaTipo !== 'attuale'}
+                    placeholder={m.travelPartenzaTipo === 'attuale' ? 'Posizione attuale…' : 'Partenza:'}
+                    placeholderTextColor="#64748b"
+                    style={[styles.input, { flex: 1, color: m.travelPartenzaTipo === 'attuale' ? '#9ca3af' : 'white' }]}
+                  />
+                  <TouchableOpacity
+                    onPress={() => m.setTravelPartenzaTipo(m.travelPartenzaTipo === 'attuale' ? 'personalizzata' : 'attuale')}
+                    style={[styles.chip, m.travelPartenzaTipo === 'attuale' ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 10 }]}
+                  >
+                    <Ionicons
+                      name="navigate-outline"
+                      size={18}
+                      color={m.travelPartenzaTipo === 'attuale' ? '#fff' : '#9ca3af'}
+                    />
+                  </TouchableOpacity>
+                </View>
+                {fromSearching && m.travelPartenzaTipo !== 'attuale' && (
+                  <Text style={[styles.subtle, { marginTop: 6 }]}>Cerco città…</Text>
+                )}
+                {m.travelPartenzaTipo !== 'attuale' && !fromSearching && !fromConfirmed && fromQuery.trim().length >= 2 && fromResults.length === 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#0f172a', marginTop: 4 }}>
+                    <Ionicons name="alert-circle-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
+                    <Text style={{ color: '#64748b', fontSize: 14 }}>Posizione non trovata</Text>
+                  </View>
+                )}
+                {m.travelPartenzaTipo !== 'attuale' && fromResults.map((city, idx) => (
+                  <TouchableOpacity
+                    key={`${city.name}-${idx}`}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 10,
+                      backgroundColor: '#0f172a',
+                      marginTop: 4,
+                    }}
+                    onPress={() => {
+                      fromSelectedRef.current = true;
+                      setFromConfirmed(true);
+                      m.setTravelPartenzaNome(city.name);
+                      setFromQuery(city.name);
+                      setFromResults([]);
+                      fromInputRef.current?.blur();
+                    }}
+                  >
+                    <Ionicons name="location-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
+                    <Text style={{ color: '#e5e7eb', fontSize: 14 }}>{city.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={[styles.row, { marginTop: 12, justifyContent: 'center' }]}>
                 {([
-                  { key: 'aereo', label: 'Aereo', icon: 'airplane-outline' },
-                  { key: 'treno', label: 'Treno', icon: 'train-outline' },
-                  { key: 'auto', label: 'Auto', icon: 'car-outline' },
-                  { key: 'nave', label: 'Nave', icon: 'boat-outline' },
+                  { key: 'aereo', icon: 'airplane-outline' },
+                  { key: 'treno', icon: 'train-outline' },
+                  { key: 'auto', icon: 'car-outline' },
+                  { key: 'nave', icon: 'boat-outline' },
+                  { key: 'bici', icon: 'bicycle-outline' },
+                  { key: 'bus', icon: 'bus-outline' },
                 ] as const).map(opt => (
                   <TouchableOpacity
                     key={opt.key}
@@ -417,98 +643,34 @@ export default function ModalScreen() {
                   >
                     <Ionicons
                       name={opt.icon as any}
-                      size={16}
+                      size={18}
                       color={m.travelMezzo === opt.key ? '#fff' : '#9ca3af'}
-                      style={{ marginRight: 6 }}
                     />
-                    <Text style={m.travelMezzo === opt.key ? styles.chipActiveText : styles.chipGhostText}>
-                      {opt.label}
-                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <View style={{ marginTop: 16 }}>
-                <Text style={styles.subtle}>Partenza</Text>
-                <View style={[styles.row, { marginTop: 8 }]}>
-                  <TouchableOpacity
-                    onPress={() => m.setTravelPartenzaTipo('attuale')}
-                    style={[styles.chip, m.travelPartenzaTipo === 'attuale' ? styles.chipActive : styles.chipGhost]}
-                  >
-                    <Text style={m.travelPartenzaTipo === 'attuale' ? styles.chipActiveText : styles.chipGhostText}>
-                      Posizione attuale
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => m.setTravelPartenzaTipo('personalizzata')}
-                    style={[styles.chip, m.travelPartenzaTipo === 'personalizzata' ? styles.chipActive : styles.chipGhost]}
-                  >
-                    <Text
-                      style={
-                        m.travelPartenzaTipo === 'personalizzata'
-                          ? styles.chipActiveText
-                          : styles.chipGhostText
-                      }
-                    >
-                      Altro luogo
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {m.travelPartenzaTipo === 'personalizzata' && (
-                  <View style={{ marginTop: 8 }}>
-                    <TextInput
-                      value={m.travelPartenzaNome}
-                      onChangeText={(v) => {
-                        m.setTravelPartenzaNome(v);
-                        setFromQuery(v);
-                      }}
-                      placeholder="Cerca città di partenza..."
-                      placeholderTextColor="#64748b"
-                      style={styles.input}
-                    />
-                    {fromSearching && (
-                      <Text style={[styles.subtle, { marginTop: 6 }]}>Cerco città…</Text>
-                    )}
-                    {fromResults.map((city, idx) => (
-                      <TouchableOpacity
-                        key={`${city.name}-${idx}`}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          paddingVertical: 10,
-                          paddingHorizontal: 12,
-                          borderRadius: 10,
-                          backgroundColor: '#0f172a',
-                          marginTop: 4,
-                        }}
-                        onPress={() => {
-                          m.setTravelPartenzaNome(city.name);
-                          setFromQuery(city.name);
-                          setFromResults([]);
-                        }}
-                      >
-                        <Ionicons name="location-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
-                        <Text style={{ color: '#e5e7eb', fontSize: 14 }}>{city.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-
-              <View style={{ marginTop: 16 }}>
-                <Text style={styles.subtle}>Destinazione</Text>
+              <View style={{ marginTop: 12 }}>
                 <TextInput
+                  ref={toInputRef}
                   value={m.travelDestinazioneNome}
                   onChangeText={(v) => {
                     m.setTravelDestinazioneNome(v);
                     setToQuery(v);
+                    setToConfirmed(false);
                   }}
-                  placeholder="Cerca città di arrivo..."
+                  placeholder="Destinazione:"
                   placeholderTextColor="#64748b"
-                  style={[styles.input, { marginTop: 8 }]}
+                  style={styles.input}
                 />
                 {toSearching && (
                   <Text style={[styles.subtle, { marginTop: 6 }]}>Cerco città…</Text>
+                )}
+                {!toSearching && !toConfirmed && toQuery.trim().length >= 2 && toResults.length === 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#0f172a', marginTop: 4 }}>
+                    <Ionicons name="alert-circle-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
+                    <Text style={{ color: '#64748b', fontSize: 14 }}>Posizione non trovata</Text>
+                  </View>
                 )}
                 {toResults.map((city, idx) => (
                   <TouchableOpacity
@@ -523,9 +685,12 @@ export default function ModalScreen() {
                       marginTop: 4,
                     }}
                     onPress={() => {
+                      toSelectedRef.current = true;
+                      setToConfirmed(true);
                       m.setTravelDestinazioneNome(city.name);
                       setToQuery(city.name);
                       setToResults([]);
+                      toInputRef.current?.blur();
                     }}
                   >
                     <Ionicons name="location-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
@@ -730,22 +895,24 @@ export default function ModalScreen() {
                   };
 
                   const setStart = (next: number) => {
-                    const clamped = Math.max(0, Math.min(24 * 60 - 5, next));
-                    const safeEnd = Math.max(endMin, clamped + 5);
-                    const capped = Math.min(safeEnd, 24 * 60 + (24 * 60 - 5));
+                    const clamped = Math.max(0, Math.min(23 * 60 + 55, next));
                     m.setTravelOrarioPartenza(minutesToHhmmSafe(clamped));
-                    if (capped >= 24 * 60) {
-                      m.setTravelArrivoGiornoDopo(true);
-                      m.setTravelOrarioArrivo(minutesToHhmmSafe(capped - 24 * 60));
-                    } else {
-                      m.setTravelArrivoGiornoDopo(false);
-                      m.setTravelOrarioArrivo(minutesToHhmmSafe(capped));
+                    if (!endIsNextDay) {
+                      const safeEnd = Math.max(endMin, clamped + 5);
+                      const capped = Math.min(safeEnd, 24 * 60 + (24 * 60 - 5));
+                      if (capped >= 24 * 60) {
+                        m.setTravelArrivoGiornoDopo(true);
+                        m.setTravelOrarioArrivo(minutesToHhmmSafe(capped - 24 * 60));
+                      } else {
+                        m.setTravelArrivoGiornoDopo(false);
+                        m.setTravelOrarioArrivo(minutesToHhmmSafe(capped));
+                      }
+                      if (capped !== endMin) pushReturnIfNeeded(capped);
                     }
-                    if (capped !== endMin) pushReturnIfNeeded(capped);
                   };
 
                   const setEnd = (next: number) => {
-                    const clamped = Math.max(startMin + 5, Math.min(24 * 60 + (24 * 60 - 5), next));
+                    const clamped = Math.max(5, Math.min(24 * 60 + (24 * 60 - 5), next));
                     if (clamped >= 24 * 60) {
                       m.setTravelArrivoGiornoDopo(true);
                       m.setTravelOrarioArrivo(minutesToHhmmSafe(clamped - 24 * 60));
@@ -753,7 +920,11 @@ export default function ModalScreen() {
                       m.setTravelArrivoGiornoDopo(false);
                       m.setTravelOrarioArrivo(minutesToHhmmSafe(clamped));
                     }
-                    pushReturnIfNeeded(clamped);
+                    if (!endIsNextDay && clamped < startMin + 5) {
+                      const newStart = Math.max(0, clamped - 5);
+                      m.setTravelOrarioPartenza(minutesToHhmmSafe(newStart));
+                    }
+                    if (clamped > endMin) pushReturnIfNeeded(clamped);
                   };
 
                   const diff = endMin - startMin;
@@ -1060,16 +1231,25 @@ export default function ModalScreen() {
 
                             const setStartR = (next: number) => {
                               const lowerBound = Math.max(earliestReturnMin, 0);
-                              const upperBound = Math.min(endMinR - 5, 24 * 60 - 5);
-                              const clamped = Math.max(lowerBound, Math.min(upperBound, next));
+                              const clamped = Math.max(lowerBound, Math.min(23 * 60 + 55, next));
                               if (clamped === startMinR) return;
                               m.setTravelPartenzaRitornoGiornoDopo(false);
                               m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(clamped));
+                              if (!endIsNextDayR && clamped > endMinR - 5) {
+                                const newEnd = clamped + (endMinR - startMinR);
+                                if (newEnd >= 24 * 60) {
+                                  m.setTravelArrivoRitornoGiornoDopo(true);
+                                  m.setTravelOrarioArrivoRitorno(minutesToHhmmSafe(newEnd - 24 * 60));
+                                } else {
+                                  m.setTravelArrivoRitornoGiornoDopo(false);
+                                  m.setTravelOrarioArrivoRitorno(minutesToHhmmSafe(newEnd));
+                                }
+                              }
                             };
 
                             const setEndR = (next: number) => {
                               const clamped = Math.max(5, Math.min(24 * 60 + (24 * 60 - 5), next));
-                              if (clamped < endMinR) {
+                              if (!endIsNextDayR && clamped < endMinR) {
                                 // Scende: trascina giù anche la partenza mantenendo il gap
                                 const newStart = Math.max(earliestReturnMin, startMinR - (endMinR - clamped));
                                 m.setTravelPartenzaRitornoGiornoDopo(false);
@@ -1348,9 +1528,11 @@ export default function ModalScreen() {
                             <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
-                              const newStartMin = curS + 60;
-                              const maxStartMin = curE ? curE - 5 : 23 * 60;
-                              m.updateCurrentStartMin(Math.min(maxStartMin, newStartMin));
+                              const newStartMin = Math.min(23 * 60 + 55, curS + 60);
+                              m.updateCurrentStartMin(newStartMin);
+                              if (curE !== null && curE !== undefined && newStartMin >= curE - 5) {
+                                m.updateCurrentEndMin(newStartMin + (curE - curS));
+                              }
                             }}>+</HoldableStepperButton>
                           </View>
                         </View>
@@ -1362,9 +1544,11 @@ export default function ModalScreen() {
                             <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
-                              const newStartMin = curS + 5;
-                              const maxStartMin = curE ? curE - 5 : 23 * 60 + 55;
-                              m.updateCurrentStartMin(Math.min(maxStartMin, newStartMin));
+                              const newStartMin = Math.min(23 * 60 + 55, curS + 5);
+                              m.updateCurrentStartMin(newStartMin);
+                              if (curE !== null && curE !== undefined && newStartMin >= curE - 5) {
+                                m.updateCurrentEndMin(newStartMin + (curE - curS));
+                              }
                             }}>+</HoldableStepperButton>
                           </View>
                         </View>
@@ -1380,7 +1564,11 @@ export default function ModalScreen() {
                             <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
-                              m.updateCurrentEndMin(Math.max(curS + 5, (curE ?? curS + 60) - 60));
+                              const newEndMin = (curE ?? curS + 60) - 60;
+                              m.updateCurrentEndMin(newEndMin);
+                              if (newEndMin < curS + 5) {
+                                m.updateCurrentStartMin(Math.max(0, curS - (curS + 5 - newEndMin)));
+                              }
                             }}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{Math.floor(((m.currentEndMin ?? (m.currentStartMin + 60)) / 60))}</Text>
                             <HoldableStepperButton onPress={() => {
@@ -1396,7 +1584,11 @@ export default function ModalScreen() {
                             <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
-                              m.updateCurrentEndMin(Math.max(curS + 5, (curE ?? curS + 60) - 5));
+                              const newEndMin = (curE ?? curS + 60) - 5;
+                              m.updateCurrentEndMin(newEndMin);
+                              if (newEndMin < curS + 5) {
+                                m.updateCurrentStartMin(Math.max(0, curS - (curS + 5 - newEndMin)));
+                              }
                             }}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{((m.currentEndMin ?? (m.currentStartMin + 60)) % 60)}</Text>
                             <HoldableStepperButton onPress={() => {
@@ -1495,26 +1687,35 @@ export default function ModalScreen() {
           <TouchableOpacity onPress={m.close} style={[styles.circularBtn, styles.cancelBtn]}>
             <Ionicons name="close" size={52} color="#ff0000" />
               </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              if ((type === 'new' || type === 'edit') && m.tipo === 'task') {
-                const placeId = selectedPlaceId ?? null;
-                if (placeId) {
-                  m.setLocationRule({
-                    type: 'geofenceExit',
-                    placeId,
-                    minOutsideMinutes: 3,
-                  });
-                } else {
-                  m.setLocationRule(null);
-                }
-              }
-              m.save();
-            }}
-            style={[styles.circularBtn, styles.saveBtn]}
-          >
-            <Ionicons name="checkmark" size={52} color="#00ff00" />
+          {(() => {
+            const travelIncomplete = (type === 'new' || type === 'edit') && m.tipo === 'viaggio' && (
+              (m.travelPartenzaTipo !== 'attuale' && !m.travelPartenzaNome.trim()) ||
+              !m.travelDestinazioneNome.trim()
+            );
+            return (
+              <TouchableOpacity
+                onPress={() => {
+                  if (travelIncomplete) return;
+                  if ((type === 'new' || type === 'edit') && m.tipo === 'task') {
+                    const placeId = selectedPlaceId ?? null;
+                    if (placeId) {
+                      m.setLocationRule({
+                        type: 'geofenceExit',
+                        placeId,
+                        minOutsideMinutes: 3,
+                      });
+                    } else {
+                      m.setLocationRule(null);
+                    }
+                  }
+                  m.save();
+                }}
+                style={[styles.circularBtn, styles.saveBtn, travelIncomplete && { opacity: 0.3 }]}
+              >
+                <Ionicons name="checkmark" size={52} color="#00ff00" />
               </TouchableOpacity>
+            );
+          })()}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

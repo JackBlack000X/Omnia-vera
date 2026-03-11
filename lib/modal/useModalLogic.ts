@@ -1,5 +1,5 @@
 import { useHabits } from '@/lib/habits/Provider';
-import { Habit, TravelMeta } from '@/lib/habits/schema';
+import { Habit, NotificationConfig, TravelMeta } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
 import { getFallbackCity } from '@/lib/weather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -67,6 +67,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   });
 
   const [locationRule, setLocationRule] = useState<Habit['locationRule'] | null>(existing?.locationRule ?? null);
+
+  const [notification, setNotification] = useState<NotificationConfig>(
+    existing?.notification ?? { enabled: true, minutesBefore: 5, customTime: null, customDate: null }
+  );
 
   // Stato specifico per i viaggi
   const [travelMezzo, setTravelMezzo] = useState<TravelMeta['mezzo']>(existing?.travel?.mezzo ?? 'aereo');
@@ -901,6 +905,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
             tipo,
             locationRule: locationRule ?? undefined,
+            notification,
           };
           if (tipo === 'viaggio') {
             const storedPartenzaNome =
@@ -1157,6 +1162,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
         tipo: existing.tipo ?? h.tipo,
         locationRule: locationRule ?? undefined,
+        notification,
       } : h));
     }
     close();
@@ -1207,6 +1213,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     currentStartMin,
     currentEndMin,
     locationRule,
+    notification,
     // Derived
     existing,
     usePerDayTimeWeekly,
@@ -1223,6 +1230,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     close,
     closeConfirmationModal,
     setLocationRule,
+    setNotification,
     // Viaggio
     travelMezzo,
     setTravelMezzo,
@@ -1250,5 +1258,6 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setTravelOrarioArrivoRitorno,
     travelArrivoRitornoGiornoDopo,
     setTravelArrivoRitornoGiornoDopo,
+    currentCityName,
   };
 }

@@ -9,6 +9,7 @@ export type OggiEvent = {
   color: string;
   createdAt?: string;
   tipo?: 'task' | 'abitudine' | 'evento' | 'viaggio';
+  travelMezzo?: 'aereo' | 'treno' | 'auto' | 'nave' | 'bici' | 'bus' | 'altro';
 };
 
 // -- Constants for Layout --
