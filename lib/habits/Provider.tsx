@@ -10,6 +10,7 @@ const STORAGE_HABITS = 'habitcheck_habits_v1';
 const STORAGE_HISTORY = 'habitcheck_history_v1';
 const STORAGE_LASTRESET = 'habitcheck_lastreset_v1';
 const STORAGE_DAYRESETTIME = 'habitcheck_dayresettime_v1';
+const STORAGE_REVIEWED_DATES = 'habitcheck_reviewed_dates_v1';
 const TZ = 'Europe/Zurich';
 
 /** Parse YYYY-MM-DD at noon UTC to avoid timezone boundary issues */
@@ -65,7 +66,9 @@ export type HabitsContextType = {
   history: HabitsState['history'];
   lastResetDate: string | null;
   dayResetTime: string;
+  reviewedDates: string[];
   addHabit: (text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq'] }) => string;
+  duplicateHabit: (id: string) => string | null;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
   updateHabitFolder: (id: string, folder: string | undefined) => void;
@@ -86,6 +89,12 @@ export type HabitsContextType = {
   resetStorage: () => Promise<void>;
   /** Persist completion for a day (used by calendar). Uses same "habits for that day" as tasks tab. */
   setDayCompletion: (ymd: string, completedCount: number) => void;
+  /** Mark a date as reviewed (day review modal completed) */
+  markDateReviewed: (ymd: string) => Promise<void>;
+  /** Save rating and comment for a habit on a specific day */
+  saveDayReview: (ymd: string, habitId: string, rating: number | null, comment: string | null) => void;
+  /** Update askReview toggle on a habit */
+  updateHabitAskReview: (id: string, askReview: boolean) => void;
 };
 
 const HabitsContext = createContext<HabitsContextType | undefined>(undefined);
@@ -95,6 +104,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = useState<HabitsState['history']>({});
   const [lastResetDate, setLastResetDate] = useState<string | null>(null);
   const [dayResetTime, setDayResetTimeState] = useState<string>('00:00');
+  const [reviewedDates, setReviewedDates] = useState<string[]>([]);
   const dateRef = useRef<string>(formatYmd());
   const habitsRef = useRef<Habit[]>([]);
   habitsRef.current = habits;
@@ -109,11 +119,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [rawHabits, rawHistory, rawLast, rawDayResetTime] = await Promise.all([
+        const [rawHabits, rawHistory, rawLast, rawDayResetTime, rawReviewedDates] = await Promise.all([
           AsyncStorage.getItem(STORAGE_HABITS),
           AsyncStorage.getItem(STORAGE_HISTORY),
           AsyncStorage.getItem(STORAGE_LASTRESET),
           AsyncStorage.getItem(STORAGE_DAYRESETTIME),
+          AsyncStorage.getItem(STORAGE_REVIEWED_DATES),
         ]);
 
         if (rawHabits) {
@@ -131,6 +142,15 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
             if (parsed && typeof parsed === 'object') setHistory(parsed);
           } catch (e) {
             console.warn('Corrupted history data, skipping');
+          }
+        }
+
+        if (rawReviewedDates) {
+          try {
+            const parsed = JSON.parse(rawReviewedDates);
+            if (Array.isArray(parsed)) setReviewedDates(parsed);
+          } catch (e) {
+            console.warn('Corrupted reviewed dates data, skipping');
           }
         }
 
@@ -362,6 +382,24 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return newId;
   }, []);
 
+  const duplicateHabit = useCallback((id: string): string | null => {
+    let newId: string | null = null;
+    setHabits((prev) => {
+      const source = prev.find(h => h.id === id);
+      if (!source) return prev;
+      newId = generateUUID();
+      const copy: Habit = {
+        ...source,
+        id: newId,
+        createdAt: formatYmd(),
+        order: prev.length,
+        timeOverrides: {},
+      };
+      return [...prev, copy];
+    });
+    return newId;
+  }, []);
+
   const updateHabit = useCallback((id: string, text: string) => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, text } : h));
@@ -487,7 +525,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const setDayCompletion = useCallback((ymd: string, completedCount: number) => {
     setHistory((prev) => {
-      const habitsForDay = getHabitsAppearingOnDate(habitsRef.current, ymd);
+      const habitsForDay = getHabitsAppearingOnDate(habitsRef.current, ymd, dayResetTimeRef.current);
       const sorted = [...habitsForDay].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       const completedByHabitId: Record<string, boolean> = {};
       sorted.forEach((h, i) => {
@@ -673,6 +711,37 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(STORAGE_DAYRESETTIME, newTime);
   }, []);
 
+  const markDateReviewed = useCallback(async (ymd: string) => {
+    setReviewedDates(prev => {
+      if (prev.includes(ymd)) return prev;
+      const next = [...prev, ymd];
+      AsyncStorage.setItem(STORAGE_REVIEWED_DATES, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const saveDayReview = useCallback((ymd: string, habitId: string, rating: number | null, comment: string | null) => {
+    setHistory(prev => {
+      const day = prev[ymd] || { date: ymd, completedByHabitId: {} };
+      const ratings = { ...(day.ratings ?? {}) };
+      const comments = { ...(day.comments ?? {}) };
+      if (rating !== null) ratings[habitId] = rating; else delete ratings[habitId];
+      if (comment !== null && comment.trim() !== '') comments[habitId] = comment.trim(); else delete comments[habitId];
+      return {
+        ...prev,
+        [ymd]: { ...day, ratings, comments },
+      };
+    });
+  }, []);
+
+  const updateHabitAskReview = useCallback((id: string, askReview: boolean) => {
+    setHabits(prev => {
+      const next = prev.map(h => (h.id === id ? { ...h, askReview } : h));
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const resetStorage = useCallback(async () => {
     try {
       await AsyncStorage.clear();
@@ -680,6 +749,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       setHistory({});
       setLastResetDate(null);
       setDayResetTimeState('00:00');
+      setReviewedDates([]);
       const today = formatYmd();
       dateRef.current = today;
       await AsyncStorage.setItem(STORAGE_LASTRESET, today);
@@ -692,10 +762,11 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<HabitsContextType>(() => ({
-    habits, history, lastResetDate, dayResetTime,
-    addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
+    habits, history, lastResetDate, dayResetTime, reviewedDates,
+    addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
     setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
-  }), [habits, history, lastResetDate, dayResetTime, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage]);
+    markDateReviewed, saveDayReview, updateHabitAskReview,
+  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

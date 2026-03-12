@@ -47,6 +47,7 @@ export type DraggableEventProps = {
   onDragEnd: () => void;
   onDoubleTap?: () => void;
   onDragAutoScroll?: (dragBounds: { top: number; bottom: number } | null) => void;
+  dragDisabled?: boolean;
 };
 
 function getSnapStepMinutes(visibleHours: number, hourHeight: number): 5 | 10 | 15 {
@@ -93,6 +94,7 @@ function DraggableEvent({
   onDragEnd,
   onDoubleTap,
   onDragAutoScroll,
+  dragDisabled,
 }: DraggableEventProps) {
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
@@ -126,9 +128,10 @@ function DraggableEvent({
 
   const panResponder = useMemo(() => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => !isTravel,
+      onStartShouldSetPanResponder: () => !isTravel && !dragDisabled,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         if (isTravel) return false;
+        if (dragDisabled) return false;
         if (isDragActiveRef.current) return true;
         return Math.abs(gestureState.dy) > 5;
       },
@@ -139,7 +142,7 @@ function DraggableEvent({
       onShouldBlockNativeResponder: () => isDragActiveRef.current,
 
       onPanResponderGrant: (evt) => {
-        if (isTravel) return;
+        if (isTravel || dragDisabled) return;
         const now = Date.now();
         if (now - lastTapTimeRef.current < 300) {
           if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -194,7 +197,7 @@ function DraggableEvent({
       },
 
       onPanResponderMove: (evt, gestureState) => {
-        if (isTravel) return;
+        if (isTravel || dragDisabled) return;
         if (!isDragActiveRef.current && Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy)) {
           if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
@@ -311,7 +314,7 @@ function DraggableEvent({
       },
 
       onPanResponderTerminate: () => {
-        if (isTravel) return;
+        if (isTravel || dragDisabled) return;
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
@@ -333,7 +336,7 @@ function DraggableEvent({
       },
 
       onPanResponderRelease: (evt, gestureState) => {
-        if (isTravel) return;
+        if (isTravel || dragDisabled) return;
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
@@ -444,7 +447,8 @@ function DraggableEvent({
     setTimeOverrideRange,
     updateScheduleFromDate,
     dragMode,
-    getDay
+    getDay,
+    dragDisabled,
   ]);
 
   const animatedStyle = useAnimatedStyle(() => {

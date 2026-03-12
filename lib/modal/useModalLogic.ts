@@ -67,6 +67,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   });
 
   const [locationRule, setLocationRule] = useState<Habit['locationRule'] | null>(existing?.locationRule ?? null);
+  const [askReview, setAskReview] = useState<boolean>(existing?.askReview ?? false);
 
   const [notification, setNotification] = useState<NotificationConfig>(
     existing?.notification ?? { enabled: false, minutesBefore: 5, customTime: null, customDate: null }
@@ -978,6 +979,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             tipo,
             locationRule: locationRule ?? undefined,
             notification,
+            askReview: tipo !== 'viaggio' ? askReview : undefined,
             schedule: {
               ...(h.schedule ?? { daysOfWeek: [] }),
               repeatEndDate: computedRepeatEndDateNew,
@@ -1254,6 +1256,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         tipo: existing.tipo ?? h.tipo,
         locationRule: locationRule ?? undefined,
         notification,
+        askReview: (existing.tipo ?? h.tipo) !== 'viaggio' ? askReview : undefined,
         schedule: {
           ...(h.schedule ?? { daysOfWeek: [] }),
           repeatEndDate: computedRepeatEndDate,
@@ -1364,5 +1367,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     travelArrivoRitornoGiornoDopo,
     setTravelArrivoRitornoGiornoDopo,
     currentCityName,
+    askReview,
+    setAskReview,
   };
 }

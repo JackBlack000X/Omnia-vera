@@ -1,8 +1,10 @@
 import DraggableEvent from '@/components/oggi/DraggableEvent';
+import DayReviewModal, { ReviewHabitItem } from '@/components/oggi/DayReviewModal';
 import { THEME } from '@/constants/theme';
 import { isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
+import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
 import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
 import { calculateEventVerticalMetrics } from '@/lib/oggi/eventLayout';
@@ -80,8 +82,23 @@ function shortPlaceLabel(name: string | null | undefined): string {
   return first ? first.trim() : trimmed;
 }
 
+function formatDateLabelLong(ymd: string): string {
+  try {
+    const d = new Date(ymd + 'T12:00:00.000Z');
+    return new Intl.DateTimeFormat('it-IT', {
+      timeZone: 'Europe/Zurich',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(d);
+  } catch {
+    return ymd;
+  }
+}
+
 export default function OggiScreen() {
-  const { habits, getDay, setTimeOverrideRange, updateScheduleFromDate } = useHabits();
+  const { habits, history, getDay, setTimeOverrideRange, updateScheduleFromDate, reviewedDates, markDateReviewed, saveDayReview, dayResetTime } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const { ymd } = useLocalSearchParams<{ ymd?: string }>();
@@ -89,6 +106,11 @@ export default function OggiScreen() {
   const [currentTime, setCurrentTime] = useState(new Date());
   
   const [showSettings, setShowSettings] = useState(false);
+  const [reviewQueue, setReviewQueue] = useState<string[]>([]);
+  const [reviewShownThisSession, setReviewShownThisSession] = useState(false);
+  const reviewQueueBuilt = useRef(false);
+  const [reviewingHabitId, setReviewingHabitId] = useState<string | null>(null);
+  const [reviewingDate, setReviewingDate] = useState<string | null>(null);
   const { windowStart, setWindowStart, windowEnd, setWindowEnd, visibleHours, setVisibleHours, dragMode, setDragMode } = useTimelineSettings();
   const { todayWeather: baseTodayWeather } = useWeather(currentDate);
   const [travelTodayWeather, setTravelTodayWeather] = useState<WeatherDay | null>(null);
@@ -131,6 +153,11 @@ export default function OggiScreen() {
   }, []);
 
   const today = getDay(currentDate);
+  const todayYmd = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    } catch { return today; }
+  }, [today]);
   const todayDate = useMemo(() => formatDateLong(currentDate, TZ), [currentDate]);
 
   const windowStartMin = toMinutes(windowStart);
@@ -521,6 +548,31 @@ export default function OggiScreen() {
       }
     }
   }, [ymd]);
+
+  useEffect(() => {
+    if (reviewQueueBuilt.current) return;
+    if (habits.length === 0) return;
+    reviewQueueBuilt.current = true;
+
+    const queue: string[] = [];
+    const today = todayYmd;
+
+    const allDatesWithData = Object.keys(history).filter(d => d < today);
+    allDatesWithData.sort();
+
+    for (const dateKey of allDatesWithData) {
+      if (reviewedDates.includes(dateKey)) continue;
+      const habitsOnDay = getHabitsAppearingOnDate(habits, dateKey, dayResetTime).filter(
+        h => h.askReview && h.tipo !== 'viaggio'
+      );
+      if (habitsOnDay.length === 0) continue;
+      queue.push(dateKey);
+    }
+
+    if (queue.length > 0) {
+      setReviewQueue(queue);
+    }
+  }, [habits, history, reviewedDates, todayYmd]);
 
   useEffect(() => {
     if (hasAutoScrolled.current) return;
@@ -999,9 +1051,12 @@ export default function OggiScreen() {
                 const isLastLine = idx === hours.length - 1;
                 const overflowTasks = isFirstLine ? overflowBefore : isLastLine ? overflowAfter : [];
 
+                const resetHour = parseInt(dayResetTime.split(':')[0], 10);
+                const isResetLine = h === resetHour || (resetHour === 0 && h === 24);
+
                 return (
                   <View key={h} style={[styles.hourRow, { top }]}>
-                      <Text style={styles.hourLabel}>
+                      <Text style={[styles.hourLabel, isResetLine && { color: '#9C27B0' }]}>
                         {`${String(h).padStart(2, '0')}:00`}
                       </Text>
                       {overflowTasks.length > 0 ? (
@@ -1160,7 +1215,16 @@ export default function OggiScreen() {
                    columnRankRef={columnRankRef}
                    rankCounterRef={rankCounterRef}
                    onDragAutoScroll={handleDragAutoScroll}
-                   onDoubleTap={() => router.push({ pathname: '/modal', params: { type: 'edit', id: e.id } })}
+                   onDoubleTap={() => {
+                 const selectedDay = getDay(currentDate);
+                 if (selectedDay < todayYmd) {
+                   setReviewingHabitId(e.id);
+                   setReviewingDate(selectedDay);
+                 } else {
+                   router.push({ pathname: '/modal', params: { type: 'edit', id: e.id } });
+                 }
+               }}
+               dragDisabled={getDay(currentDate) < todayYmd}
                  />
                );
              })}
@@ -1179,6 +1243,82 @@ export default function OggiScreen() {
       </ScrollView>
       </View>
       </GestureHandlerRootView>
+
+      {/* Day Review Modal (sequenza giorni non revisionati) */}
+      {reviewQueue.length > 0 && !reviewShownThisSession && (() => {
+        const currentReviewDate = reviewQueue[0];
+        const habitsOnDay = getHabitsAppearingOnDate(habits, currentReviewDate, dayResetTime).filter(
+          h => h.askReview && h.tipo !== 'viaggio'
+        );
+        const dayHistory = history[currentReviewDate];
+        const reviewItems: ReviewHabitItem[] = habitsOnDay.map(h => ({
+          id: h.id,
+          title: h.text,
+          color: h.color ?? '#4A148C',
+          completed: !!dayHistory?.completedByHabitId[h.id],
+          rating: dayHistory?.ratings?.[h.id],
+          comment: dayHistory?.comments?.[h.id],
+        }));
+        return (
+          <DayReviewModal
+            visible
+            date={currentReviewDate}
+            dateLabel={formatDateLabelLong(currentReviewDate)}
+            items={reviewItems}
+            onConfirm={async (reviews) => {
+              for (const [habitId, { rating, comment }] of Object.entries(reviews)) {
+                saveDayReview(currentReviewDate, habitId, rating, comment);
+              }
+              await markDateReviewed(currentReviewDate);
+              setReviewQueue(prev => {
+                const next = prev.slice(1);
+                if (next.length === 0) setReviewShownThisSession(true);
+                return next;
+              });
+            }}
+            onClose={() => {
+              setReviewShownThisSession(true);
+              setReviewQueue([]);
+            }}
+          />
+        );
+      })()}
+
+      {/* Single habit review modal (doppio tap su task passata) */}
+      {reviewingHabitId && reviewingDate && (() => {
+        const habit = habits.find(h => h.id === reviewingHabitId);
+        if (!habit) return null;
+        const dayHistory = history[reviewingDate];
+        const completed = !!dayHistory?.completedByHabitId[reviewingHabitId];
+        const existingRating = dayHistory?.ratings?.[reviewingHabitId] ?? null;
+        const existingComment = dayHistory?.comments?.[reviewingHabitId] ?? null;
+        const item: ReviewHabitItem = {
+          id: habit.id,
+          title: habit.text,
+          color: habit.color ?? '#4A148C',
+          completed,
+          rating: existingRating ?? undefined,
+          comment: existingComment ?? undefined,
+        };
+        return (
+          <DayReviewModal
+            visible
+            date={reviewingDate}
+            dateLabel={formatDateLabelLong(reviewingDate)}
+            items={[item]}
+            onConfirm={(reviews) => {
+              const rev = reviews[habit.id];
+              if (rev) saveDayReview(reviewingDate, habit.id, rev.rating, rev.comment);
+              setReviewingHabitId(null);
+              setReviewingDate(null);
+            }}
+            onClose={() => {
+              setReviewingHabitId(null);
+              setReviewingDate(null);
+            }}
+          />
+        );
+      })()}
 
       {/* Settings Modal */}
       <Modal visible={showSettings} animationType="slide" transparent onRequestClose={() => setShowSettings(false)}>

@@ -686,6 +686,20 @@ export default function ModalScreen() {
             </View>
           )}
 
+          {(type === 'new' || type === 'edit') && m.tipo !== 'viaggio' && (
+            <View style={{ marginTop: 20 }}>
+              <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                <Text style={styles.sectionTitle}>Chiedi valutazione</Text>
+                <Switch
+                  value={m.askReview}
+                  onValueChange={v => m.setAskReview(v)}
+                  trackColor={{ false: '#334155', true: '#ec4899' }}
+                  thumbColor="white"
+                />
+              </View>
+            </View>
+          )}
+
           {(type === 'new' || type === 'edit') && m.tipo === 'task' && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>Orario</Text>

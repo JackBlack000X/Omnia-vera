@@ -4,6 +4,8 @@ import { styles } from '@/components/index/indexStyles';
 import { THEME } from '@/constants/theme';
 import { OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { useIndexLogic } from '@/lib/index/useIndexLogic';
+import { useHabits } from '@/lib/habits/Provider';
+import type { Habit } from '@/lib/habits/schema';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -70,6 +72,23 @@ const ChevronIcon = ({ isCollapsed, folderColor }: { isCollapsed: boolean; folde
 export default function IndexScreen() {
   const { activeTheme } = useAppTheme();
   const router = useRouter();
+  const { duplicateHabit } = useHabits();
+
+  const handleDuplicate = useCallback((habit: Habit) => {
+    Alert.alert(
+      'Duplica task',
+      `Vuoi duplicare "${habit.text}"?`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Sì', onPress: () => {
+            duplicateHabit(habit.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+        },
+      ]
+    );
+  }, [duplicateHabit]);
 
   const {
     habits,
@@ -149,6 +168,7 @@ export default function IndexScreen() {
     collapsedFolderIds,
   } = useIndexLogic();
 
+  const lastTapRef = useRef<{ id: string; time: number } | null>(null);
   const isDraggingRef = useRef(false);
   const [isDraggingFolder, setIsDraggingFolder] = React.useState(false);
   const dragInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.createInteractionHandle> | null>(null);
@@ -440,6 +460,17 @@ export default function IndexScreen() {
             disabled={isActive || !canStartDrag}
             activeOpacity={0.9}
             delayLongPress={200}
+            onPress={() => {
+              if (selectionMode) return;
+              const id = item.habit.id;
+              const now = Date.now();
+              if (lastTapRef.current?.id === id && now - lastTapRef.current.time < 300) {
+                lastTapRef.current = null;
+                handleDuplicate(item.habit);
+              } else {
+                lastTapRef.current = { id, time: now };
+              }
+            }}
           >
             <HabitItem
               habit={item.habit}
@@ -487,6 +518,7 @@ export default function IndexScreen() {
     isDraggingFolder,
     listData,
     overlapHoverState,
+    handleDuplicate,
   ]);
 
   return (

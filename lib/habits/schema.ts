@@ -60,11 +60,15 @@ export type Habit = {
     placeId: string;
     minOutsideMinutes?: number;
   };
+  /** If true, this habit will be included in the daily review modal */
+  askReview?: boolean;
 };
 
 export type DayCompletion = {
   date: string; // YYYY-MM-DD in Europe/Zurich
   completedByHabitId: Record<string, boolean>;
+  ratings?: Record<string, number>; // habitId -> 1-10
+  comments?: Record<string, string>; // habitId -> text
 };
 
 export type HabitsState = {
@@ -72,6 +76,7 @@ export type HabitsState = {
   history: Record<string, DayCompletion>;
   lastResetDate: string | null;
   dayResetTime?: string; // 'HH:MM' for when the day resets (default: '00:00')
+  reviewedDates: string[]; // YYYY-MM-DD dates that have been reviewed
 };
 
 

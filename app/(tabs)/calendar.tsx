@@ -145,7 +145,7 @@ const MonthView = React.memo(function MonthView({
   const dayStats = useMemo(() => {
     const stats: Record<string, { completed: number; total: number; level: CompletionLevel }> = {};
     for (const day of days) {
-      const habitsForDay = getHabitsAppearingOnDate(habits, day.ymd);
+      const habitsForDay = getHabitsAppearingOnDate(habits, day.ymd, dayResetTime);
       const total = habitsForDay.length;
       let completed: number;
       const completion = recentHistory[day.ymd];
@@ -293,7 +293,7 @@ function getNumWeeksInMonth(year: number, month: number): number {
 }
 
 export default function CalendarScreen() {
-  const { habits, history, getDay } = useHabits();
+  const { habits, history, getDay, dayResetTime } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
@@ -388,12 +388,12 @@ export default function CalendarScreen() {
 
     const getCompletedForDate = (date: string) => {
       const completion = recentHistory[date];
-      const habitsForDay = getHabitsAppearingOnDate(habits, date);
+      const habitsForDay = getHabitsAppearingOnDate(habits, date, dayResetTime);
       if (completion) return habitsForDay.filter((h) => completion.completedByHabitId[h.id]).length;
       return 0;
     };
 
-    const getTotalForDate = (date: string) => getHabitsAppearingOnDate(habits, date).length;
+    const getTotalForDate = (date: string) => getHabitsAppearingOnDate(habits, date, dayResetTime).length;
 
     let currentStreak: string[] = [];
     const registerStreak = (streak: string[]) => {
@@ -436,7 +436,7 @@ export default function CalendarScreen() {
     for (const [ymd, completion] of Object.entries(recentHistory)) {
       // Conta solo i giorni COMPLETAMENTE chiusi (prima dell'oggi logico)
       if (ymd >= logicalTodayYmd) continue;
-      const habitsForDay = getHabitsAppearingOnDate(habits, ymd);
+      const habitsForDay = getHabitsAppearingOnDate(habits, ymd, dayResetTime);
       const total = habitsForDay.length;
       if (total === 0) continue;
       const completed = habitsForDay.filter((h) => completion.completedByHabitId[h.id]).length;
