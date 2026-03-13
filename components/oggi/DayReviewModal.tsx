@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export type ReviewHabitItem = {
@@ -57,6 +57,15 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
     }
     return init;
   });
+
+  useEffect(() => {
+    if (!visible) return;
+    const init: Record<string, { rating: number | null; comment: string | null }> = {};
+    for (const item of items) {
+      init[item.id] = { rating: item.rating ?? null, comment: item.comment ?? null };
+    }
+    setReviews(init);
+  }, [visible, date]);
 
   const setRating = (id: string, rating: number) => {
     setReviews(prev => ({ ...prev, [id]: { ...prev[id], rating } }));

@@ -128,7 +128,7 @@ function DraggableEvent({
 
   const panResponder = useMemo(() => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => !isTravel && !dragDisabled,
+      onStartShouldSetPanResponder: () => !isTravel,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         if (isTravel) return false;
         if (dragDisabled) return false;
@@ -142,7 +142,7 @@ function DraggableEvent({
       onShouldBlockNativeResponder: () => isDragActiveRef.current,
 
       onPanResponderGrant: (evt) => {
-        if (isTravel || dragDisabled) return;
+        if (isTravel) return;
         const now = Date.now();
         if (now - lastTapTimeRef.current < 300) {
           if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -152,6 +152,7 @@ function DraggableEvent({
           return;
         }
         lastTapTimeRef.current = now;
+        if (dragDisabled) return;
 
         lastSnappedMinuteRef.current = null;
         initialTouchYRef.current = evt.nativeEvent.pageY;

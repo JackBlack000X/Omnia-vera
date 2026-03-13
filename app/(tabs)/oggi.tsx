@@ -158,6 +158,14 @@ export default function OggiScreen() {
       return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     } catch { return today; }
   }, [today]);
+
+  const isPastReset = useMemo(() => {
+    if (!dayResetTime || dayResetTime === '00:00') return false;
+    const [rh, rm] = dayResetTime.split(':').map(Number);
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    return nowMin >= rh * 60 + rm;
+  }, [dayResetTime, currentTime]);
   const todayDate = useMemo(() => formatDateLong(currentDate, TZ), [currentDate]);
 
   const windowStartMin = toMinutes(windowStart);
@@ -549,30 +557,25 @@ export default function OggiScreen() {
     }
   }, [ymd]);
 
+  const yesterdayYmd = useMemo(() => {
+    const d = new Date(todayYmd + 'T12:00:00.000Z');
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }, [todayYmd]);
+
   useEffect(() => {
     if (reviewQueueBuilt.current) return;
     if (habits.length === 0) return;
     reviewQueueBuilt.current = true;
 
-    const queue: string[] = [];
-    const today = todayYmd;
-
-    const allDatesWithData = Object.keys(history).filter(d => d < today);
-    allDatesWithData.sort();
-
-    for (const dateKey of allDatesWithData) {
-      if (reviewedDates.includes(dateKey)) continue;
-      const habitsOnDay = getHabitsAppearingOnDate(habits, dateKey, dayResetTime).filter(
-        h => h.askReview && h.tipo !== 'viaggio'
-      );
-      if (habitsOnDay.length === 0) continue;
-      queue.push(dateKey);
+    if (reviewedDates.includes(yesterdayYmd)) return;
+    const habitsOnDay = getHabitsAppearingOnDate(habits, yesterdayYmd, dayResetTime).filter(
+      h => h.askReview && h.tipo !== 'viaggio'
+    );
+    if (habitsOnDay.length > 0) {
+      setReviewQueue([yesterdayYmd]);
     }
-
-    if (queue.length > 0) {
-      setReviewQueue(queue);
-    }
-  }, [habits, history, reviewedDates, todayYmd]);
+  }, [habits, history, reviewedDates, todayYmd, yesterdayYmd, dayResetTime]);
 
   useEffect(() => {
     if (hasAutoScrolled.current) return;
@@ -1217,14 +1220,15 @@ export default function OggiScreen() {
                    onDragAutoScroll={handleDragAutoScroll}
                    onDoubleTap={() => {
                  const selectedDay = getDay(currentDate);
-                 if (selectedDay < todayYmd) {
+                 const isReviewDay = selectedDay < todayYmd || (selectedDay === todayYmd && isPastReset);
+                 if (isReviewDay) {
                    setReviewingHabitId(e.id);
                    setReviewingDate(selectedDay);
                  } else {
                    router.push({ pathname: '/modal', params: { type: 'edit', id: e.id } });
                  }
                }}
-               dragDisabled={getDay(currentDate) < todayYmd}
+               dragDisabled={getDay(currentDate) < todayYmd || (getDay(currentDate) === todayYmd && isPastReset)}
                  />
                );
              })}
@@ -1244,13 +1248,13 @@ export default function OggiScreen() {
       </View>
       </GestureHandlerRootView>
 
-      {/* Day Review Modal (sequenza giorni non revisionati) */}
+      {/* Day Review Modal (ieri) */}
       {reviewQueue.length > 0 && !reviewShownThisSession && (() => {
-        const currentReviewDate = reviewQueue[0];
-        const habitsOnDay = getHabitsAppearingOnDate(habits, currentReviewDate, dayResetTime).filter(
+        const reviewDate = reviewQueue[0];
+        const habitsOnDay = getHabitsAppearingOnDate(habits, reviewDate, dayResetTime).filter(
           h => h.askReview && h.tipo !== 'viaggio'
         );
-        const dayHistory = history[currentReviewDate];
+        const dayHistory = history[reviewDate];
         const reviewItems: ReviewHabitItem[] = habitsOnDay.map(h => ({
           id: h.id,
           title: h.text,
@@ -1262,19 +1266,16 @@ export default function OggiScreen() {
         return (
           <DayReviewModal
             visible
-            date={currentReviewDate}
-            dateLabel={formatDateLabelLong(currentReviewDate)}
+            date={reviewDate}
+            dateLabel={formatDateLabelLong(reviewDate)}
             items={reviewItems}
             onConfirm={async (reviews) => {
               for (const [habitId, { rating, comment }] of Object.entries(reviews)) {
-                saveDayReview(currentReviewDate, habitId, rating, comment);
+                saveDayReview(reviewDate, habitId, rating, comment);
               }
-              await markDateReviewed(currentReviewDate);
-              setReviewQueue(prev => {
-                const next = prev.slice(1);
-                if (next.length === 0) setReviewShownThisSession(true);
-                return next;
-              });
+              await markDateReviewed(reviewDate);
+              setReviewShownThisSession(true);
+              setReviewQueue([]);
             }}
             onClose={() => {
               setReviewShownThisSession(true);
