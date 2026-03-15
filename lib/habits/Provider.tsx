@@ -4,9 +4,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
 import { getHabitsAppearingOnDate } from './habitsForDate';
-import { Habit, HabitsState } from './schema';
+import { Habit, HabitsState, TrackerEntry, UserTable } from './schema';
 
 const STORAGE_HABITS = 'habitcheck_habits_v1';
+const STORAGE_TABLES = 'habitcheck_tables_v1';
+const STORAGE_TRACKER = 'habitcheck_tracker_v1';
 const STORAGE_HISTORY = 'habitcheck_history_v1';
 const STORAGE_LASTRESET = 'habitcheck_lastreset_v1';
 const STORAGE_DAYRESETTIME = 'habitcheck_dayresettime_v1';
@@ -67,6 +69,7 @@ export type HabitsContextType = {
   lastResetDate: string | null;
   dayResetTime: string;
   reviewedDates: string[];
+  isLoaded: boolean;
   addHabit: (text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq'] }) => string;
   duplicateHabit: (id: string) => string | null;
   updateHabit: (id: string, text: string) => void;
@@ -95,6 +98,15 @@ export type HabitsContextType = {
   saveDayReview: (ymd: string, habitId: string, rating: number | null, comment: string | null) => void;
   /** Update askReview toggle on a habit */
   updateHabitAskReview: (id: string, askReview: boolean) => void;
+  trackerEntries: TrackerEntry[];
+  addTrackerEntry: (entry: Omit<TrackerEntry, 'id' | 'createdAt'>) => string;
+  updateTrackerEntry: (id: string, entry: Partial<Omit<TrackerEntry, 'id' | 'createdAt'>>) => void;
+  deleteTrackerEntry: (id: string) => void;
+  savedTrackerPeople: string[];
+  tables: UserTable[];
+  addTable: (name: string, columns: string[], color: string) => string;
+  updateTable: (id: string, patch: Partial<Omit<UserTable, 'id' | 'createdAt'>>) => void;
+  deleteTable: (id: string) => void;
 };
 
 const HabitsContext = createContext<HabitsContextType | undefined>(undefined);
@@ -105,6 +117,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const [lastResetDate, setLastResetDate] = useState<string | null>(null);
   const [dayResetTime, setDayResetTimeState] = useState<string>('00:00');
   const [reviewedDates, setReviewedDates] = useState<string[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [trackerEntries, setTrackerEntries] = useState<TrackerEntry[]>([]);
+  const [savedTrackerPeople, setSavedTrackerPeople] = useState<string[]>([]);
+  const [tables, setTables] = useState<UserTable[]>([]);
   const dateRef = useRef<string>(formatYmd());
   const habitsRef = useRef<Habit[]>([]);
   habitsRef.current = habits;
@@ -119,12 +135,14 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [rawHabits, rawHistory, rawLast, rawDayResetTime, rawReviewedDates] = await Promise.all([
+        const [rawHabits, rawHistory, rawLast, rawDayResetTime, rawReviewedDates, rawTracker, rawTables] = await Promise.all([
           AsyncStorage.getItem(STORAGE_HABITS),
           AsyncStorage.getItem(STORAGE_HISTORY),
           AsyncStorage.getItem(STORAGE_LASTRESET),
           AsyncStorage.getItem(STORAGE_DAYRESETTIME),
           AsyncStorage.getItem(STORAGE_REVIEWED_DATES),
+          AsyncStorage.getItem(STORAGE_TRACKER),
+          AsyncStorage.getItem(STORAGE_TABLES),
         ]);
 
         if (rawHabits) {
@@ -154,6 +172,27 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
+        if (rawTracker) {
+          try {
+            const parsed = JSON.parse(rawTracker) as { entries?: TrackerEntry[]; people?: string[] };
+            if (parsed && typeof parsed === 'object') {
+              if (Array.isArray(parsed.entries)) setTrackerEntries(parsed.entries);
+              if (Array.isArray(parsed.people)) setSavedTrackerPeople(parsed.people);
+            }
+          } catch (e) {
+            console.warn('Corrupted tracker data, skipping');
+          }
+        }
+
+        if (rawTables) {
+          try {
+            const parsed = JSON.parse(rawTables);
+            if (Array.isArray(parsed)) setTables(parsed);
+          } catch (e) {
+            console.warn('Corrupted tables data, skipping');
+          }
+        }
+
         const effectiveResetTime = rawDayResetTime || '00:00';
         // All'avvio, reset effettivo e configurato coincidono
         dayResetTimeRef.current = effectiveResetTime;
@@ -167,6 +206,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           setLastResetDate(rawLast);
         }
         dateRef.current = today;
+        setIsLoaded(true);
       } catch (error) {
         console.error('Failed to load data:', error);
         if (Platform.OS !== 'web') {
@@ -179,6 +219,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
             ]
           );
         }
+      setIsLoaded(true);
       }
     })();
   }, []);
@@ -423,6 +464,38 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+
+  const addTrackerEntry = useCallback((entry: Omit<TrackerEntry, 'id' | 'createdAt'>): string => {
+    const newId = generateUUID();
+    const now = formatYmd();
+    const newEntry: TrackerEntry = { ...entry, id: newId, createdAt: now };
+    setTrackerEntries(prev => {
+      const next = [...prev, newEntry];
+      const people = Array.from(new Set([...savedTrackerPeople, ...(entry.withPeople ?? [])].filter(Boolean)));
+      setSavedTrackerPeople(people);
+      AsyncStorage.setItem(STORAGE_TRACKER, JSON.stringify({ entries: next, people })).catch(() => {});
+      return next;
+    });
+    return newId;
+  }, [savedTrackerPeople]);
+
+  const updateTrackerEntry = useCallback((id: string, entry: Partial<Omit<TrackerEntry, 'id' | 'createdAt'>>) => {
+    setTrackerEntries(prev => {
+      const next = prev.map(e => e.id === id ? { ...e, ...entry } : e);
+      const people = Array.from(new Set([...savedTrackerPeople, ...(entry.withPeople ?? [])].filter(Boolean)));
+      setSavedTrackerPeople(people);
+      AsyncStorage.setItem(STORAGE_TRACKER, JSON.stringify({ entries: next, people })).catch(() => {});
+      return next;
+    });
+  }, [savedTrackerPeople]);
+
+  const deleteTrackerEntry = useCallback((id: string) => {
+    setTrackerEntries(prev => {
+      const next = prev.filter(e => e.id !== id);
+      AsyncStorage.setItem(STORAGE_TRACKER, JSON.stringify({ entries: next, people: savedTrackerPeople })).catch(() => {});
+      return next;
+    });
+  }, [savedTrackerPeople]);
 
   const updateHabitTipo = useCallback((id: string, tipo: 'task' | 'abitudine' | 'evento') => {
     setHabits((prev) => {
@@ -761,12 +834,42 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const addTable = useCallback((name: string, columns: string[], color: string): string => {
+    const newId = generateUUID();
+    const now = formatYmd();
+    const newTable: UserTable = { id: newId, name, columns, rows: [], color, createdAt: now };
+    setTables(prev => {
+      const next = [...prev, newTable];
+      AsyncStorage.setItem(STORAGE_TABLES, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+    return newId;
+  }, []);
+
+  const updateTable = useCallback((id: string, patch: Partial<Omit<UserTable, 'id' | 'createdAt'>>) => {
+    setTables(prev => {
+      const next = prev.map(t => t.id === id ? { ...t, ...patch } : t);
+      AsyncStorage.setItem(STORAGE_TABLES, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const deleteTable = useCallback((id: string) => {
+    setTables(prev => {
+      const next = prev.filter(t => t.id !== id);
+      AsyncStorage.setItem(STORAGE_TABLES, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const value = useMemo<HabitsContextType>(() => ({
-    habits, history, lastResetDate, dayResetTime, reviewedDates,
+    habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded,
     addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
     setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
     markDateReviewed, saveDayReview, updateHabitAskReview,
-  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview]);
+    trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople,
+    tables, addTable, updateTable, deleteTable,
+  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

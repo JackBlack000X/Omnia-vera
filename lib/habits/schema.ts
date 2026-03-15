@@ -37,6 +37,19 @@ export type NotificationConfig = {
   customDate?: string | null; // 'YYYY-MM-DD' if set, overrides the event day
 };
 
+export type TrackerEntry = {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // 'HH:MM'
+  endTime: string; // 'HH:MM'
+  color: string;
+  withPeople?: string[]; // names of people
+  rating?: number | null; // 1-10
+  comment?: string | null;
+  createdAt: string; // YYYY-MM-DD
+};
+
 export type Habit = {
   id: string;
   text: string;
@@ -69,6 +82,15 @@ export type DayCompletion = {
   completedByHabitId: Record<string, boolean>;
   ratings?: Record<string, number>; // habitId -> 1-10
   comments?: Record<string, string>; // habitId -> text
+};
+
+export type UserTable = {
+  id: string;
+  name: string;
+  columns: string[];
+  rows: Record<string, string>[];
+  color: string;
+  createdAt: string;
 };
 
 export type HabitsState = {

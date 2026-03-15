@@ -1,6 +1,7 @@
 import { HabitItem } from '@/components/HabitItem';
 import { FolderModals } from '@/components/index/FolderModals';
 import { styles } from '@/components/index/indexStyles';
+import TabelleView from '@/components/index/TabelleView';
 import { THEME } from '@/constants/theme';
 import { OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { useIndexLogic } from '@/lib/index/useIndexLogic';
@@ -10,7 +11,7 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, InteractionManager, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { FadeInDown, Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
@@ -73,6 +74,7 @@ export default function IndexScreen() {
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const { duplicateHabit } = useHabits();
+  const [activeSection, setActiveSection] = useState<'tasks' | 'tabelle'>('tasks');
 
   const handleDuplicate = useCallback((habit: Habit) => {
     Alert.alert(
@@ -525,12 +527,21 @@ export default function IndexScreen() {
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       {activeTheme !== 'futuristic' && (
         <View style={styles.header}>
-          <Text style={styles.title}>Tasks</Text>
-          <Text style={styles.progressText}>{stats.pct}%</Text>
+          <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-end' }}>
+            <TouchableOpacity onPress={() => setActiveSection('tasks')}>
+              <Text style={[styles.title, activeSection !== 'tasks' && { color: '#4b5563' }]}>Tasks</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setActiveSection('tabelle')}>
+              <Text style={[styles.title, activeSection !== 'tabelle' && { color: '#4b5563' }]}>Tabelle</Text>
+            </TouchableOpacity>
+          </View>
+          {activeSection === 'tasks' && <Text style={styles.progressText}>{stats.pct}%</Text>}
         </View>
       )}
 
-      <View style={[styles.progressSection, activeTheme === 'futuristic' && { marginTop: 55 }]}>
+      {activeSection === 'tabelle' && <TabelleView />}
+
+      {activeSection === 'tasks' && <><View style={[styles.progressSection, activeTheme === 'futuristic' && { marginTop: 55 }]}>
         {activeTheme === 'futuristic' && (
           <Text style={styles.progressText}>{stats.pct}%</Text>
         )}
@@ -872,6 +883,7 @@ export default function IndexScreen() {
           </TouchableOpacity>
         </Link>
       )}
+      </>}
 
       <FolderModals
         createFolderVisible={createFolderVisible}

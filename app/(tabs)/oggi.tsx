@@ -1,5 +1,6 @@
 import DraggableEvent from '@/components/oggi/DraggableEvent';
 import DayReviewModal, { ReviewHabitItem } from '@/components/oggi/DayReviewModal';
+import TrackerModal from '@/components/oggi/TrackerModal';
 import { THEME } from '@/constants/theme';
 import { isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
@@ -98,7 +99,7 @@ function formatDateLabelLong(ymd: string): string {
 }
 
 export default function OggiScreen() {
-  const { habits, history, getDay, setTimeOverrideRange, updateScheduleFromDate, reviewedDates, markDateReviewed, saveDayReview, dayResetTime } = useHabits();
+  const { habits, history, getDay, setTimeOverrideRange, updateScheduleFromDate, reviewedDates, markDateReviewed, saveDayReview, dayResetTime, isLoaded, trackerEntries } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const { ymd } = useLocalSearchParams<{ ymd?: string }>();
@@ -108,9 +109,11 @@ export default function OggiScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [reviewQueue, setReviewQueue] = useState<string[]>([]);
   const [reviewShownThisSession, setReviewShownThisSession] = useState(false);
-  const reviewQueueBuilt = useRef(false);
+
   const [reviewingHabitId, setReviewingHabitId] = useState<string | null>(null);
   const [reviewingDate, setReviewingDate] = useState<string | null>(null);
+  const [showTrackerModal, setShowTrackerModal] = useState(false);
+  const [editingTrackerEntry, setEditingTrackerEntry] = useState<import('@/lib/habits/schema').TrackerEntry | null>(null);
   const { windowStart, setWindowStart, windowEnd, setWindowEnd, visibleHours, setVisibleHours, dragMode, setDragMode } = useTimelineSettings();
   const { todayWeather: baseTodayWeather } = useWeather(currentDate);
   const [travelTodayWeather, setTravelTodayWeather] = useState<WeatherDay | null>(null);
@@ -462,10 +465,31 @@ export default function OggiScreen() {
     return { timedEvents: items, allDayEvents: allDay };
   }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1]);
 
+  const trackerEventsForDay = useMemo(() => {
+    const selectedYmd = (() => {
+      try {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(currentDate);
+      } catch { return getDay(currentDate); }
+    })();
+    return trackerEntries
+      .filter(t => t.date === selectedYmd)
+      .map(t => ({
+        id: `tracker-${t.id}`,
+        title: t.title,
+        startTime: t.startTime,
+        endTime: t.endTime,
+        isAllDay: false,
+        color: t.color,
+        createdAt: t.createdAt,
+        tipo: 'tracker' as any,
+        _trackerId: t.id,
+      }));
+  }, [trackerEntries, currentDate, getDay]);
+
   // Eventi usati per layout/drag/colonne: escludiamo i viaggi, che hanno una colonna visiva a parte
   const layoutEvents = useMemo(
-    () => timedEvents.filter(ev => ev.tipo !== 'viaggio'),
-    [timedEvents]
+    () => [...timedEvents.filter(ev => ev.tipo !== 'viaggio'), ...trackerEventsForDay],
+    [timedEvents, trackerEventsForDay]
   );
 
   // Sync notifications for today's habits (solo eventi "normali", non i viaggi)
@@ -520,7 +544,7 @@ export default function OggiScreen() {
   // making it permanently rightmost until another task is moved after it.
   useEffect(() => {
     const ranks = columnRankRef.current;
-    const newTasks = layoutEvents.filter(ev => ranks[ev.id] === undefined);
+    const newTasks = layoutEvents.filter(ev => (ev as any).tipo !== 'tracker' && ranks[ev.id] === undefined);
     if (newTasks.length === 0) return;
 
     // Sort new tasks by createdAt then id to assign ranks in creation order
@@ -558,15 +582,18 @@ export default function OggiScreen() {
   }, [ymd]);
 
   const yesterdayYmd = useMemo(() => {
-    const d = new Date(todayYmd + 'T12:00:00.000Z');
+    const logicalToday = getDay(new Date());
+    const d = new Date(logicalToday + 'T12:00:00.000Z');
     d.setUTCDate(d.getUTCDate() - 1);
     return d.toISOString().slice(0, 10);
-  }, [todayYmd]);
+  }, [getDay, dayResetTime, currentTime]);
+
+  const lastReviewBuiltForYmd = useRef<string | null>(null);
 
   useEffect(() => {
-    if (reviewQueueBuilt.current) return;
-    if (habits.length === 0) return;
-    reviewQueueBuilt.current = true;
+    if (!isLoaded) return;
+    if (lastReviewBuiltForYmd.current === yesterdayYmd) return;
+    lastReviewBuiltForYmd.current = yesterdayYmd;
 
     if (reviewedDates.includes(yesterdayYmd)) return;
     const habitsOnDay = getHabitsAppearingOnDate(habits, yesterdayYmd, dayResetTime).filter(
@@ -575,7 +602,7 @@ export default function OggiScreen() {
     if (habitsOnDay.length > 0) {
       setReviewQueue([yesterdayYmd]);
     }
-  }, [habits, history, reviewedDates, todayYmd, yesterdayYmd, dayResetTime]);
+  }, [isLoaded, habits, history, reviewedDates, todayYmd, yesterdayYmd, dayResetTime]);
 
   useEffect(() => {
     if (hasAutoScrolled.current) return;
@@ -715,6 +742,7 @@ export default function OggiScreen() {
   }, [timedEvents, pendingEventPositions]);
   
   const [lastMovedEventId, setLastMovedEventId] = useState<string | null>(null);
+  const allDayLastTapRef = useRef<Record<string, number>>({});
   
   useEffect(() => {
     if (!recentlyMovedEventId) return;
@@ -756,6 +784,11 @@ export default function OggiScreen() {
   
   const layoutById = useMemo<Record<string, LayoutInfo>>(() => {
     const events = layoutEvents.map(e => {
+      if ((e as any).tipo === 'tracker') {
+        const startM = toMinutes(e.startTime);
+        const endM = toMinutes(e.endTime);
+        return { ...e, s: startM, e: endM, duration: endM - startM, isLastMoved: false };
+      }
       const pendingStart = pendingEventPositions[e.id];
       const startM = pendingStart !== undefined ? pendingStart : toMinutes(e.startTime);
       const origS = toMinutes(e.startTime);
@@ -996,6 +1029,15 @@ export default function OggiScreen() {
           <TouchableOpacity onPress={() => navigateDate('next')} style={styles.navButton}>
              <Ionicons name="chevron-forward" size={24} color={THEME.text} />
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.settingsButton}
+            onPress={() => {
+              setEditingTrackerEntry(null);
+              setShowTrackerModal(true);
+            }}
+          >
+            <Ionicons name="timer-outline" size={24} color="#60a5fa" />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.settingsButton} onPress={() => setShowSettings(true)}>
              <Ionicons name="settings-outline" size={24} color={THEME.text} />
           </TouchableOpacity>
@@ -1009,18 +1051,35 @@ export default function OggiScreen() {
             const bg = e.color;
             const light = isLightColor(bg);
             return (
-              <View
+              <TouchableOpacity
                 key={e.id}
                 style={[
                   styles.allDayItem,
                   { backgroundColor: bg },
                   i < allDayEvents.length - 1 && { marginRight: 4 },
                 ]}
+                onPress={() => {
+                  const now = Date.now();
+                  const last = allDayLastTapRef.current[e.id] ?? 0;
+                  if (now - last < 300) {
+                    allDayLastTapRef.current[e.id] = 0;
+                    const selectedDay = getDay(currentDate);
+                    const isReviewDay = selectedDay < todayYmd || (selectedDay === todayYmd && isPastReset);
+                    if (isReviewDay) {
+                      setReviewingHabitId(e.id);
+                      setReviewingDate(selectedDay);
+                    } else {
+                      router.push({ pathname: '/modal', params: { type: 'edit', id: e.id } });
+                    }
+                  } else {
+                    allDayLastTapRef.current[e.id] = now;
+                  }
+                }}
               >
                 <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
                   {e.title}
                 </Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -1173,8 +1232,50 @@ export default function OggiScreen() {
                );
              })}
 
-             {/* Normal timed events (tasks/abitudini/eventi) */}
-             {timedEvents.filter(e => e.tipo !== 'viaggio').map(e => {
+             {/* Normal timed events (tasks/abitudini/eventi) + tracker entries */}
+             {layoutEvents.filter(e => e.tipo !== 'viaggio').map(e => {
+               const isTracker = (e as any).tipo === 'tracker';
+               if (isTracker) {
+                 const style = getEventStyle(e);
+                 if (!style) return null;
+                 const trackerId: string = (e as any)._trackerId;
+                 const trackerEntry = trackerEntries.find(t => t.id === trackerId);
+                 if (!trackerEntry) return null;
+                 const bg = e.color;
+                 const light = isLightColor(bg);
+                 const textColor = light ? '#000' : '#FFF';
+                 return (
+                   <TouchableOpacity
+                     key={e.id}
+                     activeOpacity={0.85}
+                     onPress={() => {
+                       setEditingTrackerEntry(trackerEntry);
+                       setShowTrackerModal(true);
+                     }}
+                     style={{
+                       position: 'absolute',
+                       top: style.top + BASE_VERTICAL_OFFSET,
+                       height: style.height,
+                       left: style.left,
+                       width: style.width,
+                       borderRadius: 6,
+                       padding: 4,
+                       overflow: 'hidden',
+                       backgroundColor: bg,
+                       opacity: 1,
+                     }}
+                   >
+                     <Text style={{ fontSize: 12, fontWeight: 'bold', color: textColor }} numberOfLines={1}>
+                       {e.title}
+                     </Text>
+                     {style.height > 30 && (
+                       <Text style={{ fontSize: 10, opacity: 0.8, color: textColor }}>
+                         {trackerEntry.startTime} - {trackerEntry.endTime}
+                       </Text>
+                     )}
+                   </TouchableOpacity>
+                 );
+               }
                const style = getEventStyle(e);
                if (!style) return null;
                const bg = e.color;
@@ -1320,6 +1421,17 @@ export default function OggiScreen() {
           />
         );
       })()}
+
+      {/* Tracker Modal */}
+      <TrackerModal
+        visible={showTrackerModal}
+        initialDate={getDay(currentDate)}
+        editEntry={editingTrackerEntry}
+        onClose={() => {
+          setShowTrackerModal(false);
+          setEditingTrackerEntry(null);
+        }}
+      />
 
       {/* Settings Modal */}
       <Modal visible={showSettings} animationType="slide" transparent onRequestClose={() => setShowSettings(false)}>
@@ -1524,6 +1636,27 @@ const styles = StyleSheet.create({
     paddingRight: 4,
     paddingVertical: 2,
     justifyContent: 'center',
+  },
+  trackerStrip: {
+    position: 'absolute',
+    left: LEFT_MARGIN + 2,
+    right: 2,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    justifyContent: 'center',
+    borderLeftWidth: 3,
+    borderLeftColor: 'rgba(255,255,255,0.5)',
+    zIndex: 5,
+  },
+  trackerStripText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  trackerStripTime: {
+    fontSize: 9,
+    opacity: 0.85,
+    marginTop: 1,
   },
   travelStripText: {
     fontSize: 10,

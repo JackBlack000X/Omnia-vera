@@ -97,11 +97,13 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
                     <Text style={[styles.itemTitle, { color: textColor }]} numberOfLines={1}>
                       {item.title}
                     </Text>
-                    <Ionicons
-                      name={item.completed ? 'checkmark-circle' : 'close-circle'}
-                      size={20}
-                      color={item.completed ? (light ? '#2e7d32' : '#a5d6a7') : (light ? '#c62828' : '#ef9a9a')}
-                    />
+                    {item.completed && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color={light ? '#2e7d32' : '#a5d6a7'}
+                      />
+                    )}
                   </View>
 
                   <View style={styles.itemBody}>

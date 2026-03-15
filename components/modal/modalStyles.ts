@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 
-export const COLORS = ['#000000', '#ef4444', '#f59e0b', '#fbbf24', '#10b981', '#60a5fa', '#3b82f6', '#6366f1', '#ec4899', '#ffffff', '#9ca3af'];
+export const COLORS = ['#000000', '#ef4444', '#f59e0b', '#fbbf24', '#10b981', '#60a5fa', '#3b82f6', '#8b5cf6', '#6366f1', '#ec4899', '#ffffff', '#9ca3af'];
 
 export const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0b1220', paddingHorizontal: 14 },
