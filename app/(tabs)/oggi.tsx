@@ -99,7 +99,7 @@ function formatDateLabelLong(ymd: string): string {
 }
 
 export default function OggiScreen() {
-  const { habits, history, getDay, setTimeOverrideRange, updateScheduleFromDate, reviewedDates, markDateReviewed, saveDayReview, dayResetTime, isLoaded, trackerEntries } = useHabits();
+  const { habits, history, getDay, setTimeOverrideRange, updateScheduleFromDate, reviewedDates, markDateReviewed, saveDayReview, dayResetTime, setDayResetTime, isLoaded, trackerEntries } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const { ymd } = useLocalSearchParams<{ ymd?: string }>();
@@ -114,7 +114,7 @@ export default function OggiScreen() {
   const [reviewingDate, setReviewingDate] = useState<string | null>(null);
   const [showTrackerModal, setShowTrackerModal] = useState(false);
   const [editingTrackerEntry, setEditingTrackerEntry] = useState<import('@/lib/habits/schema').TrackerEntry | null>(null);
-  const { windowStart, setWindowStart, windowEnd, setWindowEnd, visibleHours, setVisibleHours, dragMode, setDragMode } = useTimelineSettings();
+  const { windowStart, setWindowStart, windowEnd, setWindowEnd, visibleHours, setVisibleHours } = useTimelineSettings();
   const { todayWeather: baseTodayWeather } = useWeather(currentDate);
   const [travelTodayWeather, setTravelTodayWeather] = useState<WeatherDay | null>(null);
 
@@ -427,15 +427,19 @@ export default function OggiScreen() {
       const repeatEndDate = h.schedule?.repeatEndDate;
       if (repeatEndDate && selectedYmd > repeatEndDate && effectiveYmd > repeatEndDate && !hasOverrideForSelected) continue;
 
-      // Single-frequency tasks only appear on days that have an explicit override
+      // Single-frequency tasks only appear on their creation day OR on days where they have an explicit override
       const isSingle = h.habitFreq === 'single' || (
         !h.habitFreq &&
-        (Object.keys(h.timeOverrides ?? {}).length > 0) &&
         (h.schedule?.daysOfWeek?.length ?? 0) === 0 &&
         !h.schedule?.monthDays?.length &&
         !h.schedule?.yearMonth
       );
-      if (isSingle && !hasOverrideForSelected) continue;
+      if (isSingle) {
+        const hasAnyOverride = Object.keys(h.timeOverrides ?? {}).length > 0;
+        if (!hasOverrideForSelected) {
+          if (hasAnyOverride || effectiveYmd !== h.createdAt) continue;
+        }
+      }
 
       const sched = h.schedule;
       let showToday = true;
@@ -466,7 +470,7 @@ export default function OggiScreen() {
       const title = h.text;
 
       if (isAllDayMarker || (!start && !end)) {
-        allDay.push({ id: h.id, title, startTime: '00:00', endTime: '24:00', isAllDay: true, color, createdAt: h.createdAt, tipo: h.tipo });
+        allDay.push({ id: h.id, title, startTime: '00:00', endTime: '24:00', isAllDay: true, color, createdAt: h.createdAt, tipo: h.tipo, habitFreq: h.habitFreq });
       } else if (start) {
         let finalEnd = end;
         if (!end) {
@@ -476,7 +480,7 @@ export default function OggiScreen() {
         } else if (end === '23:59') {
           finalEnd = '24:00';
         }
-        items.push({ id: h.id, title, startTime: start, endTime: finalEnd!, isAllDay: false, color, createdAt: h.createdAt, tipo: h.tipo });
+        items.push({ id: h.id, title, startTime: start, endTime: finalEnd!, isAllDay: false, color, createdAt: h.createdAt, tipo: h.tipo, habitFreq: h.habitFreq });
       } else if (!start && end) {
         const [eh] = end.split(':').map(Number);
         const startHour = Math.max(0, eh - 1);
@@ -1341,7 +1345,6 @@ export default function OggiScreen() {
                    setLastMovedEventId={setLastMovedEventId}
                    setCurrentDragPosition={setCurrentDragPosition}
                    currentDragPosition={currentDragPosition}
-                   dragMode={dragMode}
                    timedEvents={timedEvents}
                    layoutById={layoutById}
                    calculateDragLayout={calculateDragLayout}
@@ -1550,15 +1553,22 @@ export default function OggiScreen() {
                     </View>
                 </View>
 
-               {/* Drag Mode Control */}
+               {/* Reset Time Control */}
                <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>Drag & Drop: {dragMode === 'forward' ? 'Da oggi in poi' : 'Solo questo giorno'}</Text>
+                  <Text style={styles.settingLabel}>Reset: {dayResetTime}</Text>
                   <View style={styles.settingControls}>
-                     <TouchableOpacity style={styles.controlBtnWide} onPress={() => {
-                        setDragMode(prev => prev === 'forward' ? 'single' : 'forward');
-                     }}><Text style={[styles.controlBtnText, { fontSize: 14 }]}>Cambia</Text></TouchableOpacity>
-                    </View>
-                </View>
+                     <HoldableButton style={styles.controlBtn} onPress={() => {
+                        const h = parseInt(dayResetTime.split(':')[0], 10);
+                        const nextH = (h - 1 + 24) % 24;
+                        setDayResetTime(`${String(nextH).padStart(2, '0')}:00`);
+                     }}><Text style={styles.controlBtnText}>-</Text></HoldableButton>
+                     <HoldableButton style={styles.controlBtn} onPress={() => {
+                        const h = parseInt(dayResetTime.split(':')[0], 10);
+                        const nextH = (h + 1) % 24;
+                        setDayResetTime(`${String(nextH).padStart(2, '0')}:00`);
+                     }}><Text style={styles.controlBtnText}>+</Text></HoldableButton>
+                  </View>
+               </View>
 
 
                <TouchableOpacity style={styles.closeBtn} onPress={() => setShowSettings(false)}>

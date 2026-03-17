@@ -23,9 +23,9 @@ const SCREEN_W = Dimensions.get('window').width;
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
-  canvas:      '#1C1C1E',
+  canvas:      '#000000',
   headerBg:    '#2C2C2E',
-  cellBg:      '#1C1C1E',
+  cellBg:      '#000000',
   cellAlt:     '#242426',
   gridLine:    '#38383A',
   accent:      '#0A84FF',
@@ -134,7 +134,7 @@ function TableCard({ table, onPress, onLongPress }: { table: UserTable; onPress:
 }
 const dc = StyleSheet.create({
   card:    { width: CARD_W, backgroundColor: '#2C2C2E', borderRadius: 12, overflow: 'hidden', borderTopWidth: 3, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
-  preview: { backgroundColor: '#1C1C1E', padding: 12, alignItems: 'center', justifyContent: 'center', minHeight: 88 },
+  preview: { backgroundColor: '#000000', padding: 12, alignItems: 'center', justifyContent: 'center', minHeight: 88 },
   name:    { color: '#FFF', fontSize: 13, fontWeight: '600', paddingHorizontal: 10, paddingTop: 8 },
   meta:    { color: '#8E8E93', fontSize: 11, paddingHorizontal: 10, paddingBottom: 10, marginTop: 2 },
 });
@@ -211,7 +211,7 @@ function CreateModal({ visible, onClose, onCreate }: {
 }
 const cm = StyleSheet.create({
   backdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  sheet:      { backgroundColor: '#1C1C1E', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 8, maxHeight: '85%' },
+  sheet:      { backgroundColor: '#000000', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 8, maxHeight: '85%' },
   handle:     { width: 36, height: 5, borderRadius: 3, backgroundColor: '#48484A', alignSelf: 'center', marginBottom: 8 },
   hdr:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
   title:      { color: '#FFF', fontSize: 17, fontWeight: '600' },

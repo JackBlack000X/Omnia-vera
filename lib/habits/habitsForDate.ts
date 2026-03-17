@@ -68,11 +68,19 @@ function appearsOnDateRaw(h: Habit, ymd: string): boolean {
   const isSingle =
     h.habitFreq === 'single' ||
     (!h.habitFreq &&
-      (Object.keys(h.timeOverrides ?? {}).length > 0) &&
       (h.schedule?.daysOfWeek?.length ?? 0) === 0 &&
       !h.schedule?.monthDays?.length &&
       !h.schedule?.yearMonth);
-  if (isSingle && !hasOverrideForDay) return false;
+
+  if (isSingle) {
+    const hasAnyOverride = Object.keys(h.timeOverrides ?? {}).length > 0;
+    if (!hasOverrideForDay) {
+      // If it's single and has NO overrides at all, it only appears on its creation day.
+      // If it DOES have overrides, it ONLY appears on the days where it has an override.
+      if (hasAnyOverride || ymd !== h.createdAt) return false;
+    }
+  }
+
   const sched = h.schedule;
   if (!sched || isSingle) return true;
   const dow = sched.daysOfWeek ?? [];

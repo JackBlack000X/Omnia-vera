@@ -64,8 +64,8 @@ export default function ProfileScreen() {
       const any = Object.values(history[d]?.completedByHabitId ?? {}).some(Boolean);
       if (!any) { cur = 0; prev = null; continue; }
       if (!prev) { cur = 1; prev = d; best = Math.max(best, cur); continue; }
-      const prevDate = new Date(prev); const nextDate = new Date(prevDate); nextDate.setDate(prevDate.getDate() + 1);
-      const exp = nextDate.toISOString().split('T')[0];
+      const prevDate: Date = new Date(prev as string); const nextDate: Date = new Date(prevDate); nextDate.setDate(prevDate.getDate() + 1);
+      const exp: string = nextDate.toISOString().split('T')[0];
       if (d === exp) cur += 1; else cur = 1;
       prev = d; best = Math.max(best, cur);
     }

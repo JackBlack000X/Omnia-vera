@@ -129,10 +129,11 @@ type MonthViewProps = {
   streakInfo: Map<string, 'start' | 'middle' | 'end' | 'single'>;
   onDayPress: (day: { date: Date; isCurrentMonth: boolean; ymd: string }) => void;
   isFirst: boolean;
+  dayResetTime?: string;
 };
 
 const MonthView = React.memo(function MonthView({
-  item, isCurrentMonthActive, logicalTodayYmd, habits, recentHistory, streakInfo, onDayPress, isFirst,
+  item, isCurrentMonthActive, logicalTodayYmd, habits, recentHistory, streakInfo, onDayPress, isFirst, dayResetTime
 }: MonthViewProps) {
   const { year, month } = item;
   const days = useMemo(() => getCalendarDays(year, month), [year, month]);
@@ -480,8 +481,9 @@ export default function CalendarScreen() {
       streakInfo={streakInfo}
       onDayPress={handleDayPress}
       isFirst={index === 0}
+      dayResetTime={dayResetTime}
     />
-  ), [currentYear, currentMonth, logicalTodayYmd, habits, recentHistory, streakInfo, handleDayPress]);
+  ), [currentYear, currentMonth, logicalTodayYmd, habits, recentHistory, streakInfo, handleDayPress, dayResetTime]);
 
   return (
     <SafeAreaView style={styles.screen}>

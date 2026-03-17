@@ -46,9 +46,9 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
     !!(filters.tipos?.length || filters.colors?.length || filters.frequencies?.length)
   );
 
-  const toggleTipo = (t: 'task' | 'abitudine' | 'evento') => {
+  const toggleTipo = (t: 'task' | 'abitudine' | 'evento' | 'viaggio') => {
     const current = filters.tipos ?? [];
-    const next = current.includes(t) ? current.filter(x => x !== t) : [...current, t];
+    const next = current.includes(t as any) ? current.filter(x => x !== t) : [...current, t];
     setFilters({ ...filters, tipos: next.length ? next : undefined });
   };
 

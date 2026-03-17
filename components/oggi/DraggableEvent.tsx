@@ -8,7 +8,7 @@ import {
 } from '@/lib/oggi/oggiHelpers';
 import * as Haptics from 'expo-haptics';
 import { Dispatch, SetStateAction, useMemo, useRef } from 'react';
-import { PanResponder, StyleSheet, Text, View } from 'react-native';
+import { Alert, PanResponder, StyleSheet, Text, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 export type DraggableEventProps = {
@@ -36,7 +36,6 @@ export type DraggableEventProps = {
   setLastMovedEventId: (id: string) => void;
   setCurrentDragPosition: (minutes: number | null) => void;
   currentDragPosition: number | null;
-  dragMode: 'forward' | 'single';
   timedEvents: OggiEvent[];
   layoutById: Record<string, LayoutInfo>;
   calculateDragLayout: (draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean) => { width: number; left: number };
@@ -83,7 +82,6 @@ function DraggableEvent({
   setLastMovedEventId,
   setCurrentDragPosition,
   currentDragPosition,
-  dragMode,
   timedEvents,
   layoutById,
   calculateDragLayout,
@@ -376,10 +374,32 @@ function DraggableEvent({
         }
 
         const selectedYmd = getDay(currentDate);
-        // Salva sempre l'orario sulla task (schedule + override) così appare anche in Tasks
-        updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
-        if (dragMode === 'single') {
-          setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
+        const isRepeating = event.habitFreq && event.habitFreq !== 'single';
+
+        if (hasMovedRef.current && isRepeating && (newStartTime !== event.startTime || newEndTime !== event.endTime)) {
+          Alert.alert(
+            'Modifica attività ricorrente',
+            'Vuoi modificare solo questa occorrenza o anche tutte quelle successive?',
+            [
+              { text: 'Annulla', style: 'cancel', onPress: () => {
+                // Revert visual position if possible, but for now we just don't save.
+                setPendingEventPositions(prev => {
+                  const next = { ...prev };
+                  delete next[event.id];
+                  return next;
+                });
+              }},
+              { text: 'Solo oggi', onPress: () => {
+                setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
+              }},
+              { text: 'Da oggi in poi', onPress: () => {
+                updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
+              }}
+            ]
+          );
+        } else if (hasMovedRef.current) {
+          // Single task or no time change (just reorder)
+          updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
         }
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -447,7 +467,6 @@ function DraggableEvent({
     setCurrentDragPosition,
     setTimeOverrideRange,
     updateScheduleFromDate,
-    dragMode,
     getDay,
     dragDisabled,
   ]);
@@ -506,4 +525,3 @@ const styles = StyleSheet.create({
 });
 
 export default DraggableEvent;
-export type { DraggableEventProps };

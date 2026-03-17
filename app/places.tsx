@@ -133,11 +133,6 @@ export default function PlacesScreen() {
       const best = results[0];
       setLat(String(best.latitude));
       setLng(String(best.longitude));
-      setRegion((prev) => ({
-        ...prev,
-        latitude: best.latitude,
-        longitude: best.longitude,
-      }));
       setAddress(query);
     } catch {
       Alert.alert('Indirizzo', 'Non riesco a cercare questo indirizzo.');

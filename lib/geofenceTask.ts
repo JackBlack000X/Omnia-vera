@@ -111,7 +111,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     console.warn('Geofence task error', error);
     return;
   }
-  const event = data as Location.LocationRegionTaskDetails | undefined;
+  const event = data as any;
   if (!event || !event.region) return;
 
   if (event.eventType === Location.GeofencingEventType.Exit) {

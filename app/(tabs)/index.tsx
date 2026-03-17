@@ -535,7 +535,7 @@ export default function IndexScreen() {
               <Text style={[styles.title, activeSection !== 'tabelle' && { color: '#888' }]}>Tabelle</Text>
             </TouchableOpacity>
           </View>
-          {activeSection === 'tasks' && <Text style={styles.progressText}>{stats.pct}%</Text>}
+          <Text style={[styles.progressText, activeSection !== 'tasks' && { opacity: 0 }]}>{stats.pct}%</Text>
         </View>
       )}
 
@@ -636,24 +636,6 @@ export default function IndexScreen() {
                         [
                           { text: 'Annulla', style: 'cancel' },
                           { text: 'Conferma', style: 'destructive', onPress: resetToday }
-                        ]
-                      );
-                    }
-                  },
-                  {
-                    key: 'time', icon: 'time-outline' as const, onPress: () => {
-                      setOptionsMenuVisible(false);
-                      const hours = Array.from({ length: 24 }, (_, i) => i);
-                      const hourOptions = hours.map(hour => ({
-                        text: `${hour.toString().padStart(2, '0')}:00`,
-                        onPress: () => setDayResetTime(`${hour.toString().padStart(2, '0')}:00`)
-                      }));
-                      Alert.alert(
-                        'Imposta orario reset giornaliero',
-                        `Attualmente: ${dayResetTime}\n\nA che ora deve iniziare la nuova giornata?`,
-                        [
-                          { text: 'Annulla', style: 'cancel' },
-                          ...hourOptions
                         ]
                       );
                     }

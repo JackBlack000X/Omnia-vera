@@ -9,7 +9,7 @@ import { ScrollView } from 'react-native';
 
 const STORAGE_HABITS = 'habitcheck_habits_v1';
 
-export function useModalLogic(params: { type: string; id?: string; folder?: string; scrollRef: React.RefObject<ScrollView> }) {
+export function useModalLogic(params: { type: string; id?: string; folder?: string; scrollRef: React.RefObject<ScrollView | null> }) {
   const { type, id, folder, scrollRef } = params;
   const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay } = useHabits();
   const router = useRouter();
@@ -671,11 +671,15 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         const ymdSingle = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
         const initialAllDaySingle = isNewAllDaySingle ? {
           timeOverrides: { [ymdSingle]: '00:00' as const },
-          schedule: { daysOfWeek: [], monthDays: undefined, time: null, endTime: null, weeklyTimes: undefined, monthlyTimes: undefined } as const,
+          schedule: { daysOfWeek: [] as number[], monthDays: undefined, time: null, endTime: null, weeklyTimes: undefined, monthlyTimes: undefined },
           isAllDay: true,
           habitFreq: 'single' as const,
         } : undefined;
-        const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined, tipo, initialAllDaySingle) : existing!.id;
+
+        const initialForAdd = isNewAllDaySingle ? initialAllDaySingle : {
+          habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
+        };
+        const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined, tipo as any, initialForAdd) : existing!.id;
         if (type === 'edit' && existing) {
           // Single update to avoid React batching overwriting tipo
           setHabits(prev => prev.map(h => {

@@ -63,7 +63,9 @@
           "locationAlwaysAndWhenInUsePermission": "Omnia usa la tua posizione per attivare funzioni extra come il completamento automatico di alcune task quando esci da luoghi salvati, anche con l’app in background.",
           "locationWhenInUsePermission": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi mentre utilizzi l’app."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

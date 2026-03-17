@@ -53,7 +53,7 @@ export function NoiseBackground() {
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Canvas style={{ flex: 1 }} mode="continuous">
+      <Canvas style={{ flex: 1 }}>
         <Fill>
           <Shader 
             source={noiseShader} 
