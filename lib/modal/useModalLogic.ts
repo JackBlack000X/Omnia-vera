@@ -936,8 +936,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           }));
         }
         }
-        // New task from "Oggi" tab: ensure single date saved when we didn't use initial (e.g. Nessun orario).
-        if (type === 'new' && folder === '__oggi__' && freq === 'single' && (mode === 'allDay' || !taskHasTime) && !isNewAllDaySingle) {
+        // New single task without time: ensure the selected date is saved as timeOverride so it appears in Oggi.
+        if (type === 'new' && freq === 'single' && (mode === 'allDay' || !taskHasTime) && !isNewAllDaySingle) {
           const ymdFromForm = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
           setHabits(prev => {
             const next = prev.map(h => {

@@ -108,7 +108,7 @@ export default function OggiScreen() {
   
   const [showSettings, setShowSettings] = useState(false);
   const [reviewQueue, setReviewQueue] = useState<string[]>([]);
-  const [reviewShownThisSession, setReviewShownThisSession] = useState(false);
+  const [dismissedDatesThisSession, setDismissedDatesThisSession] = useState<string[]>([]);
 
   const [reviewingHabitId, setReviewingHabitId] = useState<string | null>(null);
   const [reviewingDate, setReviewingDate] = useState<string | null>(null);
@@ -145,7 +145,23 @@ export default function OggiScreen() {
   let rankCounterRef = useRef(0);
 
   useEffect(() => {
-    const updateTime = () => setCurrentTime(new Date());
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now);
+      // Aggiorna currentDate solo se l'utente stava guardando "oggi" ed è scoccata la mezzanotte
+      // (evita di resettare se l'utente sta navigando manualmente un giorno passato/futuro)
+      setCurrentDate(prev => {
+        const fmt = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+        const prevYmd = fmt(prev);
+        const nowYmd  = fmt(now);
+        if (prevYmd === nowYmd) return prev;
+        // Aggiorna solo se prev era "ieri" rispetto a now (l'utente stava guardando oggi)
+        const yesterday = new Date(now);
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+        const yesterdayYmd = fmt(yesterday);
+        return prevYmd === yesterdayYmd ? now : prev;
+      });
+    };
     updateTime();
     const interval = setInterval(updateTime, 60000);
     return () => clearInterval(interval);
@@ -399,12 +415,17 @@ export default function OggiScreen() {
       }
 
       const selectedYmd = getDay(currentDate);
-      const hasOverrideForSelected = !!h.timeOverrides?.[selectedYmd];
-      if (h.createdAt && selectedYmd < h.createdAt && !hasOverrideForSelected) continue;
+      // Quando il giorno logico (selectedYmd) differisce dal giorno di calendario (es. dayResetTime > 00:00
+      // prima del reset), usiare il giorno di calendario come ymd effettivo se il task ha un override lì
+      const effectiveYmd = (selectedYmd === today && today !== todayYmd && h.timeOverrides?.[todayYmd] !== undefined)
+        ? todayYmd
+        : selectedYmd;
+      const hasOverrideForSelected = !!h.timeOverrides?.[effectiveYmd];
+      if (h.createdAt && selectedYmd < h.createdAt && effectiveYmd < h.createdAt && !hasOverrideForSelected) continue;
       const repeatStartDate = h.schedule?.repeatStartDate;
-      if (repeatStartDate && selectedYmd < repeatStartDate && !hasOverrideForSelected) continue;
+      if (repeatStartDate && selectedYmd < repeatStartDate && effectiveYmd < repeatStartDate && !hasOverrideForSelected) continue;
       const repeatEndDate = h.schedule?.repeatEndDate;
-      if (repeatEndDate && selectedYmd > repeatEndDate && !hasOverrideForSelected) continue;
+      if (repeatEndDate && selectedYmd > repeatEndDate && effectiveYmd > repeatEndDate && !hasOverrideForSelected) continue;
 
       // Single-frequency tasks only appear on days that have an explicit override
       const isSingle = h.habitFreq === 'single' || (
@@ -430,7 +451,7 @@ export default function OggiScreen() {
       }
       if (!showToday) continue;
 
-      const ymd = selectedYmd;
+      const ymd = effectiveYmd;
       const override = h.timeOverrides?.[ymd];
       // '00:00' stored as a string (not an object) is used as an all-day marker by the modal
       const isAllDayMarker = override === '00:00';
@@ -463,7 +484,7 @@ export default function OggiScreen() {
       }
     }
     return { timedEvents: items, allDayEvents: allDay };
-  }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1]);
+  }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1, today, todayYmd]);
 
   const trackerEventsForDay = useMemo(() => {
     const selectedYmd = (() => {
@@ -588,21 +609,30 @@ export default function OggiScreen() {
     return d.toISOString().slice(0, 10);
   }, [getDay, dayResetTime, currentTime]);
 
-  const lastReviewBuiltForYmd = useRef<string | null>(null);
-
   useEffect(() => {
     if (!isLoaded) return;
-    if (lastReviewBuiltForYmd.current === yesterdayYmd) return;
-    lastReviewBuiltForYmd.current = yesterdayYmd;
 
-    if (reviewedDates.includes(yesterdayYmd)) return;
-    const habitsOnDay = getHabitsAppearingOnDate(habits, yesterdayYmd, dayResetTime).filter(
-      h => h.askReview && h.tipo !== 'viaggio'
-    );
-    if (habitsOnDay.length > 0) {
-      setReviewQueue([yesterdayYmd]);
+    const queue: string[] = [];
+    const start = new Date(yesterdayYmd + 'T12:00:00.000Z');
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(start);
+      d.setUTCDate(d.getUTCDate() - i);
+      const ymd = d.toISOString().slice(0, 10);
+      if (reviewedDates.includes(ymd) || dismissedDatesThisSession.includes(ymd)) continue;
+      const habitsOnDay = getHabitsAppearingOnDate(habits, ymd, dayResetTime).filter(
+        h => h.askReview && h.tipo !== 'viaggio'
+      );
+      if (habitsOnDay.length > 0) {
+        queue.push(ymd);
+      }
     }
-  }, [isLoaded, habits, history, reviewedDates, todayYmd, yesterdayYmd, dayResetTime]);
+
+    setReviewQueue(prev => {
+      const prevKey = prev.join(',');
+      const nextKey = queue.join(',');
+      return prevKey === nextKey ? prev : queue;
+    });
+  }, [isLoaded, habits, reviewedDates, yesterdayYmd, dayResetTime, dismissedDatesThisSession]);
 
   useEffect(() => {
     if (hasAutoScrolled.current) return;
@@ -1329,7 +1359,7 @@ export default function OggiScreen() {
                    router.push({ pathname: '/modal', params: { type: 'edit', id: e.id } });
                  }
                }}
-               dragDisabled={getDay(currentDate) < todayYmd || (getDay(currentDate) === todayYmd && isPastReset)}
+               dragDisabled={getDay(currentDate) < todayYmd || (getDay(currentDate) === todayYmd && isPastReset && toMinutes(e.endTime) <= toMinutes(dayResetTime ?? '00:00'))}
                  />
                );
              })}
@@ -1349,8 +1379,8 @@ export default function OggiScreen() {
       </View>
       </GestureHandlerRootView>
 
-      {/* Day Review Modal (ieri) */}
-      {reviewQueue.length > 0 && !reviewShownThisSession && (() => {
+      {/* Day Review Modal (giorni non revisionati) */}
+      {reviewQueue.length > 0 && (() => {
         const reviewDate = reviewQueue[0];
         const habitsOnDay = getHabitsAppearingOnDate(habits, reviewDate, dayResetTime).filter(
           h => h.askReview && h.tipo !== 'viaggio'
@@ -1375,12 +1405,11 @@ export default function OggiScreen() {
                 saveDayReview(reviewDate, habitId, rating, comment);
               }
               await markDateReviewed(reviewDate);
-              setReviewShownThisSession(true);
-              setReviewQueue([]);
+              // la coda si aggiorna automaticamente via effect (reviewedDates cambia)
             }}
             onClose={() => {
-              setReviewShownThisSession(true);
-              setReviewQueue([]);
+              setDismissedDatesThisSession(prev => [...prev, reviewDate]);
+              // la coda si aggiorna automaticamente via effect
             }}
           />
         );

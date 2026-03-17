@@ -190,16 +190,25 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
             if (Array.isArray(parsed)) {
               // migrate old schema (columns/rows) to new (headerRow/headerCol/cells)
               const migrated = parsed.map((t: any) => {
-                if (t.headerRow) return t; // already new format
+                // already new format
+                if (t.headerRows) return t;
+                // intermediate format (headerRow/headerCol)
+                if (t.headerRow) {
+                  const headerRows = [t.headerRow as string[]];
+                  const headerCols = (t.headerCol as string[]).map((v: string) => [v]);
+                  return { ...t, headerRows, headerCols, headerRow: undefined, headerCol: undefined };
+                }
+                // legacy format (columns/rows)
                 const cols: string[] = Array.isArray(t.columns) ? t.columns : [];
                 const oldRows: Record<string, string>[] = Array.isArray(t.rows) ? t.rows : [];
                 const rowCount = Math.max(oldRows.length, 3);
                 const headerRow = cols.length > 0 ? cols : Array.from({ length: 4 }, (_, i) => String.fromCharCode(65 + i));
-                const headerCol = Array.from({ length: rowCount }, (_, i) => String(i + 1));
+                const headerRows = [headerRow];
+                const headerCols = Array.from({ length: rowCount }, (_, i) => [String(i + 1)]);
                 const cells: string[][] = Array.from({ length: rowCount }, (_, ri) =>
                   headerRow.map(col => oldRows[ri]?.[col] ?? '')
                 );
-                return { ...t, headerRow, headerCol, cells, columns: undefined, rows: undefined };
+                return { ...t, headerRows, headerCols, cells, columns: undefined, rows: undefined };
               });
               setTables(migrated);
             }
@@ -852,10 +861,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const addTable = useCallback((name: string, color: string, cols = 4, rowCount = 5): string => {
     const newId = generateUUID();
     const now = formatYmd();
-    const headerRow = Array.from({ length: cols }, (_, i) => String.fromCharCode(65 + i));
-    const headerCol = Array.from({ length: rowCount }, (_, i) => String(i + 1));
+    const headerRows = [Array.from({ length: cols }, (_, i) => String.fromCharCode(65 + i))];
+    const headerCols = Array.from({ length: rowCount }, (_, i) => [String(i + 1)]);
     const cells: string[][] = Array.from({ length: rowCount }, () => Array(cols).fill(''));
-    const newTable: UserTable = { id: newId, name, color, createdAt: now, headerRow, headerCol, cells };
+    const newTable: UserTable = { id: newId, name, color, createdAt: now, headerRows, headerCols, cells };
     setTables(prev => {
       const next = [...prev, newTable];
       AsyncStorage.setItem(STORAGE_TABLES, JSON.stringify(next)).catch(() => {});

@@ -89,9 +89,9 @@ export type UserTable = {
   name: string;
   color: string;
   createdAt: string;
-  headerRow: string[];   // column headers – default A, B, C...
-  headerCol: string[];   // row headers   – default 1, 2, 3...
-  cells: string[][];     // cells[rowIndex][colIndex]
+  headerRows: string[][];  // frozen rows at top  – headerRows[frozenRowIdx][colIdx]
+  headerCols: string[][];  // frozen cols on left – headerCols[rowIdx][frozenColIdx]
+  cells: string[][];       // body cells[rowIdx][colIdx]
 };
 
 export type HabitsState = {

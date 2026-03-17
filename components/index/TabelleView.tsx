@@ -3,6 +3,7 @@ import type { UserTable } from '@/lib/habits/schema';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useRef, useState } from 'react';
 import {
+  Animated,
   Alert,
   Dimensions,
   KeyboardAvoidingView,
@@ -79,8 +80,8 @@ function detectNext(vals: string[]): string {
 
 // ─── Table thumbnail (home grid) ──────────────────────────────────────────────
 function TableThumbnail({ table, accent }: { table: UserTable; accent: string }) {
-  const cols = Math.min(table.headerRow.length, 4);
-  const rows = Math.min(table.headerCol.length, 3);
+  const cols = Math.min(table.headerRows[0]?.length ?? 0, 4);
+  const rows = Math.min(table.headerCols.length, 3);
   const cw = cols > 0 ? Math.floor(88 / (cols + 0.5)) : 22;
   const ch = 10;
   return (
@@ -127,7 +128,7 @@ function TableCard({ table, onPress, onLongPress }: { table: UserTable; onPress:
         <TableThumbnail table={table} accent={accent} />
       </View>
       <Text style={dc.name} numberOfLines={2}>{table.name}</Text>
-      <Text style={dc.meta}>{table.headerCol.length} rig · {table.headerRow.length} col</Text>
+      <Text style={dc.meta}>{table.headerCols.length} rig · {table.headerRows[0]?.length ?? 0} col</Text>
     </TouchableOpacity>
   );
 }
@@ -241,55 +242,63 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
   const accent = table.color;
 
   // local mutable state
-  const [headerRow, setHeaderRow] = useState<string[]>(table.headerRow);
-  const [headerCol, setHeaderCol] = useState<string[]>(table.headerCol);
-  const [cells, setCells]         = useState<string[][]>(table.cells);
-  const [selected, setSelected]   = useState<CellPos | null>(null);
-  const [editing, setEditing]     = useState<CellPos | null>(null);
-  const [editVal, setEditVal]     = useState('');
+  const [headerRows, setHeaderRows] = useState<string[][]>(table.headerRows);
+  const [headerCols, setHeaderCols] = useState<string[][]>(table.headerCols);
+  const [cells, setCells]           = useState<string[][]>(table.cells);
+  const [selected, setSelected]     = useState<CellPos | null>(null);
+  const [editing, setEditing]       = useState<CellPos | null>(null);
+  const [editVal, setEditVal]       = useState('');
 
-  // drag-to-add state
+  // drag-to-add body rows/cols state
   const [rowPreview, setRowPreview] = useState(0);
   const [colPreview, setColPreview] = useState(0);
   const [rowDragActive, setRowDragActive] = useState(false);
   const [colDragActive, setColDragActive] = useState(false);
 
-  // scroll sync refs
-  const colHdrScrollRef = useRef<ScrollView>(null);
-  const rowHdrScrollRef = useRef<ScrollView>(null);
-  const bodyHScrollRef  = useRef<ScrollView>(null);
-  const bodyVScrollRef  = useRef<ScrollView>(null);
+  // drag-to-add frozen rows/cols state
+  const [frozenRowsDragActive, setFrozenRowsDragActive] = useState(false);
+  const [frozenColsDragActive, setFrozenColsDragActive] = useState(false);
 
+  // scroll animated values
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const bodyHScrollRef = useRef<ScrollView>(null);
+  const bodyVScrollRef = useRef<ScrollView>(null);
 
-  const numRows = headerCol.length;
-  const numCols = headerRow.length;
+  const numRows       = headerCols.length;
+  const numCols       = headerRows[0]?.length ?? 0;
+  const numFrozenRows = headerRows.length;
+  const numFrozenCols = headerCols[0]?.length ?? 1;
+  const fixedColsWidth = numFrozenCols * HDR_W;
 
   // ── commit helpers ──────────────────────────────────────────────────────────
-  const save = useCallback((hr: string[], hc: string[], cs: string[][]) => {
-    onUpdate({ headerRow: hr, headerCol: hc, cells: cs });
+  const save = useCallback((hr: string[][], hc: string[][], cs: string[][]) => {
+    onUpdate({ headerRows: hr, headerCols: hc, cells: cs });
   }, [onUpdate]);
 
   const commitEdit = useCallback(() => {
     if (!editing) return;
     const { row, col, area } = editing;
     if (area === 'header-row') {
-      const next = [...headerRow]; next[col] = editVal;
-      setHeaderRow(next); save(next, headerCol, cells);
+      const next = headerRows.map(r => [...r]);
+      next[row][col] = editVal;
+      setHeaderRows(next); save(next, headerCols, cells);
     } else if (area === 'header-col') {
-      const next = [...headerCol]; next[row] = editVal;
-      setHeaderCol(next); save(headerRow, next, cells);
+      const next = headerCols.map(r => [...r]);
+      next[row][col] = editVal;
+      setHeaderCols(next); save(headerRows, next, cells);
     } else {
       const next = cells.map(r => [...r]);
       next[row][col] = editVal;
-      setCells(next); save(headerRow, headerCol, next);
+      setCells(next); save(headerRows, headerCols, next);
     }
     setEditing(null);
-  }, [editing, editVal, headerRow, headerCol, cells, save]);
+  }, [editing, editVal, headerRows, headerCols, cells, save]);
 
   const startEdit = (pos: CellPos) => {
     let val = '';
-    if (pos.area === 'header-row') val = headerRow[pos.col] ?? '';
-    else if (pos.area === 'header-col') val = headerCol[pos.row] ?? '';
+    if (pos.area === 'header-row') val = headerRows[pos.row]?.[pos.col] ?? '';
+    else if (pos.area === 'header-col') val = headerCols[pos.row]?.[pos.col] ?? '';
     else val = cells[pos.row]?.[pos.col] ?? '';
     setEditVal(val);
     setEditing(pos);
@@ -301,177 +310,190 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
   const isEditing = (pos: CellPos) =>
     editing?.area === pos.area && editing.row === pos.row && editing.col === pos.col;
 
-  // ── add/remove rows & cols ─────────────────────────────────────────────────
+  // ── add/remove body rows & cols ─────────────────────────────────────────────
   const applyRowPreview = useCallback((count: number) => {
     if (count <= 0) return;
-    // auto-sequence for each column
-    const newCells = Array.from({ length: count }, (_, ri) =>
-      Array.from({ length: numCols }, (__, ci) => {
-        const colVals = cells.map(r => r[ci]);
-        return ri === 0 ? detectNext(colVals) : detectNext([...colVals, ...Array.from({ length: ri }, (_, j) => detectNext(colVals.concat(Array.from({ length: j }, (__, k) => detectNext(colVals.slice(0, -1))))))]); // simplified: just detectNext of growing array
-      })
-    );
-
-    // simpler sequential approach
-    let nextCells = [...cells.map(r => [...r])];
-    let nextHCol  = [...headerCol];
+    let nextCells = cells.map(r => [...r]);
+    let nextHCols = headerCols.map(r => [...r]);
     for (let i = 0; i < count; i++) {
       const newRow = Array.from({ length: numCols }, (_, ci) => detectNext(nextCells.map(r => r[ci])));
       nextCells.push(newRow);
-      nextHCol.push(detectNext(nextHCol));
+      const newHColRow = Array.from({ length: numFrozenCols }, (_, fci) => detectNext(nextHCols.map(r => r[fci])));
+      nextHCols.push(newHColRow);
     }
-    setHeaderCol(nextHCol);
+    setHeaderCols(nextHCols);
     setCells(nextCells);
-    save(headerRow, nextHCol, nextCells);
-  }, [cells, headerCol, headerRow, numCols, save]);
+    save(headerRows, nextHCols, nextCells);
+  }, [cells, headerCols, headerRows, numCols, numFrozenCols, save]);
 
   const applyColPreview = useCallback((count: number) => {
     if (count <= 0) return;
-    let nextHRow = [...headerRow];
+    let nextHRows = headerRows.map(r => [...r]);
     let nextCells = cells.map(r => [...r]);
     for (let i = 0; i < count; i++) {
-      nextHRow.push(detectNext(nextHRow));
+      nextHRows = nextHRows.map(r => [...r, detectNext(r)]);
       nextCells = nextCells.map(r => [...r, detectNext(r)]);
     }
-    setHeaderRow(nextHRow);
+    setHeaderRows(nextHRows);
     setCells(nextCells);
-    save(nextHRow, headerCol, nextCells);
-  }, [cells, headerRow, headerCol, save]);
+    save(nextHRows, headerCols, nextCells);
+  }, [cells, headerRows, headerCols, save]);
 
   const removeRows = useCallback((count: number) => {
-    if (count <= 0 || headerCol.length <= 1) return;
-    const remove = Math.min(count, headerCol.length - 1);
-    const nextHCol  = headerCol.slice(0, -remove);
+    if (count <= 0 || headerCols.length <= 1) return;
+    const remove = Math.min(count, headerCols.length - 1);
+    const nextHCols = headerCols.slice(0, -remove);
     const nextCells = cells.slice(0, -remove);
-    setHeaderCol(nextHCol);
+    setHeaderCols(nextHCols);
     setCells(nextCells);
-    save(headerRow, nextHCol, nextCells);
-  }, [cells, headerCol, headerRow, save]);
+    save(headerRows, nextHCols, nextCells);
+  }, [cells, headerCols, headerRows, save]);
 
   const removeCols = useCallback((count: number) => {
-    if (count <= 0 || headerRow.length <= 1) return;
-    const remove = Math.min(count, headerRow.length - 1);
-    const nextHRow  = headerRow.slice(0, -remove);
+    if (count <= 0 || numCols <= 1) return;
+    const remove = Math.min(count, numCols - 1);
+    const nextHRows = headerRows.map(r => r.slice(0, -remove));
     const nextCells = cells.map(r => r.slice(0, -remove));
-    setHeaderRow(nextHRow);
+    setHeaderRows(nextHRows);
     setCells(nextCells);
-    save(nextHRow, headerCol, nextCells);
-  }, [cells, headerCol, headerRow, save]);
+    save(nextHRows, headerCols, nextCells);
+  }, [cells, headerCols, headerRows, numCols, save]);
 
-  // ── latest-callback refs (fixes stale closure in PanResponder) ─────────────
-  const applyRowPreviewRef = useRef(applyRowPreview);
-  const removeRowsRef      = useRef(removeRows);
-  const applyColPreviewRef = useRef(applyColPreview);
-  const removeColsRef      = useRef(removeCols);
-  applyRowPreviewRef.current = applyRowPreview;
-  removeRowsRef.current      = removeRows;
-  applyColPreviewRef.current = applyColPreview;
-  removeColsRef.current      = removeCols;
+  // ── add/remove frozen rows & cols ───────────────────────────────────────────
+  const applyFrozenRowsChange = useCallback((delta: number) => {
+    if (delta > 0) {
+      const add = Math.min(delta, 3 - headerRows.length);
+      if (add <= 0) return;
+      let nextHRows = headerRows.map(r => [...r]);
+      for (let i = 0; i < add; i++) nextHRows.push(Array(numCols).fill(''));
+      setHeaderRows(nextHRows);
+      save(nextHRows, headerCols, cells);
+    } else if (delta < 0) {
+      const remove = Math.min(-delta, headerRows.length - 1);
+      if (remove <= 0) return;
+      const nextHRows = headerRows.slice(0, -remove);
+      setHeaderRows(nextHRows);
+      save(nextHRows, headerCols, cells);
+    }
+  }, [cells, headerCols, headerRows, numCols, save]);
 
-  // ── drag-to-add row (PanResponder on bottom handle) ─────────────────────────
+  const applyFrozenColsChange = useCallback((delta: number) => {
+    if (delta > 0) {
+      const add = Math.min(delta, 3 - numFrozenCols);
+      if (add <= 0) return;
+      let nextHCols = headerCols.map(r => [...r]);
+      for (let i = 0; i < add; i++) nextHCols = nextHCols.map(r => [...r, '']);
+      setHeaderCols(nextHCols);
+      save(headerRows, nextHCols, cells);
+    } else if (delta < 0) {
+      const remove = Math.min(-delta, numFrozenCols - 1);
+      if (remove <= 0) return;
+      const nextHCols = headerCols.map(r => r.slice(0, -remove));
+      setHeaderCols(nextHCols);
+      save(headerRows, nextHCols, cells);
+    }
+  }, [cells, headerCols, headerRows, numFrozenCols, save]);
+
+  // ── callback refs (stale closure fix) ──────────────────────────────────────
+  const applyRowPreviewRef   = useRef(applyRowPreview);
+  const removeRowsRef        = useRef(removeRows);
+  const applyColPreviewRef   = useRef(applyColPreview);
+  const removeColsRef        = useRef(removeCols);
+  const applyFrozenRowsRef   = useRef(applyFrozenRowsChange);
+  const applyFrozenColsRef   = useRef(applyFrozenColsChange);
+  applyRowPreviewRef.current  = applyRowPreview;
+  removeRowsRef.current       = removeRows;
+  applyColPreviewRef.current  = applyColPreview;
+  removeColsRef.current       = removeCols;
+  applyFrozenRowsRef.current  = applyFrozenRowsChange;
+  applyFrozenColsRef.current  = applyFrozenColsChange;
+
+  // ── drag: body rows ─────────────────────────────────────────────────────────
   const rowDragState = useRef({ active: false, startY: 0, lastDelta: 0 });
-
   const rowPanResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onStartShouldSetPanResponderCapture: () => true,
     onMoveShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponderCapture: () => true,
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (e) => {
-      rowDragState.current = { active: true, startY: e.nativeEvent.pageY, lastDelta: 0 };
-      setRowDragActive(true);
-    },
+    onPanResponderGrant: (e) => { rowDragState.current = { active: true, startY: e.nativeEvent.pageY, lastDelta: 0 }; setRowDragActive(true); },
     onPanResponderMove: (e) => {
       if (!rowDragState.current.active) return;
-      const dy = e.nativeEvent.pageY - rowDragState.current.startY;
-      const delta = Math.round(dy / ROW_H);
-      if (delta !== rowDragState.current.lastDelta) {
-        rowDragState.current.lastDelta = delta;
-        setRowPreview(Math.max(0, delta));
-      }
+      const delta = Math.round((e.nativeEvent.pageY - rowDragState.current.startY) / ROW_H);
+      if (delta !== rowDragState.current.lastDelta) { rowDragState.current.lastDelta = delta; setRowPreview(Math.max(0, delta)); }
     },
     onPanResponderRelease: () => {
       const delta = rowDragState.current.lastDelta;
-      rowDragState.current = { active: false, startY: 0, lastDelta: 0 };
-      setRowPreview(0);
-      setRowDragActive(false);
-      if (delta > 0) applyRowPreviewRef.current(delta);
-      else if (delta < 0) removeRowsRef.current(-delta);
+      rowDragState.current = { active: false, startY: 0, lastDelta: 0 }; setRowPreview(0); setRowDragActive(false);
+      if (delta > 0) applyRowPreviewRef.current(delta); else if (delta < 0) removeRowsRef.current(-delta);
     },
-    onPanResponderTerminate: () => {
-      rowDragState.current = { active: false, startY: 0, lastDelta: 0 };
-      setRowPreview(0);
-      setRowDragActive(false);
-    },
+    onPanResponderTerminate: () => { rowDragState.current = { active: false, startY: 0, lastDelta: 0 }; setRowPreview(0); setRowDragActive(false); },
   })).current;
 
-  // ── drag-to-add col (PanResponder on right handle) ──────────────────────────
+  // ── drag: body cols ─────────────────────────────────────────────────────────
   const colDragState = useRef({ active: false, startX: 0, lastDelta: 0 });
-
   const colPanResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onStartShouldSetPanResponderCapture: () => true,
-    onMoveShouldSetPanResponder:  () => colDragState.current.active,
+    onMoveShouldSetPanResponder: () => colDragState.current.active,
     onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (e) => {
-      colDragState.current = { active: true, startX: e.nativeEvent.pageX, lastDelta: 0 };
-      setColDragActive(true);
-    },
+    onPanResponderGrant: (e) => { colDragState.current = { active: true, startX: e.nativeEvent.pageX, lastDelta: 0 }; setColDragActive(true); },
     onPanResponderMove: (e) => {
       if (!colDragState.current.active) return;
-      const dx = e.nativeEvent.pageX - colDragState.current.startX;
-      const delta = Math.round(dx / COL_W);
-      if (delta !== colDragState.current.lastDelta) {
-        colDragState.current.lastDelta = delta;
-        setColPreview(Math.max(0, delta));
-      }
+      const delta = Math.round((e.nativeEvent.pageX - colDragState.current.startX) / COL_W);
+      if (delta !== colDragState.current.lastDelta) { colDragState.current.lastDelta = delta; setColPreview(Math.max(0, delta)); }
     },
     onPanResponderRelease: () => {
       const delta = colDragState.current.lastDelta;
-      colDragState.current = { active: false, startX: 0, lastDelta: 0 };
-      setColPreview(0);
-      setColDragActive(false);
-      if (delta > 0) applyColPreviewRef.current(delta);
-      else if (delta < 0) removeColsRef.current(-delta);
+      colDragState.current = { active: false, startX: 0, lastDelta: 0 }; setColPreview(0); setColDragActive(false);
+      if (delta > 0) applyColPreviewRef.current(delta); else if (delta < 0) removeColsRef.current(-delta);
     },
-    onPanResponderTerminate: () => {
-      colDragState.current = { active: false, startX: 0, lastDelta: 0 };
-      setColPreview(0);
-      setColDragActive(false);
-    },
+    onPanResponderTerminate: () => { colDragState.current = { active: false, startX: 0, lastDelta: 0 }; setColPreview(0); setColDragActive(false); },
   })).current;
 
-  // ── cell renderer ───────────────────────────────────────────────────────────
-  const renderCell = (pos: CellPos, value: string, style?: object) => {
-    const sel  = isSelected(pos);
-    const edit = isEditing(pos);
-    return (
-      <Pressable
-        key={`${pos.area}-${pos.row}-${pos.col}`}
-        style={[sv.cell, style, sel && sv.cellSel]}
-        onPress={() => {
-          if (editing) { commitEdit(); return; }
-          if (sel) startEdit(pos);
-          else setSelected(pos);
-        }}
-      >
-        {edit ? (
-          <TextInput
-            style={sv.cellInput}
-            value={editVal}
-            onChangeText={setEditVal}
-            onSubmitEditing={commitEdit}
-            onBlur={commitEdit}
-            autoFocus
-            returnKeyType="done"
-            selectTextOnFocus
-          />
-        ) : (
-          <Text style={[sv.cellText, style && (style as any).color ? {} : {}]} numberOfLines={1}>{value}</Text>
-        )}
-      </Pressable>
-    );
-  };
+  // ── drag: frozen rows ───────────────────────────────────────────────────────
+  const frozenRowsDragState = useRef({ active: false, startY: 0, lastDelta: 0 });
+  const frozenRowsPanResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onStartShouldSetPanResponderCapture: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: (e) => { frozenRowsDragState.current = { active: true, startY: e.nativeEvent.pageY, lastDelta: 0 }; setFrozenRowsDragActive(true); },
+    onPanResponderMove: (e) => {
+      if (!frozenRowsDragState.current.active) return;
+      const dy = e.nativeEvent.pageY - frozenRowsDragState.current.startY;
+      const delta = Math.sign(dy) * Math.floor(Math.abs(dy) / HDR_H);
+      if (delta !== frozenRowsDragState.current.lastDelta) frozenRowsDragState.current.lastDelta = delta;
+    },
+    onPanResponderRelease: () => {
+      const delta = frozenRowsDragState.current.lastDelta;
+      frozenRowsDragState.current = { active: false, startY: 0, lastDelta: 0 }; setFrozenRowsDragActive(false);
+      applyFrozenRowsRef.current(delta);
+    },
+    onPanResponderTerminate: () => { frozenRowsDragState.current = { active: false, startY: 0, lastDelta: 0 }; setFrozenRowsDragActive(false); },
+  })).current;
+
+  // ── drag: frozen cols ───────────────────────────────────────────────────────
+  const frozenColsDragState = useRef({ active: false, startX: 0, lastDelta: 0 });
+  const frozenColsPanResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onStartShouldSetPanResponderCapture: () => true,
+    onMoveShouldSetPanResponder: () => frozenColsDragState.current.active,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: (e) => { frozenColsDragState.current = { active: true, startX: e.nativeEvent.pageX, lastDelta: 0 }; setFrozenColsDragActive(true); },
+    onPanResponderMove: (e) => {
+      if (!frozenColsDragState.current.active) return;
+      const dx = e.nativeEvent.pageX - frozenColsDragState.current.startX;
+      const delta = Math.sign(dx) * Math.floor(Math.abs(dx) / HDR_W);
+      if (delta !== frozenColsDragState.current.lastDelta) frozenColsDragState.current.lastDelta = delta;
+    },
+    onPanResponderRelease: () => {
+      const delta = frozenColsDragState.current.lastDelta;
+      frozenColsDragState.current = { active: false, startX: 0, lastDelta: 0 }; setFrozenColsDragActive(false);
+      applyFrozenColsRef.current(delta);
+    },
+    onPanResponderTerminate: () => { frozenColsDragState.current = { active: false, startX: 0, lastDelta: 0 }; setFrozenColsDragActive(false); },
+  })).current;
 
   return (
     <Modal visible animationType="slide" onRequestClose={() => { commitEdit(); onClose(); }}>
@@ -495,10 +517,10 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
                   ? [
                       { text: 'Annulla', style: 'cancel' },
                       { text: 'Elimina riga', style: 'destructive', onPress: () => {
-                          const nextHCol  = headerCol.filter((_, i) => i !== selected.row);
+                          const nextHCols = headerCols.filter((_, i) => i !== selected.row);
                           const nextCells = cells.filter((_, i) => i !== selected.row);
-                          setHeaderCol(nextHCol); setCells(nextCells);
-                          save(headerRow, nextHCol, nextCells); setSelected(null);
+                          setHeaderCols(nextHCols); setCells(nextCells);
+                          save(headerRows, nextHCols, nextCells); setSelected(null);
                       }},
                     ]
                   : [{ text: 'OK', style: 'cancel' }]
@@ -514,8 +536,8 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
         <View style={sv.formulaBar}>
           <Text style={sv.formulaRef}>
             {selected
-              ? selected.area === 'header-row' ? `H${selected.col + 1}`
-              : selected.area === 'header-col' ? `R${selected.row + 1}`
+              ? selected.area === 'header-row' ? `H${selected.row + 1}.${selected.col + 1}`
+              : selected.area === 'header-col' ? `R${selected.row + 1}.${selected.col + 1}`
               : `${String.fromCharCode(65 + selected.col)}${selected.row + 1}`
               : ''}
           </Text>
@@ -528,113 +550,130 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
           ) : (
             <Text style={sv.formulaStatic} numberOfLines={1}>
               {selected
-                ? selected.area === 'header-row' ? headerRow[selected.col]
-                : selected.area === 'header-col' ? headerCol[selected.row]
-                : cells[selected.row]?.[selected.col] ?? ''
+                ? selected.area === 'header-row' ? (headerRows[selected.row]?.[selected.col] ?? '')
+                : selected.area === 'header-col' ? (headerCols[selected.row]?.[selected.col] ?? '')
+                : (cells[selected.row]?.[selected.col] ?? '')
                 : ''}
             </Text>
           )}
         </View>
 
-        {/* Grid — frozen corner+headers, scrollable body */}
+        {/* Grid */}
         <View style={{ flex: 1 }}>
 
-          {/* Fixed top: corner + column headers */}
+          {/* AREA FISSA IN CIMA: angolo + righe fisse (scroll orizzontale) */}
           <View style={{ flexDirection: 'row' }}>
-            <View style={[sv.cornerCell, { borderBottomColor: accent, borderBottomWidth: 2 }]} />
-            <ScrollView
-              horizontal
-              scrollEnabled={false}
-              ref={colHdrScrollRef}
-              showsHorizontalScrollIndicator={false}
-              bounces={false}
-              style={{ flex: 1 }}
-              contentContainerStyle={{ flexDirection: 'row' }}
-            >
-              {headerRow.map((h, ci) => {
-                const pos: CellPos = { row: 0, col: ci, area: 'header-row' };
-                const sel = isSelected(pos);
-                const edit = isEditing(pos);
-                return (
-                  <Pressable
-                    key={ci}
-                    style={[sv.colHeader, { borderBottomColor: accent, borderBottomWidth: 2 }, sel && sv.headerSel]}
-                    onPress={() => { if (editing) { commitEdit(); return; } if (sel) startEdit(pos); else setSelected(pos); }}
-                  >
-                    <Text style={sv.colLetter}>{String.fromCharCode(65 + ci)}</Text>
-                    {edit ? (
-                      <TextInput style={sv.headerInput} value={editVal} onChangeText={setEditVal} onSubmitEditing={commitEdit} onBlur={commitEdit} autoFocus returnKeyType="done" selectTextOnFocus />
-                    ) : (
-                      <Text style={sv.colHeaderName} numberOfLines={1}>{h}</Text>
-                    )}
-                  </Pressable>
-                );
-              })}
-              {Array.from({ length: colPreview }).map((_, i) => (
-                <View key={`prev-ch-${i}`} style={[sv.colHeader, { borderBottomColor: accent, borderBottomWidth: 2, opacity: 0.4 }]}>
-                  <Text style={sv.colLetter}>{String.fromCharCode(65 + numCols + i)}</Text>
-                </View>
-              ))}
-              <View style={[sv.colDragHandle, colDragActive && { backgroundColor: accent, opacity: 0.85 }]} {...colPanResponder.panHandlers} />
-            </ScrollView>
+            <View style={{ width: fixedColsWidth, height: numFrozenRows * HDR_H, backgroundColor: C.headerBg }} />
+            <View style={{ flex: 1, overflow: 'hidden', height: numFrozenRows * HDR_H }}>
+              <Animated.View style={{ transform: [{ translateX: Animated.multiply(scrollX, -1) }] }}>
+                {headerRows.map((hRow, fri) => {
+                  const isLastFrozenRow = fri === numFrozenRows - 1;
+                  return (
+                    <View key={fri} style={{ flexDirection: 'row' }}>
+                      {hRow.map((h, ci) => {
+                        const pos: CellPos = { row: fri, col: ci, area: 'header-row' };
+                        const sel = isSelected(pos);
+                        const edit = isEditing(pos);
+                        return (
+                          <Pressable
+                            key={ci}
+                            style={[sv.colHeader, sel && sv.headerSel]}
+                            onPress={() => { if (editing) { commitEdit(); return; } if (sel) startEdit(pos); else setSelected(pos); }}
+                          >
+                            {edit ? (
+                              <TextInput style={sv.headerInput} value={editVal} onChangeText={setEditVal} onSubmitEditing={commitEdit} onBlur={commitEdit} autoFocus returnKeyType="done" selectTextOnFocus />
+                            ) : (
+                              <Text style={sv.colHeaderName} numberOfLines={1}>{h}</Text>
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                      {isLastFrozenRow && Array.from({ length: colPreview }).map((_, i) => (
+                        <View key={`prev-ch-${i}`} style={[sv.colHeader, { opacity: 0.4 }]} />
+                      ))}
+                      {isLastFrozenRow && (
+                        <View style={[sv.colDragHandle, colDragActive && { backgroundColor: accent, opacity: 0.85 }]} {...colPanResponder.panHandlers} />
+                      )}
+                    </View>
+                  );
+                })}
+              </Animated.View>
+            </View>
           </View>
 
-          {/* Body: fixed row headers (left) + scrollable cells */}
+          {/* LINEA COLORATA ORIZZONTALE — trascina su/giù per aggiungere/togliere righe fisse */}
+          <View style={{ flexDirection: 'row', height: 4 }}>
+            <View style={{ width: fixedColsWidth, backgroundColor: C.headerBg }} />
+            <View style={{ flex: 1, backgroundColor: frozenRowsDragActive ? accent : accent + 'CC' }} {...frozenRowsPanResponder.panHandlers} />
+          </View>
+
+          {/* CORPO: colonne fisse + linea verticale + celle scrollabili */}
           <View style={{ flex: 1, flexDirection: 'row' }}>
 
-            {/* Fixed left: row headers — scrolls only when synced with body */}
-            <ScrollView
-              scrollEnabled={false}
-              ref={rowHdrScrollRef}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-            >
-              {Array.from({ length: numRows + rowPreview }).map((_, ri) => {
-                const isPreviewRow = ri >= numRows;
-                const isLastRow = ri === numRows + rowPreview - 1;
-                const hColVal = isPreviewRow
-                  ? (() => { const base = [...headerCol]; for (let k = numRows; k <= ri; k++) base.push(detectNext(base)); return base[ri]; })()
-                  : headerCol[ri];
-                const thickBorder = isLastRow ? { borderBottomWidth: 5, borderBottomColor: rowDragActive ? accent : '#58585A' } : {};
-                const pos: CellPos = { row: ri, col: 0, area: 'header-col' };
-                const sel = isSelected(pos);
-                const edit = isEditing(pos);
-                return (
-                  <View key={ri} style={{ position: 'relative' }}>
-                    <Pressable
-                      style={[sv.rowHeader, thickBorder, sel && sv.headerSel, isPreviewRow && { opacity: 0.4 }]}
-                      onPress={() => { if (isPreviewRow) return; if (editing) { commitEdit(); return; } if (sel) startEdit(pos); else setSelected(pos); }}
-                    >
-                      {edit && !isPreviewRow ? (
-                        <TextInput style={sv.headerInput} value={editVal} onChangeText={setEditVal} onSubmitEditing={commitEdit} onBlur={commitEdit} autoFocus returnKeyType="done" selectTextOnFocus />
-                      ) : (
-                        <Text style={sv.rowHeaderText} numberOfLines={1}>{hColVal}</Text>
+            {/* Colonne fisse (scroll verticale) */}
+            <View style={{ width: fixedColsWidth, overflow: 'hidden', backgroundColor: '#000' }}>
+              <Animated.View style={{ transform: [{ translateY: Animated.multiply(scrollY, -1) }] }}>
+                {Array.from({ length: numRows + rowPreview }).map((_, ri) => {
+                  const isPreviewRow = ri >= numRows;
+                  const isLastRow = ri === numRows + rowPreview - 1;
+                  const thickBorder = isLastRow ? { borderBottomWidth: 5, borderBottomColor: rowDragActive ? accent : '#58585A' } : {};
+                  return (
+                    <View key={ri} style={{ flexDirection: 'row', position: 'relative' }}>
+                      {Array.from({ length: numFrozenCols }).map((_, fci) => {
+                        const hColVal = isPreviewRow
+                          ? (() => { const base = headerCols.map(r => r[fci]); for (let k = numRows; k <= ri; k++) base.push(detectNext(base)); return base[ri]; })()
+                          : (headerCols[ri]?.[fci] ?? '');
+                        const pos: CellPos = { row: ri, col: fci, area: 'header-col' };
+                        const sel = isSelected(pos);
+                        const edit = isEditing(pos);
+                        return (
+                          <Pressable
+                            key={fci}
+                            style={[sv.rowHeader, thickBorder, sel && sv.headerSel, isPreviewRow && { opacity: 0.4 }]}
+                            onPress={() => { if (isPreviewRow) return; if (editing) { commitEdit(); return; } if (sel) startEdit(pos); else setSelected(pos); }}
+                          >
+                            {edit && !isPreviewRow ? (
+                              <TextInput style={sv.headerInput} value={editVal} onChangeText={setEditVal} onSubmitEditing={commitEdit} onBlur={commitEdit} autoFocus returnKeyType="done" selectTextOnFocus />
+                            ) : (
+                              <Text style={sv.rowHeaderText} numberOfLines={1}>{hColVal}</Text>
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                      {isLastRow && (
+                        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 10 }} {...rowPanResponder.panHandlers} />
                       )}
-                    </Pressable>
-                    {isLastRow && (
-                      <View
-                        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 10 }}
-                        {...rowPanResponder.panHandlers}
-                      />
-                    )}
-                  </View>
-                );
-              })}
-            </ScrollView>
+                    </View>
+                  );
+                })}
+              </Animated.View>
+            </View>
 
-            {/* Body cells: vertical outer (syncs row headers) → horizontal inner (syncs col headers) */}
+            {/* LINEA COLORATA VERTICALE — trascina destra/sinistra per aggiungere/togliere colonne fisse */}
+            <View
+              style={{ width: 4, alignSelf: 'flex-start', height: (numRows + rowPreview) * ROW_H, backgroundColor: frozenColsDragActive ? accent : accent + 'CC' }}
+              {...frozenColsPanResponder.panHandlers}
+            />
+
+            {/* Celle body */}
             <ScrollView
               ref={bodyVScrollRef}
-              onScroll={e => rowHdrScrollRef.current?.scrollTo({ y: e.nativeEvent.contentOffset.y, animated: false })}
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                { useNativeDriver: false }
+              )}
               scrollEventThrottle={16}
               showsVerticalScrollIndicator={false}
               bounces={false}
-              style={{ flex: 1 }}
+              style={{ flex: 1, backgroundColor: '#000' }}
             >
               <ScrollView
                 horizontal
                 ref={bodyHScrollRef}
-                onScroll={e => colHdrScrollRef.current?.scrollTo({ x: e.nativeEvent.contentOffset.x, animated: false })}
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                  { useNativeDriver: false }
+                )}
                 scrollEventThrottle={16}
                 showsHorizontalScrollIndicator={false}
                 bounces={false}
@@ -674,18 +713,6 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
           </View>
         </View>
 
-        {/* Bottom toolbar */}
-        <View style={sv.bottomBar}>
-          <TouchableOpacity style={sv.bottomBtn} onPress={() => applyRowPreview(1)}>
-            <Ionicons name="add" size={19} color={accent} />
-            <Text style={[sv.bottomTxt, { color: accent }]}>Riga</Text>
-          </TouchableOpacity>
-          <View style={sv.sep} />
-          <TouchableOpacity style={sv.bottomBtn} onPress={() => applyColPreview(1)}>
-            <Ionicons name="add" size={19} color={accent} />
-            <Text style={[sv.bottomTxt, { color: accent }]}>Colonna</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </Modal>
   );
@@ -705,16 +732,14 @@ const sv = StyleSheet.create({
   formulaStatic: { flex: 1, color: C.textHeader, fontSize: 14 },
   fBtn:       { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
 
-  cornerCell: { width: HDR_W, height: HDR_H, backgroundColor: C.headerBg, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.gridLine, borderBottomColor: C.gridLine },
-  colHeader:  { width: COL_W, height: HDR_H, backgroundColor: C.headerBg, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.gridLine, paddingHorizontal: 6, gap: 1 },
-  colLetter:  { color: C.textMuted, fontSize: 9, fontWeight: '500' },
+  colHeader:  { width: COL_W, height: HDR_H, backgroundColor: C.headerBg, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.gridLine, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.gridLine, paddingHorizontal: 6 },
   colHeaderName: { color: C.textHeader, fontSize: 11, fontWeight: '600', textAlign: 'center' },
   headerSel:  { backgroundColor: '#0A84FF22' },
   headerInput:{ color: C.textPrimary, fontSize: 12, fontWeight: '600', padding: 0, textAlign: 'center', width: '100%' },
   colDragHandle: { width: 5, height: HDR_H, backgroundColor: '#58585A' },
 
   rowHeader:  { width: HDR_W, height: ROW_H, backgroundColor: C.headerBg, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.gridLine, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.gridLine, paddingHorizontal: 4 },
-  rowHeaderText: { color: C.textMuted, fontSize: 12, fontWeight: '500', textAlign: 'center' },
+  rowHeaderText: { color: C.textHeader, fontSize: 12, fontWeight: '500', textAlign: 'center' },
 
   cell:       { width: COL_W, height: ROW_H, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.gridLine, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.gridLine, paddingHorizontal: 8, justifyContent: 'center', backgroundColor: C.cellBg },
   cellAlt:    { backgroundColor: C.cellAlt },
@@ -723,10 +748,6 @@ const sv = StyleSheet.create({
   cellInput:  { color: C.textPrimary, fontSize: 13, padding: 0, flex: 1 },
 
 
-  bottomBar:  { flexDirection: 'row', backgroundColor: C.headerBg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.gridLine, paddingBottom: Platform.OS === 'ios' ? 24 : 8 },
-  bottomBtn:  { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 12 },
-  bottomTxt:  { fontSize: 14, fontWeight: '500' },
-  sep:        { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: C.gridLine, alignSelf: 'center' },
 });
 
 // ─── Main export ──────────────────────────────────────────────────────────────

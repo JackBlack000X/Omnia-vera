@@ -84,6 +84,8 @@ export function useIndexLogic() {
   const [draggingSelectionCount, setDraggingSelectionCount] = useState(0);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
   const today = getDay(new Date());
+  // Giorno di calendario in Zurich (può differire da today quando dayResetTime > 00:00 e siamo prima del reset)
+  const calendarToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
   const prevSectionedListRef = useRef<SectionItem[]>([]);
 
@@ -489,12 +491,14 @@ export function useIndexLogic() {
 
   const habitsAppearingToday = useMemo(() => {
     return habits.filter((h) => {
-      const hasOverrideForToday = !!h.timeOverrides?.[today];
-      if (h.createdAt && today < h.createdAt && !hasOverrideForToday) return false;
+      const hasOverrideForToday =
+        !!h.timeOverrides?.[today] ||
+        (today !== calendarToday && !!h.timeOverrides?.[calendarToday]);
+      if (h.createdAt && today < h.createdAt && calendarToday < h.createdAt && !hasOverrideForToday) return false;
       const repeatStartDate = h.schedule?.repeatStartDate;
-      if (repeatStartDate && today < repeatStartDate && !hasOverrideForToday) return false;
+      if (repeatStartDate && today < repeatStartDate && calendarToday < repeatStartDate && !hasOverrideForToday) return false;
       const repeatEndDate = h.schedule?.repeatEndDate;
-      if (repeatEndDate && today > repeatEndDate && !hasOverrideForToday) return false;
+      if (repeatEndDate && today > repeatEndDate && calendarToday > repeatEndDate && !hasOverrideForToday) return false;
       const isSingle =
         h.habitFreq === 'single' ||
         (!h.habitFreq &&
@@ -514,7 +518,7 @@ export function useIndexLogic() {
       const annualApplies = yrM && yrD ? yrM === todayMonthIndex && yrD === todayDayOfMonth : true;
       return weeklyApplies && monthlyApplies && annualApplies;
     });
-  }, [habits, today, todayWeekday, todayDayOfMonth, todayMonthIndex]);
+  }, [habits, today, calendarToday, todayWeekday, todayDayOfMonth, todayMonthIndex]);
 
   const stats = useMemo(() => {
     const todayHabits = habitsAppearingToday;
