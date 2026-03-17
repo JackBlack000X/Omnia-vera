@@ -87,10 +87,11 @@ export type DayCompletion = {
 export type UserTable = {
   id: string;
   name: string;
-  columns: string[];
-  rows: Record<string, string>[];
   color: string;
   createdAt: string;
+  headerRow: string[];   // column headers – default A, B, C...
+  headerCol: string[];   // row headers   – default 1, 2, 3...
+  cells: string[][];     // cells[rowIndex][colIndex]
 };
 
 export type HabitsState = {

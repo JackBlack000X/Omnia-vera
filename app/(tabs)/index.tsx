@@ -529,22 +529,30 @@ export default function IndexScreen() {
         <View style={styles.header}>
           <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-end' }}>
             <TouchableOpacity onPress={() => setActiveSection('tasks')}>
-              <Text style={[styles.title, activeSection !== 'tasks' && { color: '#4b5563' }]}>Tasks</Text>
+              <Text style={[styles.title, activeSection !== 'tasks' && { color: '#888' }]}>Tasks</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setActiveSection('tabelle')}>
-              <Text style={[styles.title, activeSection !== 'tabelle' && { color: '#4b5563' }]}>Tabelle</Text>
+              <Text style={[styles.title, activeSection !== 'tabelle' && { color: '#888' }]}>Tabelle</Text>
             </TouchableOpacity>
           </View>
           {activeSection === 'tasks' && <Text style={styles.progressText}>{stats.pct}%</Text>}
         </View>
       )}
 
+      {activeTheme === 'futuristic' && (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16, marginTop: 55, paddingHorizontal: 16, paddingBottom: 6 }}>
+          <TouchableOpacity onPress={() => setActiveSection('tasks')}>
+            <Text style={[styles.progressText, activeSection !== 'tasks' && { opacity: 0.3 }]}>{stats.pct}%</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setActiveSection('tabelle')}>
+            <Text style={[styles.progressText, { fontSize: 18, letterSpacing: 1 }, activeSection !== 'tabelle' && { opacity: 0.3 }]}>TABELLE</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {activeSection === 'tabelle' && <TabelleView />}
 
-      {activeSection === 'tasks' && <><View style={[styles.progressSection, activeTheme === 'futuristic' && { marginTop: 55 }]}>
-        {activeTheme === 'futuristic' && (
-          <Text style={styles.progressText}>{stats.pct}%</Text>
-        )}
+      {activeSection === 'tasks' && <><View style={styles.progressSection}>
         <View style={styles.progressBarContainer}>
           <View style={[
             styles.progressBarBg,
