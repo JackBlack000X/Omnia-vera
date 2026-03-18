@@ -1579,7 +1579,7 @@ export default function OggiScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#000',
   },
   header: {
     flexDirection: 'row',

@@ -167,19 +167,7 @@ export default function ShopScreen() {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    // If theme is classic, background is black. If futuristic, background is handled by global NoiseBackground.
-    // But NoiseBackground is "absoluteFill" in root layout.
-    // So this View background should be transparent or handled conditionally if needed.
-    // Actually, for 'futuristic' the global background is visible.
-    // For 'classic', we might want a solid black background locally or globally.
-    // Let's keep transparent here and let global components handle it?
-    // Wait, if 'classic' is selected, NoiseBackground renders nothing (transparent).
-    // So we need a black background somewhere.
-    // Let's make this transparent and rely on a global black background fallback or handle it in NoiseBackground.
-    // Simpler: Make this transparent, and ensure RootLayout has a black fallback.
-    // Or just set backgroundColor here based on theme? No, theme is global.
-    // Let's leave it transparent but ensure the app background is black by default.
-    backgroundColor: 'transparent', 
+    backgroundColor: '#000',
   },
   container: {
     flex: 1,
