@@ -2,7 +2,7 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
 import React from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -81,20 +81,20 @@ export default function TabLayout() {
       iconColor={{ default: '#e5e7eb', selected: '#3b82f6' }}
     >
       <NativeTabs.Trigger name="index" contentStyle={{ backgroundColor: '#000' }} unstable_nativeProps={{ backgroundColor: '#000' }}>
-        <NativeTabs.Trigger.Icon sf="list.bullet" />
-        <NativeTabs.Trigger.Label>Tasks</NativeTabs.Trigger.Label>
+        <Icon sf="list.bullet" />
+        <Label>Tasks</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="oggi" contentStyle={{ backgroundColor: '#000' }} unstable_nativeProps={{ backgroundColor: '#000' }}>
-        <NativeTabs.Trigger.Icon sf="sun.max" />
-        <NativeTabs.Trigger.Label>Oggi</NativeTabs.Trigger.Label>
+        <Icon sf="sun.max" />
+        <Label>Oggi</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="calendar" contentStyle={{ backgroundColor: '#000' }} unstable_nativeProps={{ backgroundColor: '#000' }}>
-        <NativeTabs.Trigger.Icon sf="calendar" />
-        <NativeTabs.Trigger.Label>Calendario</NativeTabs.Trigger.Label>
+        <Icon sf="calendar" />
+        <Label>Calendario</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="shop" contentStyle={{ backgroundColor: '#000' }} unstable_nativeProps={{ backgroundColor: '#000' }}>
-        <NativeTabs.Trigger.Icon sf="bag" />
-        <NativeTabs.Trigger.Label>Shop</NativeTabs.Trigger.Label>
+        <Icon sf="bag" />
+        <Label>Shop</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
