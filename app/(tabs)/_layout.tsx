@@ -80,22 +80,22 @@ export default function TabLayout() {
       tintColor="#3b82f6"
       iconColor={{ default: '#e5e7eb', selected: '#3b82f6' }}
     >
-      <NativeTabs.Trigger
-        name="index"
-        options={{ icon: { sf: 'list.bullet' }, title: 'Tasks' }}
-      />
-      <NativeTabs.Trigger
-        name="oggi"
-        options={{ icon: { sf: 'sun.max' }, title: 'Oggi' }}
-      />
-      <NativeTabs.Trigger
-        name="calendar"
-        options={{ icon: { sf: 'calendar' }, title: 'Calendario' }}
-      />
-      <NativeTabs.Trigger
-        name="shop"
-        options={{ icon: { sf: 'bag' }, title: 'Shop' }}
-      />
+      <NativeTabs.Trigger name="index" contentStyle={{ backgroundColor: '#000' }} unstable_nativeProps={{ backgroundColor: '#000' }}>
+        <NativeTabs.Trigger.Icon sf="list.bullet" />
+        <NativeTabs.Trigger.Label>Tasks</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="oggi" contentStyle={{ backgroundColor: '#000' }} unstable_nativeProps={{ backgroundColor: '#000' }}>
+        <NativeTabs.Trigger.Icon sf="sun.max" />
+        <NativeTabs.Trigger.Label>Oggi</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="calendar" contentStyle={{ backgroundColor: '#000' }} unstable_nativeProps={{ backgroundColor: '#000' }}>
+        <NativeTabs.Trigger.Icon sf="calendar" />
+        <NativeTabs.Trigger.Label>Calendario</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="shop" contentStyle={{ backgroundColor: '#000' }} unstable_nativeProps={{ backgroundColor: '#000' }}>
+        <NativeTabs.Trigger.Icon sf="bag" />
+        <NativeTabs.Trigger.Label>Shop</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }

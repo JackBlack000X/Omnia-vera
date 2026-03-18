@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
@@ -7,7 +7,6 @@ import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { NoiseBackground } from '@/components/NoiseBackground';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { HabitsProvider } from '@/lib/habits/Provider';
 import { AppThemeProvider } from '@/lib/theme-context';
 import { BagelFatOne_400Regular, useFonts } from '@expo-google-fonts/bagel-fat-one';
@@ -24,8 +23,6 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   const [fontsLoaded] = useFonts({
     BagelFatOne_400Regular,
   });
@@ -45,7 +42,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <HabitsProvider>
           <AppThemeProvider>
-            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <ThemeProvider value={{ ...DarkTheme, colors: { ...DarkTheme.colors, background: '#000', card: '#000' } }}>
               <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: '#000' }} />
               <NoiseBackground />
               <Stack screenOptions={{ contentStyle: { backgroundColor: 'transparent' } }}>
