@@ -307,7 +307,7 @@ export default function OggiScreen() {
       // Viaggi: gestiti manualmente con andata/ritorno nella timeline
       if (h.tipo === 'viaggio' && h.travel) {
         const travel = h.travel;
-        const selectedYmd = getDay(currentDate);
+        const selectedYmd = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(currentDate);
         const color = h.color ?? '#3b82f6';
 
         // Helper: aggiunge 1 giorno a una stringa YYYY-MM-DD
@@ -414,32 +414,26 @@ export default function OggiScreen() {
         continue;
       }
 
-      const selectedYmd = getDay(currentDate);
-      // Quando il giorno logico (selectedYmd) differisce dal giorno di calendario (es. dayResetTime > 00:00
-      // prima del reset), usiare il giorno di calendario come ymd effettivo se il task ha un override lì
-      const effectiveYmd = (selectedYmd === today && today !== todayYmd && h.timeOverrides?.[todayYmd] !== undefined)
-        ? todayYmd
-        : selectedYmd;
-      const hasOverrideForSelected = !!h.timeOverrides?.[effectiveYmd];
-      if (h.createdAt && selectedYmd < h.createdAt && effectiveYmd < h.createdAt && !hasOverrideForSelected) continue;
+      // Usiamo il giorno di CALENDARIO di currentDate (non quello logico) per i timeOverrides,
+      // perché la navigazione è basata su giorni di calendario e gli override sono keyed per data di calendario.
+      // Questo evita che un task del 17 marzo appaia anche il 18 marzo (quando dayResetTime=18:00 e sono le 10:00).
+      const selectedYmd = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(currentDate);
+      const hasOverrideForSelected = !!h.timeOverrides?.[selectedYmd];
+      if (h.createdAt && selectedYmd < h.createdAt && !hasOverrideForSelected) continue;
       const repeatStartDate = h.schedule?.repeatStartDate;
-      if (repeatStartDate && selectedYmd < repeatStartDate && effectiveYmd < repeatStartDate && !hasOverrideForSelected) continue;
+      if (repeatStartDate && selectedYmd < repeatStartDate && !hasOverrideForSelected) continue;
       const repeatEndDate = h.schedule?.repeatEndDate;
-      if (repeatEndDate && selectedYmd > repeatEndDate && effectiveYmd > repeatEndDate && !hasOverrideForSelected) continue;
+      if (repeatEndDate && selectedYmd > repeatEndDate && !hasOverrideForSelected) continue;
 
-      // Single-frequency tasks only appear on their creation day OR on days where they have an explicit override
-      const isSingle = h.habitFreq === 'single' || (
-        !h.habitFreq &&
-        (h.schedule?.daysOfWeek?.length ?? 0) === 0 &&
-        !h.schedule?.monthDays?.length &&
-        !h.schedule?.yearMonth
-      );
-      if (isSingle) {
-        const hasAnyOverride = Object.keys(h.timeOverrides ?? {}).length > 0;
-        if (!hasOverrideForSelected) {
-          if (hasAnyOverride || effectiveYmd !== h.createdAt) continue;
-        }
-      }
+      // Single-frequency tasks only appear on days where they have an explicit override
+      const isSingle =
+        h.habitFreq === 'single' ||
+        (!h.habitFreq &&
+          (Object.keys(h.timeOverrides ?? {}).length > 0) &&
+          (h.schedule?.daysOfWeek?.length ?? 0) === 0 &&
+          !h.schedule?.monthDays?.length &&
+          !h.schedule?.yearMonth);
+      if (isSingle && !hasOverrideForSelected) continue;
 
       const sched = h.schedule;
       let showToday = true;
@@ -455,7 +449,7 @@ export default function OggiScreen() {
       }
       if (!showToday) continue;
 
-      const ymd = effectiveYmd;
+      const ymd = selectedYmd;
       const override = h.timeOverrides?.[ymd];
       // '00:00' stored as a string (not an object) is used as an all-day marker by the modal
       const isAllDayMarker = override === '00:00';
@@ -488,7 +482,7 @@ export default function OggiScreen() {
       }
     }
     return { timedEvents: items, allDayEvents: allDay };
-  }, [habits, weekday, dayOfMonth, currentDate, getDay, monthIndex1, today, todayYmd]);
+  }, [habits, weekday, dayOfMonth, currentDate, monthIndex1]);
 
   const trackerEventsForDay = useMemo(() => {
     const selectedYmd = (() => {

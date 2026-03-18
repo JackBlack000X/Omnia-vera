@@ -1,6 +1,7 @@
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { View } from 'react-native';
@@ -11,6 +12,8 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
 
   const isFuturistic = activeTheme === 'futuristic';
+  const liquidGlass = isLiquidGlassAvailable();
+  console.log('Liquid Glass available:', liquidGlass);
 
   return (
     <Tabs
@@ -51,6 +54,19 @@ export default function TabLayout() {
         tabBarBackground: () => (
           isFuturistic ? (
             <View style={{ flex: 1, backgroundColor: '#000000' }} />
+          ) : liquidGlass ? (
+            <GlassView
+              glassEffectStyle="clear"
+              colorScheme="dark"
+              borderRadius={35}
+              style={{
+                position: 'absolute',
+                left: 47.5,
+                right: 47,
+                top: 0,
+                bottom: 0,
+              }}
+            />
           ) : (
             <BlurView
               intensity={12}

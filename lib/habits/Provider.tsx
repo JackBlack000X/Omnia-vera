@@ -655,6 +655,8 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         const nextOverrides = { ...(h.timeOverrides ?? {}) } as Record<string, string | { start: string; end: string }>;
         if (startTime && endTime) {
           nextOverrides[date] = { start: startTime, end: endTime };
+        } else if (startTime) {
+          nextOverrides[date] = startTime;
         } else {
           delete nextOverrides[date];
         }
