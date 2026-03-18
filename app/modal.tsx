@@ -644,6 +644,49 @@ export default function ModalScreen() {
           )}
 
           {(type === 'new' || type === 'edit') && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>Label</Text>
+              <TextInput
+                value={m.labelInput}
+                onChangeText={m.setLabelInput}
+                placeholder="Aggiungi etichetta..."
+                placeholderTextColor="#64748b"
+                style={[styles.input, { marginTop: 8 }]}
+              />
+              {/* Suggerimenti autocomplete (quando sta scrivendo) */}
+              {m.labelSuggestions.length > 0 && (
+                <View style={{ marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {m.labelSuggestions.map(s => (
+                    <TouchableOpacity
+                      key={s.text}
+                      onPress={() => m.setLabelInput(s.text)}
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#334155', backgroundColor: '#0f172a' }}
+                    >
+                      <Ionicons name="pricetag-outline" size={12} color="#94a3b8" style={{ marginRight: 5 }} />
+                      <Text style={{ color: '#cbd5e1', fontSize: 13 }}>{s.text}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              {/* Top 3 label più usate (quando il campo è vuoto) */}
+              {m.labelInput.trim() === '' && m.topLabels.length > 0 && (
+                <View style={{ marginTop: 8, flexDirection: 'row', gap: 8 }}>
+                  {m.topLabels.map(s => (
+                    <TouchableOpacity
+                      key={s.text}
+                      onPress={() => m.setLabelInput(s.text)}
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#334155', backgroundColor: '#0f172a' }}
+                    >
+                      <Ionicons name="pricetag-outline" size={12} color="#94a3b8" style={{ marginRight: 5 }} />
+                      <Text style={{ color: '#cbd5e1', fontSize: 13 }}>{s.text}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && (
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <Text style={styles.sectionTitle}>Notifiche</Text>

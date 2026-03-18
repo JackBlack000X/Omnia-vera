@@ -70,7 +70,7 @@ export type HabitsContextType = {
   dayResetTime: string;
   reviewedDates: string[];
   isLoaded: boolean;
-  addHabit: (text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq'] }) => string;
+  addHabit: (text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => string;
   duplicateHabit: (id: string) => string | null;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
@@ -429,7 +429,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [checkEventAutoComplete]);
 
-  const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq'] }) => {
+  const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => {
     const newId = generateUUID();
     const base = { id: newId, text, order: 0, color: color ?? '#4A148C', createdAt: formatYmd(), folder, tipo };
     setHabits((prev) => {
@@ -441,6 +441,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         ...(initial?.schedule && { schedule: initial.schedule }),
         ...(initial?.isAllDay !== undefined && { isAllDay: initial.isAllDay }),
         ...(initial?.habitFreq && { habitFreq: initial.habitFreq }),
+        ...(initial?.label && { label: initial.label }),
       };
       return [...prev, newHabit];
     });

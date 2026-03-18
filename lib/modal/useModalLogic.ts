@@ -101,6 +101,22 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [travelArrivoRitornoGiornoDopo, setTravelArrivoRitornoGiornoDopo] = useState<boolean>(Boolean(existing?.travel?.arrivoRitornoGiornoDopo));
   const [currentCityName, setCurrentCityName] = useState<string | null>(null);
 
+  const STORAGE_LABELS = 'tasks_labels_v1';
+  type LabelEntry = { text: string; count: number };
+  const [labelInput, setLabelInput] = useState<string>(existing?.label ?? '');
+  const [savedLabels, setSavedLabels] = useState<LabelEntry[]>([]);
+
+  const topLabels = React.useMemo(
+    () => [...savedLabels].sort((a, b) => b.count - a.count).slice(0, 3),
+    [savedLabels]
+  );
+
+  const labelSuggestions = React.useMemo(() => {
+    const q = labelInput.trim().toLowerCase();
+    if (!q) return [];
+    return savedLabels.filter(l => l.text.toLowerCase().includes(q) && l.text.toLowerCase() !== q);
+  }, [labelInput, savedLabels]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -121,6 +137,14 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               .filter((n): n is string => typeof n === 'string');
             setAvailableFolders(names);
           }
+        }
+      } catch {}
+      // Carica le label salvate
+      try {
+        const labelData = await AsyncStorage.getItem(STORAGE_LABELS);
+        if (labelData) {
+          const parsed = JSON.parse(labelData);
+          if (Array.isArray(parsed)) setSavedLabels(parsed);
         }
       } catch {}
       // Recupera il nome della città corrente/fallback usata per il meteo
@@ -676,8 +700,23 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           habitFreq: 'single' as const,
         } : undefined;
 
-        const initialForAdd = isNewAllDaySingle ? initialAllDaySingle : {
+        const trimmedLabel = labelInput.trim();
+        // Salva/aggiorna la label in storage (fire and forget)
+        if (trimmedLabel) {
+          const updated = [...savedLabels];
+          const idx = updated.findIndex(l => l.text.toLowerCase() === trimmedLabel.toLowerCase());
+          if (idx >= 0) {
+            updated[idx] = { ...updated[idx], count: updated[idx].count + 1 };
+          } else {
+            updated.push({ text: trimmedLabel, count: 1 });
+          }
+          setSavedLabels(updated);
+          AsyncStorage.setItem(STORAGE_LABELS, JSON.stringify(updated)).catch(() => {});
+        }
+
+        const initialForAdd = isNewAllDaySingle ? { ...initialAllDaySingle, ...(trimmedLabel && { label: trimmedLabel }) } : {
           habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
+          ...(trimmedLabel && { label: trimmedLabel }),
         };
         const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined, tipo as any, initialForAdd) : existing!.id;
         if (type === 'edit' && existing) {
@@ -689,6 +728,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               text: t,
               color,
               folder: selectedFolder || undefined,
+              label: trimmedLabel || undefined,
               tipo,
               locationRule: locationRule ?? undefined,
             };
@@ -1373,5 +1413,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     currentCityName,
     askReview,
     setAskReview,
+    labelInput,
+    setLabelInput,
+    labelSuggestions,
+    topLabels,
   };
 }
