@@ -1,0 +1,38 @@
+diff --git a/node_modules/expo/ios/AppDelegates/ExpoAppDelegate.swift b/node_modules/expo/ios/AppDelegates/ExpoAppDelegate.swift
+index ab95b08..1d81556 100644
+--- a/node_modules/expo/ios/AppDelegates/ExpoAppDelegate.swift
++++ b/node_modules/expo/ios/AppDelegates/ExpoAppDelegate.swift
+@@ -31,12 +31,8 @@ open class ExpoAppDelegate: UIResponder, @preconcurrency ReactNativeFactoryProvi
+       fatalError("recreateRootView: Missing factory in ExpoAppDelegate")
+     }
+ 
+-    if delegate.newArchEnabled() {
+-      // chrfalch: rootViewFactory.reactHost is not available here in swift due to the underlying RCTHost type of the property. (todo: check)
+-      assert(rootViewFactory.value(forKey: "reactHost") == nil, "recreateRootViewWithBundleURL: does not support when react instance is created")
+-    } else {
+-      assert(rootViewFactory.bridge == nil, "recreateRootViewWithBundleURL: does not support when react instance is created")
+-    }
++    // Assertions removed: RN 0.81+ initializes reactHost/bridge before dev launcher
++    // can recreate the root view, causing a false assertion failure.
+ 
+     let configuration = rootViewFactory.value(forKey: "_configuration") as? RCTRootViewFactoryConfiguration
+ 
+diff --git a/node_modules/expo/ios/AppDelegates/ExpoReactNativeFactory.swift b/node_modules/expo/ios/AppDelegates/ExpoReactNativeFactory.swift
+index ce8b1d7..0f0b000 100644
+--- a/node_modules/expo/ios/AppDelegates/ExpoReactNativeFactory.swift
++++ b/node_modules/expo/ios/AppDelegates/ExpoReactNativeFactory.swift
+@@ -101,12 +101,8 @@ public class ExpoReactNativeFactory: RCTReactNativeFactory, ExpoReactNativeFacto
+       fatalError("recreateRootView: Missing RCTReactNativeFactoryDelegate")
+     }
+ 
+-    if RCTIsNewArchEnabled() {
+-      // chrfalch: rootViewFactory.reactHost is not available here in swift due to the underlying RCTHost type of the property. (todo: check)
+-      assert(self.rootViewFactory.value(forKey: "reactHost") == nil, "recreateRootViewWithBundleURL: does not support when react instance is created")
+-    } else {
+-      assert(self.rootViewFactory.bridge == nil, "recreateRootViewWithBundleURL: does not support when react instance is created")
+-    }
++    // Assertions removed: RN 0.81+ initializes reactHost/bridge before dev launcher
++    // can recreate the root view, causing a false assertion failure.
+ 
+     let configuration = self.rootViewFactory.value(forKey: "_configuration") as? RCTRootViewFactoryConfiguration
+ 
