@@ -15,6 +15,30 @@ const STORAGE_DAYRESETTIME = 'habitcheck_dayresettime_v1';
 const STORAGE_REVIEWED_DATES = 'habitcheck_reviewed_dates_v1';
 const TZ = 'Europe/Zurich';
 
+const MAX_HISTORY_DAYS = 180;
+const MAX_REVIEWED_DATES = 365;
+
+function pruneHistory(history: HabitsState['history']): HabitsState['history'] {
+  const keys = Object.keys(history);
+  if (keys.length <= MAX_HISTORY_DAYS) return history;
+  // Keys are `YYYY-MM-DD`, so lexicographic sort preserves chronological order.
+  keys.sort();
+  const keep = new Set(keys.slice(-MAX_HISTORY_DAYS));
+  const pruned: HabitsState['history'] = {};
+  for (const k of keep) pruned[k] = history[k];
+  return pruned;
+}
+
+function isOutOfSpaceError(error: unknown): boolean {
+  const msg = (() => {
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object' && 'message' in error) return String((error as any).message);
+    return String(error);
+  })();
+  const lower = msg.toLowerCase();
+  return lower.includes('out of space') || (msg.includes('NSCocoaErrorDomain') && (msg.includes('Code=640') || lower.includes('640')));
+}
+
 /** Parse YYYY-MM-DD at noon UTC to avoid timezone boundary issues */
 function parseYmdSafe(ymd: string): Date {
   return new Date(ymd + 'T12:00:00.000Z');
@@ -126,6 +150,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   habitsRef.current = habits;
   const historyRef = useRef<HabitsState['history']>({});
   historyRef.current = history;
+  const storageOutOfSpaceHandledRef = useRef(false);
+  const habitsPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ora di reset effettiva per il ciclo corrente (usata per getDay / reset automatici)
   const dayResetTimeRef = useRef<string>('00:00');
   // Ora di reset configurata dall'utente (che potrà valere da oggi o da domani a seconda del caso)
@@ -248,16 +275,84 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Persist habits/history with error handling
+  // Persist habits/history (debounced) with out-of-space handling
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(habits)).catch((error) => {
-      console.error('Failed to save habits:', error);
-    });
+    if (habitsPersistTimerRef.current) clearTimeout(habitsPersistTimerRef.current);
+    habitsPersistTimerRef.current = setTimeout(() => {
+      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(habits)).catch((error) => {
+        console.error('Failed to save habits:', error);
+        if (storageOutOfSpaceHandledRef.current) return;
+        if (!isOutOfSpaceError(error)) return;
+        storageOutOfSpaceHandledRef.current = true;
+        if (Platform.OS === 'web') return;
+
+        Alert.alert(
+          'Spazio insufficiente',
+          'Il salvataggio non riesce perché lo storage è pieno. Vuoi reimpostare l\'archivio (perdere i dati locali)?',
+          [
+            { text: 'Annulla', style: 'cancel' },
+            {
+              text: 'Reimposta',
+              style: 'destructive',
+              onPress: () => {
+                void (async () => {
+                  try {
+                    await resetStorage();
+                  } finally {
+                    storageOutOfSpaceHandledRef.current = false;
+                  }
+                })();
+              },
+            },
+          ]
+        );
+      });
+    }, 300);
+
+    return () => {
+      if (habitsPersistTimerRef.current) clearTimeout(habitsPersistTimerRef.current);
+      habitsPersistTimerRef.current = null;
+    };
   }, [habits]);
+
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(history)).catch((error) => {
-      console.error('Failed to save history:', error);
-    });
+    if (historyPersistTimerRef.current) clearTimeout(historyPersistTimerRef.current);
+    historyPersistTimerRef.current = setTimeout(() => {
+      const pruned = pruneHistory(history);
+      AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(pruned)).catch((error) => {
+        console.error('Failed to save history:', error);
+        if (storageOutOfSpaceHandledRef.current) return;
+        if (!isOutOfSpaceError(error)) return;
+        storageOutOfSpaceHandledRef.current = true;
+        if (Platform.OS === 'web') return;
+
+        Alert.alert(
+          'Spazio insufficiente',
+          'Il salvataggio non riesce perché lo storage è pieno. Vuoi reimpostare l\'archivio (perdere i dati locali)?',
+          [
+            { text: 'Annulla', style: 'cancel' },
+            {
+              text: 'Reimposta',
+              style: 'destructive',
+              onPress: () => {
+                void (async () => {
+                  try {
+                    await resetStorage();
+                  } finally {
+                    storageOutOfSpaceHandledRef.current = false;
+                  }
+                })();
+              },
+            },
+          ]
+        );
+      });
+    }, 300);
+
+    return () => {
+      if (historyPersistTimerRef.current) clearTimeout(historyPersistTimerRef.current);
+      historyPersistTimerRef.current = null;
+    };
   }, [history]);
 
   // Setup geofencing for location-based habits when permissions and data allow
@@ -469,7 +564,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabit = useCallback((id: string, text: string) => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, text } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -477,7 +571,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabitColor = useCallback((id: string, color: string) => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, color } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -485,7 +578,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabitFolder = useCallback((id: string, folder: string | undefined) => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, folder: folder?.trim() || undefined } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -525,7 +617,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabitTipo = useCallback((id: string, tipo: 'task' | 'abitudine' | 'evento') => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, tipo } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -644,7 +735,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         if (hhmm) nextOverrides[date] = hhmm; else delete nextOverrides[date];
         return { ...h, timeOverrides: nextOverrides };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -663,7 +753,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         }
         return { ...h, timeOverrides: nextOverrides };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -676,7 +765,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         schedule.time = hhmm ?? null;
         return { ...h, schedule };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -747,7 +835,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
         return { ...h, schedule, timeOverrides: nextOverrides };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -759,7 +846,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         const existingSchedule = h.schedule ?? { daysOfWeek: [] };
         return { ...h, schedule: { ...existingSchedule, daysOfWeek, time: hhmm ?? null } };
       });
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => { });
       return next;
     });
   }, []);
@@ -814,9 +900,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const markDateReviewed = useCallback(async (ymd: string) => {
     setReviewedDates(prev => {
       if (prev.includes(ymd)) return prev;
-      const next = [...prev, ymd];
-      AsyncStorage.setItem(STORAGE_REVIEWED_DATES, JSON.stringify(next)).catch(() => {});
-      return next;
+      const next = [...prev, ymd].sort();
+      const trimmed = next.slice(-MAX_REVIEWED_DATES);
+      AsyncStorage.setItem(STORAGE_REVIEWED_DATES, JSON.stringify(trimmed)).catch(() => {});
+      return trimmed;
     });
   }, []);
 
@@ -837,7 +924,6 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const updateHabitAskReview = useCallback((id: string, askReview: boolean) => {
     setHabits(prev => {
       const next = prev.map(h => (h.id === id ? { ...h, askReview } : h));
-      AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
       return next;
     });
   }, []);

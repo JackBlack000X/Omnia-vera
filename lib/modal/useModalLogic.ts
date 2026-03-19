@@ -7,8 +7,6 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 
-const STORAGE_HABITS = 'habitcheck_habits_v1';
-
 export function useModalLogic(params: { type: string; id?: string; folder?: string; scrollRef: React.RefObject<ScrollView | null> }) {
   const { type, id, folder, scrollRef } = params;
   const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay } = useHabits();
@@ -569,11 +567,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 return { ...h, timeOverrides: next, schedule };
               }));
             }
-            // Save to AsyncStorage - use the updated habits from setHabits
-            setHabits(prev => {
-              AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(prev)).catch(() => {});
-              return prev;
-            });
+            // Persist handled by HabitsProvider (debounced)
           }
         },
       });
@@ -781,7 +775,6 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 schedule.monthDays = undefined;
                 return { ...h, timeOverrides: overrides, schedule };
               });
-              AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
               return next;
             });
           } else if (freq === 'daily') {
@@ -1083,7 +1076,6 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             schedule.monthDays = undefined;
             return { ...h, timeOverrides: overrides, schedule };
           });
-          AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
           return next;
         });
       } else if (freq === 'daily') {
@@ -1218,7 +1210,6 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               schedule.monthlyTimes = undefined;
               return { ...h, timeOverrides: overrides, schedule };
             });
-            AsyncStorage.setItem(STORAGE_HABITS, JSON.stringify(next)).catch(() => {});
             return next;
           });
         } else if (freq === 'daily') {
