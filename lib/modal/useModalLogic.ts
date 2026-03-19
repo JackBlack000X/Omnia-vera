@@ -992,6 +992,22 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             return next;
           });
         }
+        // Edit task without time: clear all time data and timeOverrides so the task is removed from Oggi.
+        if (type === 'edit' && tipo === 'task' && !taskHasTime) {
+          setHabits(prev => prev.map(h => {
+            if (h.id !== newHabitId) return h;
+            const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
+            schedule.daysOfWeek = [];
+            schedule.monthDays = undefined;
+            schedule.yearMonth = undefined;
+            schedule.yearDay = undefined;
+            schedule.time = null;
+            schedule.endTime = null;
+            schedule.weeklyTimes = undefined;
+            schedule.monthlyTimes = undefined;
+            return { ...h, timeOverrides: {}, schedule };
+          }));
+        }
         // Compute repeatEndDate from repeatEndType (data inizio = annualYear/annualMonth/annualDay)
         const computedRepeatEndDateNew = (() => {
           if (repeatEndType === 'mai') return null;

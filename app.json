@@ -13,7 +13,7 @@
       "bundleIdentifier": "com.jackblack000x.habitchecknative",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi (es. completare automaticamente la task \"Palestra\" quando esci dalla palestra).",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Omnia ha bisogno dell\u2019accesso alla posizione anche in background per completare automaticamente alcune task quando entri o esci da luoghi salvati, anche con l\u2019app chiusa."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Omnia ha bisogno dell’accesso alla posizione anche in background per completare automaticamente alcune task quando entri o esci da luoghi salvati, anche con l’app chiusa."
       },
       "entitlements": {
         "aps-environment": null
@@ -63,12 +63,13 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Omnia usa la tua posizione per attivare funzioni extra come il completamento automatico di alcune task quando esci da luoghi salvati, anche con l\u2019app in background.",
-          "locationWhenInUsePermission": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi mentre utilizzi l\u2019app."
+          "locationAlwaysAndWhenInUsePermission": "Omnia usa la tua posizione per attivare funzioni extra come il completamento automatico di alcune task quando esci da luoghi salvati, anche con l’app in background.",
+          "locationWhenInUsePermission": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi mentre utilizzi l’app."
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

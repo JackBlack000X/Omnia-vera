@@ -139,6 +139,7 @@ function HoldableStepBtn({ delta, value, onChange, maxMinutes = 1439, children }
   React.useEffect(() => clear, []);
 
   const handlePressIn = () => {
+    clear();
     onPressRef.current(addMinutes(valueRef.current, delta, maxMinutes));
     holdTimeout.current = setTimeout(() => {
       holdInterval.current = setInterval(() => {
