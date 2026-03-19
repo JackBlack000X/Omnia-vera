@@ -258,6 +258,9 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
   // drag-to-add frozen rows/cols state
   const [frozenRowsDragActive, setFrozenRowsDragActive] = useState(false);
   const [frozenColsDragActive, setFrozenColsDragActive] = useState(false);
+  const [frozenRowsPreview, setFrozenRowsPreview] = useState(0);
+  const frozenRowsDragOffsetAnim = useRef(new Animated.Value(0)).current;
+  const frozenRowsDragOffsetAnimRef = useRef(frozenRowsDragOffsetAnim);
 
   // scroll animated values
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -270,6 +273,8 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
   const numFrozenRows = headerRows.length;
   const numFrozenCols = headerCols[0]?.length ?? 1;
   const fixedColsWidth = numFrozenCols * HDR_W;
+  const numFrozenRowsRef = useRef(numFrozenRows);
+  numFrozenRowsRef.current = numFrozenRows;
 
   // ── commit helpers ──────────────────────────────────────────────────────────
   const save = useCallback((hr: string[][], hc: string[][], cs: string[][]) => {
@@ -462,15 +467,18 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
     onPanResponderMove: (e) => {
       if (!frozenRowsDragState.current.active) return;
       const dy = e.nativeEvent.pageY - frozenRowsDragState.current.startY;
+      const maxOffset = (3 - numFrozenRowsRef.current) * HDR_H;
+      frozenRowsDragOffsetAnimRef.current.setValue(Math.max(0, Math.min(dy, maxOffset)));
       const delta = Math.sign(dy) * Math.floor(Math.abs(dy) / HDR_H);
-      if (delta !== frozenRowsDragState.current.lastDelta) frozenRowsDragState.current.lastDelta = delta;
+      if (delta !== frozenRowsDragState.current.lastDelta) { frozenRowsDragState.current.lastDelta = delta; setFrozenRowsPreview(Math.max(0, delta)); }
     },
     onPanResponderRelease: () => {
       const delta = frozenRowsDragState.current.lastDelta;
-      frozenRowsDragState.current = { active: false, startY: 0, lastDelta: 0 }; setFrozenRowsDragActive(false);
+      frozenRowsDragState.current = { active: false, startY: 0, lastDelta: 0 }; setFrozenRowsDragActive(false); setFrozenRowsPreview(0);
+      frozenRowsDragOffsetAnimRef.current.setValue(0);
       applyFrozenRowsRef.current(delta);
     },
-    onPanResponderTerminate: () => { frozenRowsDragState.current = { active: false, startY: 0, lastDelta: 0 }; setFrozenRowsDragActive(false); },
+    onPanResponderTerminate: () => { frozenRowsDragState.current = { active: false, startY: 0, lastDelta: 0 }; setFrozenRowsDragActive(false); setFrozenRowsPreview(0); frozenRowsDragOffsetAnimRef.current.setValue(0); },
   })).current;
 
   // ── drag: frozen cols ───────────────────────────────────────────────────────
@@ -562,9 +570,9 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
         <View style={{ flex: 1 }}>
 
           {/* AREA FISSA IN CIMA: angolo + righe fisse (scroll orizzontale) */}
-          <View style={{ flexDirection: 'row' }}>
-            <View style={{ width: fixedColsWidth, height: numFrozenRows * HDR_H, backgroundColor: C.headerBg }} />
-            <View style={{ flex: 1, overflow: 'hidden', height: numFrozenRows * HDR_H }}>
+          <Animated.View style={{ flexDirection: 'row', height: Animated.add(numFrozenRows * HDR_H, frozenRowsDragOffsetAnim) }}>
+            <View style={{ width: fixedColsWidth, backgroundColor: C.headerBg }} />
+            <View style={{ flex: 1, overflow: 'hidden' }}>
               <Animated.View style={{ transform: [{ translateX: Animated.multiply(scrollX, -1) }] }}>
                 {headerRows.map((hRow, fri) => {
                   const isLastFrozenRow = fri === numFrozenRows - 1;
@@ -597,9 +605,16 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
                     </View>
                   );
                 })}
+                {Array.from({ length: frozenRowsPreview }).map((_, i) => (
+                  <View key={`prev-fr-${i}`} style={{ flexDirection: 'row' }}>
+                    {Array.from({ length: numCols + colPreview }).map((_, ci) => (
+                      <View key={ci} style={[sv.colHeader, { opacity: 0.4 }]} />
+                    ))}
+                  </View>
+                ))}
               </Animated.View>
             </View>
-          </View>
+          </Animated.View>
 
           {/* LINEA COLORATA ORIZZONTALE — trascina su/giù per aggiungere/togliere righe fisse */}
           <View style={{ flexDirection: 'row', height: 4 }}>
