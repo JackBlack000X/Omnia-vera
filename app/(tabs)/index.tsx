@@ -171,6 +171,7 @@ export default function IndexScreen() {
   } = useIndexLogic();
 
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
+  const lastFolderTapRef = useRef<{ id: string; time: number } | null>(null);
   const isDraggingRef = useRef(false);
   const [isDraggingFolder, setIsDraggingFolder] = React.useState(false);
   const dragInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.createInteractionHandle> | null>(null);
@@ -727,7 +728,17 @@ export default function IndexScreen() {
                 <TouchableOpacity
                   key={typeof f.id === 'string' ? f.id : `folder-${i}-${f.name}`}
                   style={styles.folderRow}
-                  onPress={() => setActiveFolder(f.name)}
+                  onPress={() => {
+                    const id = typeof f.id === 'string' ? f.id : f.name;
+                    const now = Date.now();
+                    if (lastFolderTapRef.current?.id === id && now - lastFolderTapRef.current.time < 400) {
+                      lastFolderTapRef.current = null;
+                      handleLongPressFolder(f);
+                    } else {
+                      lastFolderTapRef.current = { id, time: now };
+                      setActiveFolder(f.name);
+                    }
+                  }}
                   onLongPress={() => handleLongPressFolder(f)}
                   delayLongPress={200}
                 >
