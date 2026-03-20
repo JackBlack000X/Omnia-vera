@@ -7,6 +7,7 @@ import {
     toMinutes,
 } from '@/lib/oggi/oggiHelpers';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Dispatch, SetStateAction, useMemo, useRef } from 'react';
 import { Alert, PanResponder, StyleSheet, Text, View } from 'react-native';
 import Animated, { SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -48,6 +49,22 @@ export type DraggableEventProps = {
   onDragAutoScroll?: (dragBounds: { top: number; bottom: number } | null) => void;
   dragDisabled?: boolean;
 };
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
+    : null;
+}
+
+function adjustColor(hex: string, factor: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const r = Math.min(255, Math.max(0, Math.round(rgb.r * factor)));
+  const g = Math.min(255, Math.max(0, Math.round(rgb.g * factor)));
+  const b = Math.min(255, Math.max(0, Math.round(rgb.b * factor)));
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
 
 function getSnapStepMinutes(visibleHours: number, hourHeight: number): 5 | 10 | 15 {
   // Prefer deterministic behavior based on zoom level (visible hours),
@@ -491,9 +508,28 @@ function DraggableEvent({
     !isDragging && isTravel && { opacity: 0.7 },
   ];
 
+  const highlightColor = adjustColor(bg, 1.45);
+  const midColor = adjustColor(bg, 1.1);
+  const shadowColor = adjustColor(bg, 0.55);
+
   return (
     <View {...panResponder.panHandlers}>
       <Animated.View style={eventStyle}>
+        {/* Metallic gradient overlay */}
+        <LinearGradient
+          colors={[highlightColor, midColor, bg, shadowColor]}
+          locations={[0, 0.3, 0.65, 1]}
+          start={{ x: 0.3, y: 0 }}
+          end={{ x: 0.7, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+        {/* Specular highlight (white sheen top-left) */}
+        <LinearGradient
+          colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.1, y: 0 }}
+          end={{ x: 0.6, y: 0.5 }}
+          style={StyleSheet.absoluteFillObject}
+        />
         <Text style={[styles.eventTitle, { color: light ? '#000' : '#FFF' }]} numberOfLines={1}>
           {event.title}
         </Text>
