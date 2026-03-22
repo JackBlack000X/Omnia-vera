@@ -68,8 +68,7 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-web-browser",
-      "expo-image"
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
