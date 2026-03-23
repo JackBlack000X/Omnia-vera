@@ -63,11 +63,13 @@ export function calculateLayout<T extends BaseEvent>(
       const bM = mover && b.id === mover.id;
       if (aM && !bM) return 1;
       if (!aM && bM) return -1;
-      if (a.s !== b.s) return a.s - b.s;
+      // Left/right columns do not use start time — only rank / duration / stable id.
       const ra = ranks ? (ranks[a.id] ?? 0) : 0;
       const rb = ranks ? (ranks[b.id] ?? 0) : 0;
       if (ra !== rb) return ra - rb;
-      return b.duration - a.duration;
+      const dur = b.duration - a.duration;
+      if (dur !== 0) return dur;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
 
     const columns: T[][] = [];
