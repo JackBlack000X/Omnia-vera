@@ -104,7 +104,11 @@ export function calculateLayout<T extends BaseEvent>(
           const isBroken = brokenOverlapPairs.has(pairKey1) || brokenOverlapPairs.has(pairKey2);
           
           if (isNewcomer || isBroken) {
-            startSearchCol = Math.max(startSearchCol, stableLayout[o.id].col + 1);
+            // If the mover was originally to the LEFT of this task, preserve that order
+            const moverOrigCol = stableLayout?.[ev.id]?.col ?? Infinity;
+            const oOrigCol = stableLayout[o.id].col;
+            if (moverOrigCol < oOrigCol) continue;
+            startSearchCol = Math.max(startSearchCol, oOrigCol + 1);
           }
         }
       }

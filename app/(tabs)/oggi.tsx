@@ -578,6 +578,7 @@ export default function OggiScreen() {
     const timeEditedTasks = layoutEvents.filter(ev => {
       if ((ev as any).tipo === 'tracker') return false;
       if (ranks[ev.id] === undefined) return false; // already handled as newTask
+      if (ev.id === recentlyMovedEventId) return false; // rank already set by drag, don't override
       const key = `${ev.startTime}-${ev.endTime}`;
       return prevTimes[ev.id] !== undefined && prevTimes[ev.id] !== key;
     });
@@ -873,8 +874,7 @@ export default function OggiScreen() {
                 events[draggedIdx] = { ...d, s: currentDragPosition, e: newEnd };
             }
         }
-        const lockSnapshot = dragClearedOriginalOverlap ? undefined : stableLayoutRef.current;
-        return calculateLayoutCallback(events, draggingEventId, lockSnapshot);
+        return calculateLayoutCallback(events, draggingEventId, stableLayoutRef.current);
     } 
     
     return calculateLayoutCallback(events, null);
@@ -975,8 +975,7 @@ export default function OggiScreen() {
 
     // Always recalculate layout to get the correct span, especially when D enters overlap
     // Use the same logic as layoutById: if hasClearedOverlap is true, don't use lock snapshot
-    const lockSnapshot = hasClearedOverlap ? undefined : stableLayoutRef.current;
-    const tempLayout = calculateLayoutCallback(events, draggedEventId, lockSnapshot);
+    const tempLayout = calculateLayoutCallback(events, draggedEventId, stableLayoutRef.current);
     
     const draggedLayout = tempLayout[draggedEventId] || { col: 0, columns: 1, span: 1 };
     const screenWidth = Dimensions.get('window').width;
