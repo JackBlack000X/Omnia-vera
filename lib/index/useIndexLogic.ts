@@ -113,6 +113,8 @@ export function useIndexLogic() {
       habit.tipo ?? '',
       habit.habitFreq ?? '',
       habit.isAllDay ? '1' : '0',
+      String(habit.dailyOccurrences ?? 1),
+      String(habit.occurrenceGapMinutes ?? 5),
       habit.schedule?.time ?? '',
       habit.schedule?.endTime ?? '',
       (habit.schedule?.daysOfWeek ?? []).join('.'),

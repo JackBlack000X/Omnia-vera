@@ -2,6 +2,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GEOFENCE_TASK_NAME } from '@/lib/location';
+import { getDailyOccurrenceTotal } from '@/lib/habits/occurrences';
 import { Habit, DayCompletion } from '@/lib/habits/schema';
 
 const STORAGE_HABITS = 'habitcheck_habits_v1';
@@ -91,13 +92,20 @@ async function completeHabitsForPlace(placeId: string) {
 
     const existingDay = history[todayKey] ?? { date: todayKey, completedByHabitId: {} };
     const updatedCompleted = { ...existingDay.completedByHabitId };
+    const nextCounts = { ...(existingDay.occurrenceDoneCountByHabitId ?? {}) };
     for (const h of targetHabits) {
       updatedCompleted[h.id] = true;
+      const n = getDailyOccurrenceTotal(h);
+      if (n > 1) nextCounts[h.id] = n;
     }
 
     const nextHistory: Record<string, DayCompletion> = {
       ...history,
-      [todayKey]: { date: todayKey, completedByHabitId: updatedCompleted },
+      [todayKey]: {
+        date: todayKey,
+        completedByHabitId: updatedCompleted,
+        occurrenceDoneCountByHabitId: Object.keys(nextCounts).length ? nextCounts : undefined,
+      },
     };
 
     await AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(nextHistory));

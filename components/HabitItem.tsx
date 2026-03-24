@@ -1,10 +1,12 @@
 import { useHabits } from '@/lib/habits/Provider';
+import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
-import React, { useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
 type Props = {
@@ -40,6 +42,20 @@ const CARD_COLORS = [
 
 const PIXEL_SIZE = 0.625;
 const NOISE_INTENSITY = 35.0; // Increased to make noise more visible
+
+/** Segmenti senza `opacity` sul View: così non si vede il contenuto sotto (icone, lista, ecc.). */
+function occSegmentBackground(cardColor: string, filled: boolean): string {
+  if (filled) return cardColor;
+  const h = cardColor.replace('#', '').trim();
+  const expand = (s: string) => (s.length === 3 ? s.split('').map(c => c + c).join('') : s);
+  const full = expand(h);
+  if (full.length !== 6) return cardColor;
+  const t = 0.35;
+  const r = Math.round(parseInt(full.slice(0, 2), 16) * t);
+  const g = Math.round(parseInt(full.slice(2, 4), 16) * t);
+  const b = Math.round(parseInt(full.slice(4, 6), 16) * t);
+  return `rgb(${r},${g},${b})`;
+}
 
 // Function to convert hex color to RGB array for shader (slightly darkened for noise)
 function getNoiseColor(hex: string): [number, number, number, number] {
@@ -118,10 +134,10 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
 
 export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onLongPress, dragBadgeCount, onMenuOpen, onMenuClose }: Props) {
   const { activeTheme } = useAppTheme();
-  const { toggleDone, removeHabit, getDay } = useHabits();
+  const { toggleDone, removeHabit, getDay, history } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
-  const [cardDimensions, setCardDimensions] = React.useState({ width: 0, height: 0 });
-  const [checkDimensions, setCheckDimensions] = React.useState({ width: 0, height: 0 });
+  const [cardDimensions, setCardDimensions] = useState({ width: 0, height: 0 });
+  const [checkDimensions, setCheckDimensions] = useState({ width: 0, height: 0 });
   const isTravel = habit.tipo === 'viaggio';
 
   // Close menu when shouldCloseMenu becomes true
@@ -254,6 +270,37 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const timeText = getTimeText();
   const frequencyText = getFrequencyText();
 
+  const todayYmdForOcc = getDay(new Date());
+  const dayEntryForOcc = history[todayYmdForOcc];
+  const occN = getDailyOccurrenceTotal(habit);
+  const occK = getOccurrenceDoneForDay(dayEntryForOcc, habit);
+  const multiOccSegments = occN > 1;
+
+  /** Feedback immediato al tap sul checkbox (prima che il context aggiorni history). */
+  const [optOccK, setOptOccK] = useState<number | null>(null);
+  const [optDone, setOptDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setOptOccK(null);
+    setOptDone(null);
+  }, [habit.id, occN]);
+
+  useEffect(() => {
+    if (optOccK !== null && occK === optOccK) setOptOccK(null);
+  }, [occK, optOccK]);
+
+  useEffect(() => {
+    if (optDone !== null && isDone === optDone) setOptDone(null);
+  }, [isDone, optDone]);
+
+  const displayOccK = selectionMode || !multiOccSegments ? occK : (optOccK !== null ? optOccK : occK);
+  const lineStrikeDone = selectionMode
+    ? isDone
+    : occN <= 1
+      ? (optDone !== null ? optDone : isDone)
+      : displayOccK >= occN;
+  const checkVisualDone = selectionMode ? isSelected : lineStrikeDone;
+
   // White circle ONLY if truly "every day":
   // no monthly-specific days, no annual date, and daysOfWeek is empty or all 7
   const s = habit.schedule;
@@ -273,7 +320,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     <View
       style={[
         styles.card,
-        { backgroundColor: cardColor },
+        { backgroundColor: multiOccSegments ? 'transparent' : cardColor },
         activeTheme === 'futuristic' && {
           borderRadius: 0,
           transform: [{ skewX: '-30deg' }],
@@ -290,6 +337,21 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
         setCardDimensions({ width, height });
       }}
     >
+      {multiOccSegments && (
+        <View style={[StyleSheet.absoluteFill, styles.occurrenceSegmentsRow]} pointerEvents="none">
+          {Array.from({ length: occN }, (_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.occurrenceSegment,
+                {
+                  backgroundColor: occSegmentBackground(cardColor, i < displayOccK),
+                },
+              ]}
+            />
+          ))}
+        </View>
+      )}
       {dragBadgeCount != null && dragBadgeCount > 1 && (
         <View style={styles.dragBadge} pointerEvents="none">
           <Text style={styles.dragBadgeText}>{dragBadgeCount}</Text>
@@ -302,26 +364,42 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
           - Per i viaggi nascosto in modalità normale (niente completamento)
           - In modalità selezione visibile per tutti (anche viaggi) per poter selezionare */}
       {(!isTravel || selectionMode) && (
-        <TouchableOpacity
+        <Pressable
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: selectionMode ? isSelected : isDone }}
+          accessibilityState={{ checked: checkVisualDone }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => {
             if (selectionMode && onToggleSelect) {
               onToggleSelect(habit);
             } else if (!isTravel) {
+              let willFullyComplete = false;
+              if (occN <= 1) {
+                const base = optDone !== null ? optDone : isDone;
+                willFullyComplete = !base;
+                setOptDone(!base);
+              } else {
+                const baseK = optOccK !== null ? optOccK : occK;
+                const nextK = (baseK + 1) % (occN + 1);
+                willFullyComplete = nextK === occN;
+                setOptOccK(nextK);
+              }
+              if (willFullyComplete) {
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
               toggleDone(habit.id);
             }
           }}
-          style={[
+          style={({ pressed }) => [
             styles.checkContainer,
-            activeTheme === 'futuristic' && { marginLeft: 10 }
+            activeTheme === 'futuristic' && { marginLeft: 10 },
+            pressed && { opacity: 0.85 },
           ]}
         >
           <View
             style={[
               styles.check,
               isWhiteBg ? { borderColor: '#111111', backgroundColor: 'white' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
-              !selectionMode && isDone && styles.checkDone,
+              !selectionMode && lineStrikeDone && styles.checkDone,
               selectionMode && isSelected && (isWhiteBg ? styles.checkSelectedWhite : styles.checkSelected),
               activeTheme === 'futuristic' && {
                 borderRadius: 0,
@@ -330,18 +408,19 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
               }
             ]}
             onLayout={(e) => {
-              if (activeTheme === 'futuristic' && !isDone) {
+              const incomplete = selectionMode ? !isDone : !lineStrikeDone;
+              if (activeTheme === 'futuristic' && incomplete) {
                 const { width, height } = e.nativeEvent.layout;
                 setCheckDimensions({ width, height });
               }
             }}
           >
-            {activeTheme === 'futuristic' && !isDone && checkDimensions.width > 0 && checkDimensions.height > 0 && (
+            {activeTheme === 'futuristic' && (selectionMode ? !isDone : !lineStrikeDone) && checkDimensions.width > 0 && checkDimensions.height > 0 && (
               <View style={{ position: 'absolute', top: 2, left: 2, right: 2, bottom: 2, overflow: 'hidden', borderRadius: 10 }}>
                 <NoiseOverlay width={checkDimensions.width - 4} height={checkDimensions.height - 4} darkColor={noiseColor} />
               </View>
             )}
-            {!selectionMode && !isTravel && isDone && (
+            {!selectionMode && !isTravel && lineStrikeDone && (
               <Ionicons
                 name="checkmark"
                 size={16}
@@ -349,12 +428,12 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
               />
             )}
           </View>
-        </TouchableOpacity>
+        </Pressable>
       )}
 
       <View style={[styles.content, timeText === 'Tutto il giorno' && { justifyContent: 'center' }]}>
         <Text
-          style={[styles.habitText, { color: textPrimaryColor }, isDone && styles.habitDone]}
+          style={[styles.habitText, { color: textPrimaryColor }, lineStrikeDone && styles.habitDone]}
           numberOfLines={isTravel ? 2 : 1}
         >
           {habit.text}
@@ -446,7 +525,17 @@ const styles = StyleSheet.create({
     marginVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    height: 75
+    height: 75,
+    overflow: 'hidden',
+  },
+
+  occurrenceSegmentsRow: {
+    flexDirection: 'row',
+    zIndex: 0,
+  },
+
+  occurrenceSegment: {
+    flex: 1,
   },
 
   checkContainer: {

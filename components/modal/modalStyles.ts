@@ -40,7 +40,7 @@ export const styles = StyleSheet.create({
     backgroundColor: '#065f46' // Less dimmed green
   },
 
-  // Fixed position buttons
+  // Fixed position buttons (sfondo opaco: altrimenti tra i due tasti si vede la schermata sotto / contenuto che scorre)
   fixedButtonsContainer: {
     position: 'absolute',
     bottom: 30,
@@ -49,8 +49,9 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 10,
+    paddingVertical: 8,
     zIndex: 1000,
-    backgroundColor: 'transparent'
+    backgroundColor: '#0b1220',
   },
 
   sectionHeader: { marginTop: 8 },

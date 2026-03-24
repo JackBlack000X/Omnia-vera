@@ -8,10 +8,27 @@ export type OggiEvent = {
   isAllDay: boolean;
   color: string;
   createdAt?: string;
+  createdAtMs?: number;
   tipo?: 'task' | 'abitudine' | 'evento' | 'viaggio';
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual';
   travelMezzo?: 'aereo' | 'treno' | 'auto' | 'nave' | 'bici' | 'bus' | 'altro';
+  /** Id abitudine reale quando `id` è sintetico (`::occ::`) */
+  habitId?: string;
+  /** Più occorrenze nello stesso giorno */
+  multiOccurrenceSlot?: boolean;
+  occurrenceSlotIndex?: number;
+  occurrenceTotal?: number;
 };
+
+const OCC_ID_MARKER = '::occ::';
+
+export function makeOccurrenceEventId(habitId: string, slotIndex: number): string {
+  return `${habitId}${OCC_ID_MARKER}${slotIndex}`;
+}
+
+export function resolveOggiHabitId(ev: Pick<OggiEvent, 'id' | 'habitId'>): string {
+  return ev.habitId ?? ev.id;
+}
 
 // -- Constants for Layout --
 

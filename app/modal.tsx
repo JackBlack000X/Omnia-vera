@@ -1563,8 +1563,7 @@ export default function ModalScreen() {
 
           {(m.tipo !== 'viaggio') && (type === 'schedule' || ((type === 'new' || type === 'edit') && (m.tipo !== 'task' || m.taskHasTime))) && (
             <View>
-              {m.tipo !== 'viaggio' && (
-                <>
+              <>
                   {/* Giorno / Data inizio: sempre visibile sopra Ripetizione */}
                   <View style={[styles.sectionHeader, { marginTop: 16 }]}>
                     <Text style={styles.sectionTitle}>
@@ -1624,7 +1623,6 @@ export default function ModalScreen() {
                     </TouchableOpacity>
                   </View>
                 </>
-              )}
 
               {m.freq !== 'single' && (
                 <View style={{ marginTop: 16 }}>
@@ -1836,8 +1834,47 @@ export default function ModalScreen() {
                         </View>
                       </View>
                     </View>
+                    <Text style={styles.duration}>{formatDuration((m.currentEndMin ?? (m.currentStartMin + 60)) - m.currentStartMin)}</Text>
+                    <View style={styles.timeSection}>
+                      <Text style={styles.timeSectionTitle}>Ripetizioni</Text>
+                      <View style={[styles.timePicker, { justifyContent: 'center' }]}>
+                        <View style={[styles.timeControls, { flex: 0, minWidth: 160 }]}>
+                          <Text style={styles.timeLabel}>Volte al giorno</Text>
+                          <View style={styles.timeStepperRow}>
+                            <HoldableStepperButton onPress={() => m.setDailyOccurrences((v) => Math.max(1, v - 1))}>−</HoldableStepperButton>
+                            <Text style={styles.timeValue}>{m.dailyOccurrences}</Text>
+                            <HoldableStepperButton onPress={() => m.setDailyOccurrences((v) => Math.min(30, v + 1))}>+</HoldableStepperButton>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                    {m.dailyOccurrences > 1 && (
+                      <View style={styles.timeSection}>
+                        <Text style={styles.timeSectionTitle}>Distacco</Text>
+                        <View style={styles.timePicker}>
+                          <View style={styles.timeControls}>
+                            <Text style={styles.timeLabel}>Ore</Text>
+                            <View style={styles.timeStepperRow}>
+                              <HoldableStepperButton onPress={() => m.setOccurrenceGapMinutes((g) => Math.max(5, Math.min(24 * 60, g - 60)))}>−</HoldableStepperButton>
+                              <Text style={styles.timeValue}>{Math.floor(m.occurrenceGapMinutes / 60)}</Text>
+                              <HoldableStepperButton onPress={() => m.setOccurrenceGapMinutes((g) => Math.max(5, Math.min(24 * 60, g + 60)))}>+</HoldableStepperButton>
+                            </View>
+                          </View>
+                          <View style={styles.timeControls}>
+                            <Text style={styles.timeLabel}>Min</Text>
+                            <View style={styles.timeStepperRow}>
+                              <HoldableStepperButton onPress={() => m.setOccurrenceGapMinutes((g) => Math.max(5, Math.min(24 * 60, g - 5)))}>−</HoldableStepperButton>
+                              <Text style={styles.timeValue}>{m.occurrenceGapMinutes % 60}</Text>
+                              <HoldableStepperButton onPress={() => m.setOccurrenceGapMinutes((g) => Math.max(5, Math.min(24 * 60, g + 5)))}>+</HoldableStepperButton>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    )}
                   </View>
-                  <Text style={styles.duration}>{formatDuration((m.currentEndMin ?? (m.currentStartMin + 60)) - m.currentStartMin)}</Text>
+                  <Text style={[styles.subtle, { marginTop: 8, textAlign: 'center', fontSize: 12 }]}>
+                    La prima occorrenza usa l’orario di inizio sopra; le altre si calcolano col distacco, senza uscire dalla giornata logica.
+                  </Text>
                 </View>
               )}
             </View>

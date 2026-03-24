@@ -4,6 +4,7 @@ import {
     isLightColor,
     minutesToTime,
     OggiEvent,
+    resolveOggiHabitId,
     toMinutes,
 } from '@/lib/oggi/oggiHelpers';
 import * as Haptics from 'expo-haptics';
@@ -47,6 +48,8 @@ export type DraggableEventProps = {
   onDoubleTap?: () => void;
   onDragAutoScroll?: (dragBounds: { top: number; bottom: number } | null) => void;
   dragDisabled?: boolean;
+  /** Multi-occorrenza: salva slot o apre flusso N=2 (senza Alert ricorrenza classico) */
+  onOccurrenceSlotDragEnd?: (args: { event: OggiEvent; ymd: string; newStartTime: string; newEndTime: string }) => void;
 };
 
 function getSnapStepMinutes(visibleHours: number, hourHeight: number): 5 | 10 | 15 {
@@ -93,6 +96,7 @@ function DraggableEvent({
   onDoubleTap,
   onDragAutoScroll,
   dragDisabled,
+  onOccurrenceSlotDragEnd,
 }: DraggableEventProps) {
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
@@ -376,7 +380,9 @@ function DraggableEvent({
         const selectedYmd = getDay(currentDate);
         const isRepeating = event.habitFreq && event.habitFreq !== 'single';
 
-        if (hasMovedRef.current && isRepeating && (newStartTime !== event.startTime || newEndTime !== event.endTime)) {
+        if (hasMovedRef.current && event.multiOccurrenceSlot && onOccurrenceSlotDragEnd) {
+          onOccurrenceSlotDragEnd({ event, ymd: selectedYmd, newStartTime, newEndTime });
+        } else if (hasMovedRef.current && isRepeating && (newStartTime !== event.startTime || newEndTime !== event.endTime)) {
           Alert.alert(
             'Modifica attività ricorrente',
             'Vuoi modificare solo questa occorrenza o anche tutte quelle successive?',
@@ -390,16 +396,16 @@ function DraggableEvent({
                 });
               }},
               { text: 'Solo oggi', onPress: () => {
-                setTimeOverrideRange(event.id, selectedYmd, newStartTime, newEndTime);
+                setTimeOverrideRange(resolveOggiHabitId(event), selectedYmd, newStartTime, newEndTime);
               }},
               { text: 'Da oggi in poi', onPress: () => {
-                updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
+                updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, newStartTime, newEndTime);
               }}
             ]
           );
         } else if (hasMovedRef.current) {
           // Single task or no time change (just reorder)
-          updateScheduleFromDate(event.id, selectedYmd, newStartTime, newEndTime);
+          updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, newStartTime, newEndTime);
         }
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -469,6 +475,9 @@ function DraggableEvent({
     updateScheduleFromDate,
     getDay,
     dragDisabled,
+    onOccurrenceSlotDragEnd,
+    event.multiOccurrenceSlot,
+    event.habitFreq,
   ]);
 
   const animatedStyle = useAnimatedStyle(() => {

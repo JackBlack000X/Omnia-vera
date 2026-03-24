@@ -1,15 +1,16 @@
 import { useHabits } from '@/lib/habits/Provider';
+import { getDailyOccurrenceTotal, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
 import { Habit, NotificationConfig, TravelMeta } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
 import { getFallbackCity } from '@/lib/weather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { Alert, ScrollView } from 'react-native';
 
 export function useModalLogic(params: { type: string; id?: string; folder?: string; scrollRef: React.RefObject<ScrollView | null> }) {
   const { type, id, folder, scrollRef } = params;
-  const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay } = useHabits();
+  const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
   const router = useRouter();
   const existing = useMemo(() => habits.find(h => h.id === id), [habits, id]);
 
@@ -317,6 +318,14 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
   const [startMin, setStartMin] = useState<number>(hhmmToMinutes(initialStart ?? '08:00') ?? 8 * 60);
   const [endMin, setEndMin] = useState<number | null>(hhmmToMinutes(initialEnd) ?? null);
+  const [dailyOccurrences, setDailyOccurrences] = useState(() =>
+    Math.min(30, Math.max(1, Math.floor(existing?.dailyOccurrences ?? 1))));
+  const [occurrenceGapMinutes, setOccurrenceGapMinutes] = useState(() =>
+    Math.max(5, Math.floor(existing?.occurrenceGapMinutes ?? 5)));
+  useEffect(() => {
+    setDailyOccurrences(Math.min(30, Math.max(1, Math.floor(existing?.dailyOccurrences ?? 1))));
+    setOccurrenceGapMinutes(Math.max(5, Math.floor(existing?.occurrenceGapMinutes ?? 5)));
+  }, [existing?.id]);
   // Per-day weekly times (minutes)
   const [perDayTimes, setPerDayTimes] = useState<Record<number, { startMin: number; endMin: number | null }>>(() => {
     const base: Record<number, { startMin: number; endMin: number | null }> = {};
@@ -684,6 +693,34 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         else if (to) t = to;
       }
       if (t.length <= 100) {
+        const occNForVal = Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
+        if (mode === 'timed' && occNForVal > 1) {
+          const gap = Math.max(5, Math.floor(occurrenceGapMinutes));
+          if (!occurrenceChainFitsLogicalDay(dayResetTime, startMin, occNForVal, gap)) {
+            Alert.alert(
+              'Oltre la giornata',
+              'Con queste ripetizioni e questo distacco, l’ultima occorrenza andrebbe oltre la fine della giornata logica. Riduci le volte, aumenta il distacco o cambia l’orario di inizio.',
+            );
+            return;
+          }
+        }
+        /**
+         * Allinea al form "Ripetizioni" (solo sotto Orario specifico): se N>1 e mode timed,
+         * salva sempre. Non usare taskHasTime/tipo qui — altrimenti la patch può cancellare i campi
+         * mentre il form mostra ancora 2+ ripetizioni.
+         */
+        const patchHabitOccurrences = (habit: Habit): Habit => {
+          const next = { ...habit };
+          if (mode === 'timed' && occNForVal > 1) {
+            next.dailyOccurrences = occNForVal;
+            next.occurrenceGapMinutes = Math.max(5, Math.floor(occurrenceGapMinutes));
+          } else {
+            delete (next as { dailyOccurrences?: number }).dailyOccurrences;
+            delete (next as { occurrenceGapMinutes?: number }).occurrenceGapMinutes;
+            delete (next as { occurrenceSlotOverrides?: Habit['occurrenceSlotOverrides'] }).occurrenceSlotOverrides;
+          }
+          return next;
+        };
         // New task "Tutto il giorno" + Singola: create with timeOverrides/schedule in one go so it persists
         const isNewAllDaySingle = type === 'new' && mode === 'allDay' && (tipo !== 'task' || taskHasTime) && freq === 'single';
         const ymdSingle = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
@@ -718,7 +755,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           setHabits(prev => prev.map(h => {
             if (h.id !== existing.id) return h;
             const base: Habit = {
-              ...h,
+              ...patchHabitOccurrences(h),
               text: t,
               color,
               folder: selectedFolder || undefined,
@@ -752,7 +789,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           }));
         }
         // Se è una task/evento/viaggio temporizzato, aggiungi anche la programmazione
-        if (mode === 'timed' && (tipo !== 'task' || taskHasTime)) {
+        // (non richiedere taskHasTime: altrimenti le task non salvano orario/ripetizioni finché il flag non è aggiornato)
+        if (mode === 'timed') {
           const time = minutesToHhmm(startMin) as string;
           // Se c'è orario di inizio ma nessuna fine, salva fine = inizio + 1 ora
           const rawEndMin = endMin !== null ? endMin : startMin + 60;
@@ -773,7 +811,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
                 schedule.daysOfWeek = [];
                 schedule.monthDays = undefined;
-                return { ...h, timeOverrides: overrides, schedule };
+                return { ...patchHabitOccurrences(h), timeOverrides: overrides, schedule };
               });
               return next;
             });
@@ -787,7 +825,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               schedule.monthDays = undefined;
               schedule.yearMonth = undefined;
               schedule.yearDay = undefined;
-              return { ...h, timeOverrides: {}, schedule };
+              return { ...patchHabitOccurrences(h), timeOverrides: {}, schedule };
             }));
           } else if (freq === 'weekly') {
             updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
@@ -812,10 +850,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 schedule.time = null;
                 schedule.endTime = null;
               }
-              return { ...h, schedule };
+              return { ...patchHabitOccurrences(h), schedule };
             }));
             // Clear one-off overrides for recurring weekly tasks
-            setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
+            setHabits(prev => prev.map(h => (h.id === newHabitId ? { ...patchHabitOccurrences(h), timeOverrides: {} } : h)));
             // After creating weekly, check for merge candidates by same text+color
             const created = habits.find(h => h.id === newHabitId) ?? { id: newHabitId, text, color, schedule: { daysOfWeek, time, endTime } } as any;
             const candidates = habits.filter(h => h.id !== newHabitId && h.text.trim().toLowerCase() === created.text.trim().toLowerCase() && (h.color ?? '') === (created.color ?? ''));
@@ -873,10 +911,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 schedule.time = null;
                 schedule.endTime = null;
               }
-              return { ...h, schedule };
+              return { ...patchHabitOccurrences(h), schedule };
             }));
             // Clear one-off overrides for recurring monthly tasks
-            setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
+            setHabits(prev => prev.map(h => (h.id === newHabitId ? { ...patchHabitOccurrences(h), timeOverrides: {} } : h)));
           } else if (freq === 'annual') {
             updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
             // Annual: set yearMonth/yearDay and clear weekly/monthly fields
@@ -887,10 +925,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               schedule.yearDay = annualDay;
               schedule.daysOfWeek = [];
               schedule.monthDays = undefined;
-              return { ...h, schedule };
+              return { ...patchHabitOccurrences(h), schedule };
             }));
             // Clear one-off overrides for recurring annual tasks
-            setHabits(prev => prev.map(h => h.id === newHabitId ? { ...h, timeOverrides: {} } : h));
+            setHabits(prev => prev.map(h => (h.id === newHabitId ? { ...patchHabitOccurrences(h), timeOverrides: {} } : h)));
           }
         }
         // Se è "Tutto il giorno", salva solo la frequenza senza orari (new+single già gestito con initial in addHabit)
@@ -912,7 +950,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 schedule.endTime = null;
                 schedule.weeklyTimes = undefined;
                 schedule.monthlyTimes = undefined;
-                return { ...h, timeOverrides: overrides, schedule };
+                return { ...patchHabitOccurrences(h), timeOverrides: overrides, schedule };
               });
               return next;
             });
@@ -929,7 +967,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               schedule.yearDay = undefined;
               schedule.weeklyTimes = undefined;
               schedule.monthlyTimes = undefined;
-              return { ...h, timeOverrides: {}, schedule };
+              return { ...patchHabitOccurrences(h), timeOverrides: {}, schedule };
             }));
           } else if (freq === 'weekly') {
             // Clear time fields for weekly all-day tasks
@@ -941,7 +979,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               schedule.endTime = null;
               schedule.weeklyTimes = undefined;
               schedule.monthlyTimes = undefined;
-              return { ...h, schedule };
+              return { ...patchHabitOccurrences(h), schedule };
             }));
           } else if (freq === 'monthly') {
             // Clear time fields for monthly all-day tasks
@@ -954,7 +992,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               schedule.endTime = null;
               schedule.weeklyTimes = undefined;
               schedule.monthlyTimes = undefined;
-              return { ...h, schedule };
+              return { ...patchHabitOccurrences(h), schedule };
             }));
           } else if (freq === 'annual') {
             // Clear time fields for annual all-day tasks
@@ -969,7 +1007,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               schedule.endTime = null;
               schedule.weeklyTimes = undefined;
               schedule.monthlyTimes = undefined;
-              return { ...h, schedule };
+              return { ...patchHabitOccurrences(h), schedule };
           }));
         }
         }
@@ -987,7 +1025,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               schedule.yearDay = undefined;
               schedule.time = null;
               schedule.endTime = null;
-              return { ...h, timeOverrides: overrides, schedule };
+              return { ...patchHabitOccurrences(h), timeOverrides: overrides, schedule };
             });
             return next;
           });
@@ -1005,7 +1043,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             schedule.endTime = null;
             schedule.weeklyTimes = undefined;
             schedule.monthlyTimes = undefined;
-            return { ...h, timeOverrides: {}, schedule };
+            return {
+              ...patchHabitOccurrences(h),
+              timeOverrides: {},
+              schedule,
+            };
           }));
         }
         // Compute repeatEndDate from repeatEndType (data inizio = annualYear/annualMonth/annualDay)
@@ -1026,7 +1068,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         setHabits(prev => prev.map(h => {
           if (h.id !== newHabitId) return h;
           const base: Habit = {
-            ...h,
+            ...patchHabitOccurrences(h),
             isAllDay: mode === 'allDay',
             habitFreq: (tipo === 'task' && !taskHasTime) ? 'single' : freq,
             tipo,
@@ -1063,6 +1105,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           }
           return base;
         }));
+        if (type === 'edit' && existing) {
+          const newEffectiveDaily = mode === 'timed' && occNForVal > 1 ? occNForVal : 1;
+          if (newEffectiveDaily !== getDailyOccurrenceTotal(existing)) {
+            migrateTodayCompletionForDailyCountChange(existing.id, existing, newEffectiveDaily);
+          }
+        }
       }
     } else if (type === 'rename' && existing) {
       const t = text.trim();
@@ -1424,5 +1472,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setLabelInput,
     labelSuggestions,
     topLabels,
+    dailyOccurrences,
+    setDailyOccurrences,
+    occurrenceGapMinutes,
+    setOccurrenceGapMinutes,
   };
 }

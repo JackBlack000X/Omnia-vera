@@ -77,11 +77,22 @@ export type Habit = {
   };
   /** If true, this habit will be included in the daily review modal */
   askReview?: boolean;
+  /** Quante volte al giorno (Tasks: una riga; completamento N/N). 1–30, default 1 se assente. */
+  dailyOccurrences?: number;
+  /** Minuti tra un’occorrenza e la successiva (ancora = orario inizio in schedule / modale). */
+  occurrenceGapMinutes?: number;
+  /**
+   * Override orari per slot (0..N-1) in un giorno (chiave calendario YYYY-MM-DD).
+   * Con più di 2 occorrenze, uno slot spostato in Oggi salva qui (distacco custom per quel momento).
+   */
+  occurrenceSlotOverrides?: Record<string, Record<number, { start: string; end: string }>>;
 };
 
 export type DayCompletion = {
   date: string; // YYYY-MM-DD in Europe/Zurich
   completedByHabitId: Record<string, boolean>;
+  /** Per abitudini con dailyOccurrences > 1: quante occorrenze segnate oggi (0..N). */
+  occurrenceDoneCountByHabitId?: Record<string, number>;
   ratings?: Record<string, number>; // habitId -> 1-10
   comments?: Record<string, string>; // habitId -> text
 };

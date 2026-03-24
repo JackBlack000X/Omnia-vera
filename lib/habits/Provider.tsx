@@ -3,6 +3,7 @@ import { loadPlaces } from '@/lib/places';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
+import { getDailyOccurrenceTotal, getOccurrenceDoneForDay, migrateOccurrenceCompletionForNewDailyTotal } from './occurrences';
 import { getHabitsAppearingOnDate } from './habitsForDate';
 import { Habit, HabitsState, TrackerEntry, UserTable } from './schema';
 
@@ -108,6 +109,10 @@ export type HabitsContextType = {
   getDay: (date: Date | string) => string;
   setTimeOverride: (id: string, date: string, hhmm: string | null) => void;
   setTimeOverrideRange: (id: string, date: string, startTime: string | null, endTime: string | null) => void;
+  /** Override orario per uno slot (Oggi, N>1 occorrenze) */
+  setOccurrenceSlotTimeRange: (habitId: string, ymd: string, slotIndex: number, start: string, end: string) => void;
+  /** Imposta distacco minuti e rimuove override slot per quel giorno (es. conferma menu con 2 occorrenze) */
+  setOccurrenceGapMinutesAndClearDayOverrides: (habitId: string, gapMinutes: number, ymd: string) => void;
   updateScheduleTime: (id: string, hhmm: string | null) => void;
   updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   updateSchedule: (id: string, daysOfWeek: number[], hhmm: string | null) => void;
@@ -116,6 +121,8 @@ export type HabitsContextType = {
   resetStorage: () => Promise<void>;
   /** Persist completion for a day (used by calendar). Uses same "habits for that day" as tasks tab. */
   setDayCompletion: (ymd: string, completedCount: number) => void;
+  /** Dopo modifica "volte al giorno" in modale: riallinea completamenti per oggi (giornata logica). */
+  migrateTodayCompletionForDailyCountChange: (habitId: string, prevHabit: Habit, newDailyTotal: number) => void;
   /** Mark a date as reviewed (day review modal completed) */
   markDateReviewed: (ymd: string) => Promise<void>;
   /** Save rating and comment for a habit on a specific day */
@@ -496,9 +503,16 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         setHistory(prev => {
           const day = prev[todayYmd] || { date: todayYmd, completedByHabitId: {} };
           if (day.completedByHabitId[habit.id]) return prev;
+          const n = getDailyOccurrenceTotal(habit);
+          const nextCounts = { ...(day.occurrenceDoneCountByHabitId ?? {}) };
+          if (n > 1) nextCounts[habit.id] = n;
           return {
             ...prev,
-            [todayYmd]: { ...day, completedByHabitId: { ...day.completedByHabitId, [habit.id]: true } },
+            [todayYmd]: {
+              ...day,
+              completedByHabitId: { ...day.completedByHabitId, [habit.id]: true },
+              occurrenceDoneCountByHabitId: n > 1 ? nextCounts : day.occurrenceDoneCountByHabitId,
+            },
           };
         });
       }
@@ -625,19 +639,55 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     setHabits((prev) => prev.filter((h) => h.id !== id));
   }, []);
 
+  const migrateTodayCompletionForDailyCountChange = useCallback((habitId: string, prevHabit: Habit, newDailyTotal: number) => {
+    setHistory((prev) => {
+      const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
+      const day = prev[today];
+      const baseDay = day ?? { date: today, completedByHabitId: {} };
+      const nextDay = migrateOccurrenceCompletionForNewDailyTotal(baseDay, habitId, prevHabit, newDailyTotal);
+      return { ...prev, [today]: nextDay };
+    });
+  }, []);
+
   const toggleDone = useCallback((id: string) => {
     setHistory((prev) => {
       const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
       const dayCompletion = prev[today] || { date: today, completedByHabitId: {} };
-      const isCompleted = !dayCompletion.completedByHabitId[id];
+      const habit = habitsRef.current.find((h) => h.id === id);
+      const n = habit ? getDailyOccurrenceTotal(habit) : 1;
+
+      if (n <= 1) {
+        const isCompleted = !dayCompletion.completedByHabitId[id];
+        const nextOccCounts = { ...(dayCompletion.occurrenceDoneCountByHabitId ?? {}) };
+        delete nextOccCounts[id];
+        return {
+          ...prev,
+          [today]: {
+            ...dayCompletion,
+            completedByHabitId: {
+              ...dayCompletion.completedByHabitId,
+              [id]: isCompleted,
+            },
+            occurrenceDoneCountByHabitId: Object.keys(nextOccCounts).length ? nextOccCounts : undefined,
+          },
+        };
+      }
+
+      const k = getOccurrenceDoneForDay(dayCompletion, habit!);
+      const kNext = (k + 1) % (n + 1);
+      const nextCounts = { ...(dayCompletion.occurrenceDoneCountByHabitId ?? {}) };
+      if (kNext === 0) delete nextCounts[id];
+      else nextCounts[id] = kNext;
+
       return {
         ...prev,
         [today]: {
           ...dayCompletion,
           completedByHabitId: {
             ...dayCompletion.completedByHabitId,
-            [id]: isCompleted,
+            [id]: kNext >= n,
           },
+          occurrenceDoneCountByHabitId: Object.keys(nextCounts).length ? nextCounts : undefined,
         },
       };
     });
@@ -699,7 +749,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       }
       return {
         ...prev,
-        [today]: { date: today, completedByHabitId: preserved },
+        [today]: { date: today, completedByHabitId: preserved, occurrenceDoneCountByHabitId: undefined },
       };
     });
     setLastResetDate(today);
@@ -722,7 +772,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       });
       return {
         ...prev,
-        [ymd]: { date: ymd, completedByHabitId },
+        [ymd]: { date: ymd, completedByHabitId, occurrenceDoneCountByHabitId: undefined },
       };
     });
   }, []);
@@ -755,6 +805,28 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       });
       return next;
     });
+  }, []);
+
+  const setOccurrenceSlotTimeRange = useCallback((habitId: string, ymd: string, slotIndex: number, start: string, end: string) => {
+    setHabits(prev => prev.map(h => {
+      if (h.id !== habitId) return h;
+      const day = { ...(h.occurrenceSlotOverrides?.[ymd] ?? {}), [slotIndex]: { start, end } };
+      const next = { ...(h.occurrenceSlotOverrides ?? {}), [ymd]: day };
+      return { ...h, occurrenceSlotOverrides: next };
+    }));
+  }, []);
+
+  const setOccurrenceGapMinutesAndClearDayOverrides = useCallback((habitId: string, gapMinutes: number, ymd: string) => {
+    setHabits(prev => prev.map(h => {
+      if (h.id !== habitId) return h;
+      const rest = { ...(h.occurrenceSlotOverrides ?? {}) };
+      delete rest[ymd];
+      return {
+        ...h,
+        occurrenceGapMinutes: Math.max(5, Math.floor(gapMinutes)),
+        occurrenceSlotOverrides: Object.keys(rest).length ? rest : undefined,
+      };
+    }));
   }, []);
 
   const updateScheduleTime = useCallback((id: string, hhmm: string | null) => {
@@ -980,12 +1052,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded,
-    addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
-    setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
+    addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
+    setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
     markDateReviewed, saveDayReview, updateHabitAskReview,
     trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople,
     tables, addTable, updateTable, deleteTable,
-  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
+  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

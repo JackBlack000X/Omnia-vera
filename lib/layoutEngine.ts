@@ -58,11 +58,28 @@ export function calculateLayout<T extends BaseEvent>(
     const moverId = draggedEventId;
     const mover = moverId ? cluster.find(e => e.id === moverId) : null;
 
+    // True when the cluster has grown to include tasks that didn't originally overlap
+    // the mover (e.g. a standalone event D that A dragged into). In this case the
+    // stable-column lock would produce too many columns, so we skip it entirely.
+    const hasNewcomerNonMover = !!mover && cluster.some(e => {
+      if (e.id === moverId) return false;
+      const pk1 = `${moverId}-${e.id}`;
+      const pk2 = `${e.id}-${moverId}`;
+      return !initialOverlaps.has(pk1) && !initialOverlaps.has(pk2);
+    });
+
     const insertionOrder = [...cluster].sort((a, b) => {
       const aM = mover && a.id === mover.id;
       const bM = mover && b.id === mover.id;
       if (aM && !bM) return 1;
       if (!aM && bM) return -1;
+      // When the mover has left this cluster, or the cluster has grown with newcomer tasks,
+      // sort by stable col to preserve the original left→right relative positions.
+      if ((!mover || hasNewcomerNonMover) && stableLayout) {
+        const sa = stableLayout[a.id]?.col ?? 0;
+        const sb = stableLayout[b.id]?.col ?? 0;
+        if (sa !== sb) return sa - sb;
+      }
       // Left/right columns do not use start time — only rank / duration / stable id.
       const ra = ranks ? (ranks[a.id] ?? 0) : 0;
       const rb = ranks ? (ranks[b.id] ?? 0) : 0;
@@ -78,13 +95,22 @@ export function calculateLayout<T extends BaseEvent>(
       const isMover = mover && ev.id === mover.id;
       let startSearchCol = 0;
 
-      // ALL non-mover tasks are strictly locked to their stable column during an active drag.
-      if (!isMover && draggedEventId && stableLayout?.[ev.id]) {
-        const stableCol = stableLayout[ev.id].col;
-        while (columns.length <= stableCol) columns.push([]);
-        columns[stableCol].push(ev);
-        layout[ev.id] = { col: stableCol, columns: 1, span: 1 };
-        continue;
+      // Non-mover tasks are locked to their stable column during an active drag,
+      // but only if the mover is still in THIS cluster AND the overlap with the mover
+      // was never broken (i.e. the mover hasn't exited and re-entered).
+      if (!isMover && mover && stableLayout?.[ev.id]) {
+        const pairKey1 = `${mover.id}-${ev.id}`;
+        const pairKey2 = `${ev.id}-${mover.id}`;
+        const isBrokenPair = brokenOverlapPairs.has(pairKey1) || brokenOverlapPairs.has(pairKey2);
+        // Lock only when: overlap was never broken AND no newcomer tasks entered the cluster.
+        // If broken or newcomers present, fall through to fresh placement.
+        if (!isBrokenPair && !hasNewcomerNonMover) {
+          const stableCol = stableLayout[ev.id].col;
+          while (columns.length <= stableCol) columns.push([]);
+          columns[stableCol].push(ev);
+          layout[ev.id] = { col: stableCol, columns: 1, span: 1 };
+          continue;
+        }
       }
 
       // For the mover task, determine if it should be forced to the right of any task it overlaps.
@@ -102,9 +128,13 @@ export function calculateLayout<T extends BaseEvent>(
           const pairKey1 = `${ev.id}-${o.id}`;
           const pairKey2 = `${o.id}-${ev.id}`;
           const isBroken = brokenOverlapPairs.has(pairKey1) || brokenOverlapPairs.has(pairKey2);
-          
-          if (isNewcomer || isBroken) {
-            // If the mover was originally to the LEFT of this task, preserve that order
+
+          // For broken pairs: don't adjust startSearchCol — the mover lands rightmost
+          // naturally because the broken-pair tasks are unlocked and fill earlier columns.
+          if (isBroken) continue;
+
+          if (isNewcomer) {
+            // Newcomer entering a brand-new cluster: preserve original left-right order.
             const moverOrigCol = stableLayout?.[ev.id]?.col ?? Infinity;
             const oOrigCol = stableLayout[o.id].col;
             if (moverOrigCol < oOrigCol) continue;

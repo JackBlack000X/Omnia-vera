@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, InteractionManager, LayoutAnimation, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, InteractionManager, LayoutAnimation, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { FadeInDown, Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -458,10 +458,9 @@ export default function IndexScreen() {
       return (
         <Animated.View layout={Layout}>
         <ScaleDecorator>
-          <TouchableOpacity
+          <Pressable
             onLongPress={canStartDrag ? drag : undefined}
             disabled={isActive || !canStartDrag}
-            activeOpacity={0.9}
             delayLongPress={200}
             onPress={() => {
               if (selectionMode) return;
@@ -492,7 +491,7 @@ export default function IndexScreen() {
               onMenuOpen={handleMenuOpen}
               onMenuClose={handleMenuClose}
             />
-          </TouchableOpacity>
+          </Pressable>
         </ScaleDecorator>
         </Animated.View>
       );
