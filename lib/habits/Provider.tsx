@@ -526,7 +526,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => {
     const newId = generateUUID();
-    const base = { id: newId, text, order: 0, color: color ?? '#4A148C', createdAt: formatYmd(), folder, tipo };
+    const base = { id: newId, text, order: 0, color: color ?? '#4A148C', createdAt: formatYmd(), createdAtMs: Date.now(), folder, tipo };
     setHabits((prev) => {
       const newOrder = prev.length;
       const newHabit: Habit = {

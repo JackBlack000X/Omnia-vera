@@ -380,6 +380,9 @@ export default function ModalScreen() {
   const [places, setPlaces] = React.useState<{ id: string; name: string }[]>([]);
   const [selectedPlaceId, setSelectedPlaceId] = React.useState<string | null>(m.locationRule?.placeId ?? null);
   const [locationStatus, setLocationStatus] = React.useState<LocationPermissionStatus>('none');
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const [repeatEndOpen, setRepeatEndOpen] = React.useState(false);
+  const [repeatSubOpen, setRepeatSubOpen] = React.useState(false);
 
   const [fromQuery, setFromQuery] = React.useState('');
   const [fromResults, setFromResults] = React.useState<CityInfo[]>([]);
@@ -689,15 +692,20 @@ export default function ModalScreen() {
           {(type === 'new' || type === 'edit') && (
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <Text style={styles.sectionTitle}>Notifiche</Text>
+                <TouchableOpacity onPress={() => { if (m.notification.enabled) setNotifOpen(v => !v); }} style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.sectionTitle}>Notifiche</Text>
+                  {m.notification.enabled && (
+                    <Ionicons name={notifOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" style={{ marginLeft: 6 }} />
+                  )}
+                </TouchableOpacity>
                 <Switch
                   value={m.notification.enabled}
-                  onValueChange={v => m.setNotification({ ...m.notification, enabled: v })}
+                  onValueChange={v => { m.setNotification({ ...m.notification, enabled: v }); if (v) setNotifOpen(true); else setNotifOpen(false); }}
                   trackColor={{ false: '#334155', true: '#ec4899' }}
                   thumbColor="white"
                 />
               </View>
-              {m.notification.enabled && (
+              {m.notification.enabled && notifOpen && (
                 <View style={{ marginTop: 12, backgroundColor: '#0f172a', borderRadius: 16, borderWidth: 1, borderColor: '#334155', overflow: 'hidden' }}>
                   {([
                     { label: 'Al momento dell\'evento', value: 0 },
@@ -1620,39 +1628,50 @@ export default function ModalScreen() {
 
               {m.freq !== 'single' && (
                 <View style={{ marginTop: 16 }}>
-                  <View style={[styles.sectionHeader]}><Text style={styles.sectionTitle}>Fine ripetizione</Text></View>
-                  <View style={{ backgroundColor: '#0f172a', borderRadius: 16, borderWidth: 1, borderColor: '#334155', overflow: 'hidden' }}>
+                  <TouchableOpacity onPress={() => setRepeatEndOpen(v => !v)} style={[styles.sectionHeader, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={styles.sectionTitle}>Fine ripetizione</Text>
+                      <Ionicons name={repeatEndOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" style={{ marginLeft: 6 }} />
+                    </View>
+                    <View style={{ marginTop: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#ec4899', backgroundColor: 'rgba(236,72,153,0.12)' }}>
+                      <Text style={{ color: '#ec4899', fontSize: 13, fontWeight: '600' }}>
+                        {m.repeatEndType === 'mai' ? 'Mai' : m.repeatEndType === 'durata' ? `Tra ${m.repeatEndCount} ${m.freq === 'daily' ? 'giorni' : m.freq === 'weekly' ? 'settimane' : m.freq === 'monthly' ? 'mesi' : 'anni'}` : m.repeatEndCustomDate ? (() => { const [y, mo, d] = m.repeatEndCustomDate!.split('-'); return `${parseInt(d)}.${parseInt(mo)}.${y.slice(2)}`; })() : 'Data personalizzata'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {repeatEndOpen && <View style={{ marginTop: 12, backgroundColor: '#0f172a', borderRadius: 16, borderWidth: 1, borderColor: '#334155', overflow: 'hidden' }}>
                     {([
                       { label: 'Mai', value: 'mai' as const },
                       { label: 'Tra', value: 'durata' as const },
                       { label: 'Data personalizzata', value: 'personalizzata' as const },
                     ]).map((opt, idx, arr) => {
                       const isSelected = m.repeatEndType === opt.value;
+                      const hasSubPicker = isSelected && opt.value !== 'mai' && repeatSubOpen;
                       return (
                         <TouchableOpacity
                           key={opt.value}
-                          onPress={() => m.setRepeatEndType(opt.value)}
-                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: (idx < arr.length - 1 || isSelected) ? 1 : 0, borderBottomColor: '#1e293b' }}
+                          onPress={() => { m.setRepeatEndType(opt.value); if (opt.value !== 'mai') setRepeatSubOpen(true); else setRepeatSubOpen(false); }}
+                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: (idx < arr.length - 1 || hasSubPicker) ? 1 : 0, borderBottomColor: '#1e293b' }}
                         >
                           <Text style={{ color: '#e2e8f0', fontSize: 15 }}>{opt.label}</Text>
                           {isSelected && <Ionicons name="checkmark" size={18} color="#ec4899" />}
                         </TouchableOpacity>
                       );
                     })}
-                    {m.repeatEndType === 'durata' && (
+                    {m.repeatEndType === 'durata' && repeatSubOpen && (
                       <RepeatEndDurationPicker
                         count={m.repeatEndCount}
                         unitLabel={m.freq === 'daily' ? 'giorni' : m.freq === 'weekly' ? 'settimane' : m.freq === 'monthly' ? 'mesi' : 'anni'}
                         onCountChange={m.setRepeatEndCount}
                       />
                     )}
-                    {m.repeatEndType === 'personalizzata' && (
+                    {m.repeatEndType === 'personalizzata' && repeatSubOpen && (
                       <RepeatEndCustomPicker
                         value={m.repeatEndCustomDate}
                         onChange={m.setRepeatEndCustomDate}
                       />
                     )}
-                  </View>
+                  </View>}
                 </View>
               )}
 

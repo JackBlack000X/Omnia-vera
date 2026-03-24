@@ -58,6 +58,7 @@ export type Habit = {
   timeOverrides?: Record<string, string | { start: string; end: string }>; // date YYYY-MM-DD -> 'HH:MM' or { start, end }
   color?: string; // hex color for card/background
   createdAt?: string; // YYYY-MM-DD creation date in Europe/Zurich
+  createdAtMs?: number; // Unix timestamp ms at creation for precise ordering
   isAllDay?: boolean; // explicit all-day flag
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; // explicit frequency flag
   folder?: string; // custom folder/category name

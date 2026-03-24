@@ -555,31 +555,61 @@ export default function OggiScreen() {
     })();
   }, [layoutEvents, currentDate, habits]);
 
+  // Tracks the last-seen startTime+endTime for each event to detect manual time edits.
+  const prevEventTimesRef = useRef<Record<string, string>>({});
+
   // Initialise column rank for any task that doesn't yet have one.
   // Rank determines left-to-right order: lower rank = leftmost column.
   // Initial rank comes from createdAt (older = lower rank).
   // Tasks with the same createdAt are sorted by ID string for stability.
   // On drag end the moved task gets a new rank higher than all existing ones,
   // making it permanently rightmost until another task is moved after it.
+  // When a task's time is manually edited (not via drag), it also gets bumped
+  // to the highest rank so it appears rightmost when it re-enters an overlap.
   useEffect(() => {
     const ranks = columnRankRef.current;
-    const newTasks = layoutEvents.filter(ev => (ev as any).tipo !== 'tracker' && ranks[ev.id] === undefined);
-    if (newTasks.length === 0) return;
+    const prevTimes = prevEventTimesRef.current;
 
-    // Sort new tasks by createdAt then id to assign ranks in creation order
+    const newTasks = layoutEvents.filter(ev => (ev as any).tipo !== 'tracker' && ranks[ev.id] === undefined);
+
+    // Detect tasks whose time changed since last render (= manual time edit, not drag).
+    // Drag updates happen after drag end via DraggableEvent's own rank logic, so we
+    // only need to handle edits made through the modal / tasks view here.
+    const timeEditedTasks = layoutEvents.filter(ev => {
+      if ((ev as any).tipo === 'tracker') return false;
+      if (ranks[ev.id] === undefined) return false; // already handled as newTask
+      const key = `${ev.startTime}-${ev.endTime}`;
+      return prevTimes[ev.id] !== undefined && prevTimes[ev.id] !== key;
+    });
+
+    // Always update the snapshot of current times
+    for (const ev of layoutEvents) {
+      prevTimes[ev.id] = `${ev.startTime}-${ev.endTime}`;
+    }
+
+    if (newTasks.length === 0 && timeEditedTasks.length === 0) return;
+
+    // Sort new tasks by createdAtMs (precise ms timestamp), then createdAt, then id for stability
     newTasks.sort((a, b) => {
+      const ma = (a as any).createdAtMs ?? 0;
+      const mb = (b as any).createdAtMs ?? 0;
+      if (ma !== mb) return ma - mb;
       const da = a.createdAt ?? '';
       const db = b.createdAt ?? '';
       if (da !== db) return da < db ? -1 : 1;
       return a.id < b.id ? -1 : 1;
     });
 
-    // Assign ranks starting from 1, spaced so there is room between existing tasks
     let next = rankCounterRef.current + 1;
     for (const ev of newTasks) {
       ranks[ev.id] = next++;
     }
+    // Bump time-edited tasks to rightmost (higher than all current ranks)
+    for (const ev of timeEditedTasks) {
+      ranks[ev.id] = next++;
+    }
     rankCounterRef.current = next - 1;
+    setRankVersion(v => v + 1);
   }, [layoutEvents]);
 
   // Reset all-day section height when there are no all-day events so hourHeight is unaffected
@@ -770,6 +800,7 @@ export default function OggiScreen() {
   }, [timedEvents, pendingEventPositions]);
   
   const [lastMovedEventId, setLastMovedEventId] = useState<string | null>(null);
+  const [rankVersion, setRankVersion] = useState(0);
   const allDayLastTapRef = useRef<Record<string, number>>({});
   
   useEffect(() => {
@@ -847,7 +878,7 @@ export default function OggiScreen() {
     } 
     
     return calculateLayoutCallback(events, null);
-  }, [layoutEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayoutCallback]);
+  }, [layoutEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayoutCallback, rankVersion]);
 
   // Tasks entirely outside the visible window — used to color first/last hour lines
   const { overflowBefore, overflowAfter } = useMemo(() => {
