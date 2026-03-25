@@ -1,4 +1,5 @@
 import { useHabits } from '@/lib/habits/Provider';
+import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import {
     FOLDER_COLORS,
@@ -525,10 +526,15 @@ export function useIndexLogic() {
   const stats = useMemo(() => {
     const todayHabits = habitsAppearingToday;
     const total = todayHabits.length;
-    const completed = history[today]?.completedByHabitId ?? {};
-    const done = todayHabits.filter(h => completed[h.id]).length;
+    const dayEntry = history[today];
+    let done = 0;
+    for (const h of todayHabits) {
+      const n = getDailyOccurrenceTotal(h);
+      const k = getOccurrenceDoneForDay(dayEntry, h);
+      done += n > 1 ? k / n : (k >= 1 ? 1 : 0);
+    }
     const pct = total ? Math.round((done / total) * 100) : 0;
-    return { total, done, pct };
+    return { total, done: Math.round(done), pct };
   }, [habitsAppearingToday, history, today]);
 
   const applyFolderFilters = useCallback((list: Habit[], filters: FolderFilters | undefined): Habit[] => {

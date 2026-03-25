@@ -44,13 +44,18 @@ const PIXEL_SIZE = 0.625;
 const NOISE_INTENSITY = 35.0; // Increased to make noise more visible
 
 /** Segmenti senza `opacity` sul View: così non si vede il contenuto sotto (icone, lista, ecc.). */
-function occSegmentBackground(cardColor: string, filled: boolean): string {
+function occSegmentBackground(cardColor: string, filled: boolean, allDone = false): string {
+  // Task nera: 0/N e N/N → tutta nera; intermedio → completati verde, resto nero
+  const isBlack = cardColor.replace('#', '').trim().toLowerCase() === '000000';
+  if (isBlack) {
+    return (!allDone && filled) ? '#10b981' : '#000000';
+  }
   if (filled) return cardColor;
   const h = cardColor.replace('#', '').trim();
   const expand = (s: string) => (s.length === 3 ? s.split('').map(c => c + c).join('') : s);
   const full = expand(h);
   if (full.length !== 6) return cardColor;
-  const t = 0.35;
+  const t = 0.55;
   const r = Math.round(parseInt(full.slice(0, 2), 16) * t);
   const g = Math.round(parseInt(full.slice(2, 4), 16) * t);
   const b = Math.round(parseInt(full.slice(4, 6), 16) * t);
@@ -345,7 +350,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
               style={[
                 styles.occurrenceSegment,
                 {
-                  backgroundColor: occSegmentBackground(cardColor, i < displayOccK),
+                  backgroundColor: occSegmentBackground(cardColor, i < displayOccK, displayOccK >= occN),
                 },
               ]}
             />
