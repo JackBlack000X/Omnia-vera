@@ -73,14 +73,14 @@ export function calculateLayout<T extends BaseEvent>(
       const bM = mover && b.id === mover.id;
       if (aM && !bM) return 1;
       if (!aM && bM) return -1;
-      // When the mover has left this cluster, or the cluster has grown with newcomer tasks,
-      // sort by stable col to preserve the original left→right relative positions.
-      if ((!mover || hasNewcomerNonMover) && stableLayout) {
+      // Always sort non-movers by stable col to preserve the original left→right order,
+      // both for locked and unlocked tasks (prevents order swaps mid-drag).
+      if (stableLayout) {
         const sa = stableLayout[a.id]?.col ?? 0;
         const sb = stableLayout[b.id]?.col ?? 0;
         if (sa !== sb) return sa - sb;
       }
-      // Left/right columns do not use start time — only rank / duration / stable id.
+      // Fallback when no stable layout (initial render).
       const ra = ranks ? (ranks[a.id] ?? 0) : 0;
       const rb = ranks ? (ranks[b.id] ?? 0) : 0;
       if (ra !== rb) return ra - rb;
@@ -89,27 +89,64 @@ export function calculateLayout<T extends BaseEvent>(
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
 
+    // Determine which non-movers are unlocked: direct (broken pair with mover) OR
+    // cascade (an already-unlocked task with a lower stableCol overlaps this one).
+    // Cascade ensures the whole overlapping chain redistributes when a gap opens,
+    // preventing holes where a locked task is stuck at a stableCol no longer valid.
+    const unlockedNonMovers = new Set<string>();
+    if (mover && !hasNewcomerNonMover && stableLayout) {
+      const nonMoversInOrder = cluster
+        .filter(e => e.id !== mover.id)
+        .sort((a, b) => (stableLayout[a.id]?.col ?? 0) - (stableLayout[b.id]?.col ?? 0));
+      for (const nm of nonMoversInOrder) {
+        const pk1 = `${mover.id}-${nm.id}`;
+        const pk2 = `${nm.id}-${mover.id}`;
+        if (brokenOverlapPairs.has(pk1) || brokenOverlapPairs.has(pk2)) {
+          unlockedNonMovers.add(nm.id);
+          continue;
+        }
+        const nmCol = stableLayout[nm.id]?.col ?? 0;
+        for (const uid of unlockedNonMovers) {
+          const other = cluster.find(e => e.id === uid);
+          if (!other || !stableLayout[other.id]) continue;
+          if ((stableLayout[other.id].col ?? 0) < nmCol && ov(nm, other)) {
+            unlockedNonMovers.add(nm.id);
+            break;
+          }
+        }
+      }
+    }
+
     const columns: T[][] = [];
 
     for (const ev of insertionOrder) {
       const isMover = mover && ev.id === mover.id;
       let startSearchCol = 0;
 
-      // Non-mover tasks are locked to their stable column during an active drag,
-      // but only if the mover is still in THIS cluster AND the overlap with the mover
-      // was never broken (i.e. the mover hasn't exited and re-entered).
       if (!isMover && mover && stableLayout?.[ev.id]) {
-        const pairKey1 = `${mover.id}-${ev.id}`;
-        const pairKey2 = `${ev.id}-${mover.id}`;
-        const isBrokenPair = brokenOverlapPairs.has(pairKey1) || brokenOverlapPairs.has(pairKey2);
-        // Lock only when: overlap was never broken AND no newcomer tasks entered the cluster.
-        // If broken or newcomers present, fall through to fresh placement.
-        if (!isBrokenPair && !hasNewcomerNonMover) {
+        const isUnlocked = hasNewcomerNonMover || unlockedNonMovers.has(ev.id);
+
+        if (!isUnlocked) {
+          // Locked: place at stable column and skip fresh placement.
           const stableCol = stableLayout[ev.id].col;
           while (columns.length <= stableCol) columns.push([]);
           columns[stableCol].push(ev);
           layout[ev.id] = { col: stableCol, columns: 1, span: 1 };
           continue;
+        }
+
+        // Unlocked: prevent jumping LEFT of any locked non-mover that this task
+        // overlaps and sits to its left in the original layout.
+        const sx = stableLayout[ev.id].col;
+        for (const other of cluster) {
+          if (other.id === ev.id || other.id === mover.id) continue;
+          if (!stableLayout?.[other.id]) continue;
+          const otherIsLocked = !hasNewcomerNonMover && !unlockedNonMovers.has(other.id);
+          if (!otherIsLocked) continue;
+          const sy = stableLayout[other.id].col;
+          if (sy < sx && ov(ev, other)) {
+            startSearchCol = Math.max(startSearchCol, sy + 1);
+          }
         }
       }
 

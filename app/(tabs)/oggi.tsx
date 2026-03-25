@@ -5,7 +5,7 @@ import { THEME } from '@/constants/theme';
 import { isToday } from '@/lib/date';
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
-import { getDailyOccurrenceTotal } from '@/lib/habits/occurrences';
+import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate } from '@/lib/habits/occurrences';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
 import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
@@ -16,6 +16,7 @@ import { useWeather } from '@/lib/oggi/useWeather';
 import { useAppTheme } from '@/lib/theme-context';
 import { FALLBACK_CITIES, fetchWeather, weatherCodeToColor, weatherCodeToIcon, WeatherDay } from '@/lib/weather';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, LayoutChangeEvent, Modal, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -55,6 +56,7 @@ function HoldableButton({ onPress, style, children }: { onPress: () => void; sty
 }
 
 const TZ = 'Europe/Zurich';
+const COLUMN_RANKS_KEY = 'oggi_column_ranks_v1';
 /** Bordo autoscroll in px: sopra questa distanza da top/bottom della timeline parte lo scroll */
 const OGGI_DRAG_AUTOSCROLL_THRESHOLD = 0;
 const OGGI_DRAG_AUTOSCROLL_THRESHOLD_BOTTOM = 82;
@@ -144,6 +146,18 @@ export default function OggiScreen() {
   // so the last-moved task is always rightmost. Never reset, so relative order is stable.
   const columnRankRef = useRef<Record<string, number>>({});
   let rankCounterRef = useRef(0);
+
+  // Load persisted column ranks on mount
+  useEffect(() => {
+    AsyncStorage.getItem(COLUMN_RANKS_KEY).then(raw => {
+      if (!raw) return;
+      try {
+        const { ranks, counter } = JSON.parse(raw);
+        if (ranks && typeof ranks === 'object') columnRankRef.current = ranks;
+        if (typeof counter === 'number') rankCounterRef.current = counter;
+      } catch {}
+    });
+  }, []);
 
   useEffect(() => {
     const updateTime = () => {
@@ -481,7 +495,7 @@ export default function OggiScreen() {
           endM = Math.min(1440, startM + 60);
         }
         const durationMin = Math.max(5, endM - startM);
-        const nOcc = getDailyOccurrenceTotal(h);
+        const nOcc = getDailyOccurrenceTotalForDate(h, weekday, dayOfMonth);
         const gapMin = Math.max(5, h.occurrenceGapMinutes ?? 5);
         const baseMeta = {
           color,
@@ -544,7 +558,7 @@ export default function OggiScreen() {
       const habitId = resolveOggiHabitId(event);
       const habit = habits.find((h) => h.id === habitId);
       if (!habit) return;
-      const n = getDailyOccurrenceTotal(habit);
+      const n = getDailyOccurrenceTotalForDate(habit, weekday, dayOfMonth);
       const slot = event.occurrenceSlotIndex ?? 0;
 
       if (n === 2 && slot === 1) {
@@ -921,6 +935,15 @@ export default function OggiScreen() {
   const [lastMovedEventId, setLastMovedEventId] = useState<string | null>(null);
   const [rankVersion, setRankVersion] = useState(0);
   const allDayLastTapRef = useRef<Record<string, number>>({});
+
+  // Persist column ranks whenever they change (skip initial render at version 0)
+  useEffect(() => {
+    if (rankVersion === 0) return;
+    AsyncStorage.setItem(COLUMN_RANKS_KEY, JSON.stringify({
+      ranks: columnRankRef.current,
+      counter: rankCounterRef.current,
+    }));
+  }, [rankVersion]);
   
   useEffect(() => {
     if (!recentlyMovedEventId) return;
@@ -1050,6 +1073,7 @@ export default function OggiScreen() {
   const handleDragEnd = useCallback(() => {
       setDraggingEventId(null);
       stopAutoScroll();
+      setRankVersion(v => v + 1);
   }, [stopAutoScroll]);
   
   const calculateDragLayout = useCallback((draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean): { width: number; left: number } => {

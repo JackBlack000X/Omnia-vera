@@ -221,7 +221,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
     return 'single';
   });
-  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(initialDays);
+  const mondayFirst = [1, 2, 3, 4, 5, 6, 0];
+  const sortDow = (arr: number[]) => [...arr].sort((a, b) => mondayFirst.indexOf(a) - mondayFirst.indexOf(b));
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(() => sortDow(initialDays));
   const [monthDays, setMonthDays] = useState<number[]>(existing?.schedule?.monthDays ?? []);
   // Per-day-of-month times (minutes)
   const [perMonthTimes, setPerMonthTimes] = useState<Record<number, { startMin: number; endMin: number | null }>>(() => {
@@ -345,6 +347,50 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     const pick = mondayFirst.find(d => initialDays.includes(d));
     return pick !== undefined ? pick : (initialDays[0] ?? null);
   });
+  // Per-day occurrence counts (weekly)
+  const [perDayOccurrences, setPerDayOccurrences] = useState<Record<number, number>>(() => {
+    const base: Record<number, number> = {};
+    const wo = existing?.schedule?.weeklyOccurrences;
+    if (wo) Object.entries(wo).forEach(([k, v]) => { base[Number(k)] = v; });
+    return base;
+  });
+  // Per-day occurrence counts (monthly)
+  const [perMonthOccurrences, setPerMonthOccurrences] = useState<Record<number, number>>(() => {
+    const base: Record<number, number> = {};
+    const mo = existing?.schedule?.monthlyOccurrences;
+    if (mo) Object.entries(mo).forEach(([k, v]) => { base[Number(k)] = v; });
+    return base;
+  });
+
+  // Tracks which days have been manually customized (no longer mirror the first day)
+  const [customizedDows, setCustomizedDows] = useState<Set<number>>(() => {
+    const days = existing?.schedule?.daysOfWeek ?? [];
+    if (days.length <= 1) return new Set();
+    const firstDay = days[0];
+    const wt = existing?.schedule?.weeklyTimes;
+    const wo = existing?.schedule?.weeklyOccurrences;
+    const customized = new Set<number>();
+    for (const d of days.slice(1)) {
+      const diffTime = wt && (wt[d]?.start !== wt[firstDay]?.start || wt[d]?.end !== wt[firstDay]?.end);
+      const diffOcc = wo && wo[d] !== undefined && wo[firstDay] !== undefined && wo[d] !== wo[firstDay];
+      if (diffTime || diffOcc) customized.add(d);
+    }
+    return customized;
+  });
+  const [customizedMonthDays, setCustomizedMonthDays] = useState<Set<number>>(() => {
+    const days = existing?.schedule?.monthDays ?? [];
+    if (days.length <= 1) return new Set();
+    const firstDay = days[0];
+    const mt = existing?.schedule?.monthlyTimes;
+    const mo = existing?.schedule?.monthlyOccurrences;
+    const customized = new Set<number>();
+    for (const d of days.slice(1)) {
+      const diffTime = mt && (mt[d]?.start !== mt[firstDay]?.start || mt[d]?.end !== mt[firstDay]?.end);
+      const diffOcc = mo && mo[d] !== undefined && mo[firstDay] !== undefined && mo[d] !== mo[firstDay];
+      if (diffTime || diffOcc) customized.add(d);
+    }
+    return customized;
+  });
 
   // Validate that start time doesn't exceed end time
   useEffect(() => {
@@ -353,9 +399,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
   }, [startMin, endMin]);
 
-  // Helpers to know if we're editing per-day times (weekly, timed, multiple days)
+  // Helpers to know if we're editing per-day times/occurrences (weekly, timed, multiple days)
   const usePerDayTimeWeekly = mode === 'timed' && freq === 'weekly' && daysOfWeek.length > 1 && selectedDow !== null;
   const usePerDayTimeMonthly = mode === 'timed' && freq === 'monthly' && monthDays.length > 1 && selectedMonthDay !== null;
+  const usePerDayOccWeekly = freq === 'weekly' && daysOfWeek.length > 1 && selectedDow !== null;
+  const usePerDayOccMonthly = freq === 'monthly' && monthDays.length > 1 && selectedMonthDay !== null;
   const currentStartMin = usePerDayTimeWeekly
     ? (selectedDow !== null && perDayTimes[selectedDow]?.startMin !== undefined ? perDayTimes[selectedDow]!.startMin : startMin)
     : usePerDayTimeMonthly
@@ -367,34 +415,120 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.endMin !== undefined ? perMonthTimes[selectedMonthDay]!.endMin : endMin)
       : endMin;
 
+  const isFirstDow = selectedDow !== null && daysOfWeek.length > 0 && selectedDow === daysOfWeek[0];
+  const isFirstMonthDay = selectedMonthDay !== null && monthDays.length > 0 && selectedMonthDay === monthDays[0];
+
   const updateCurrentStartMin = (next: number) => {
     if (usePerDayTimeWeekly && selectedDow !== null) {
-      setPerDayTimes(prev => ({
-        ...prev,
-        [selectedDow]: { startMin: next, endMin: (prev[selectedDow]?.endMin ?? null) }
-      }));
+      if (isFirstDow) {
+        setPerDayTimes(prev => {
+          const newP: typeof prev = {};
+          for (const d of daysOfWeek) {
+            const cur = prev[d] ?? { startMin, endMin };
+            newP[d] = d === selectedDow || !customizedDows.has(d)
+              ? { startMin: next, endMin: cur.endMin }
+              : cur;
+          }
+          return newP;
+        });
+      } else {
+        setCustomizedDows(prev => new Set([...prev, selectedDow]));
+        setPerDayTimes(prev => ({ ...prev, [selectedDow]: { startMin: next, endMin: prev[selectedDow]?.endMin ?? null } }));
+      }
     } else if (usePerDayTimeMonthly && selectedMonthDay !== null) {
-      setPerMonthTimes(prev => ({
-        ...prev,
-        [selectedMonthDay]: { startMin: next, endMin: (prev[selectedMonthDay]?.endMin ?? null) }
-      }));
+      if (isFirstMonthDay) {
+        setPerMonthTimes(prev => {
+          const newP: typeof prev = {};
+          for (const d of monthDays) {
+            const cur = prev[d] ?? { startMin, endMin };
+            newP[d] = d === selectedMonthDay || !customizedMonthDays.has(d)
+              ? { startMin: next, endMin: cur.endMin }
+              : cur;
+          }
+          return newP;
+        });
+      } else {
+        setCustomizedMonthDays(prev => new Set([...prev, selectedMonthDay]));
+        setPerMonthTimes(prev => ({ ...prev, [selectedMonthDay]: { startMin: next, endMin: prev[selectedMonthDay]?.endMin ?? null } }));
+      }
     } else {
       setStartMin(next);
     }
   };
   const updateCurrentEndMin = (next: number | null) => {
     if (usePerDayTimeWeekly && selectedDow !== null) {
-      setPerDayTimes(prev => ({
-        ...prev,
-        [selectedDow]: { startMin: (prev[selectedDow]?.startMin ?? startMin), endMin: next }
-      }));
+      if (isFirstDow) {
+        setPerDayTimes(prev => {
+          const newP: typeof prev = {};
+          for (const d of daysOfWeek) {
+            const cur = prev[d] ?? { startMin, endMin };
+            newP[d] = d === selectedDow || !customizedDows.has(d)
+              ? { startMin: cur.startMin, endMin: next }
+              : cur;
+          }
+          return newP;
+        });
+      } else {
+        setCustomizedDows(prev => new Set([...prev, selectedDow]));
+        setPerDayTimes(prev => ({ ...prev, [selectedDow]: { startMin: prev[selectedDow]?.startMin ?? startMin, endMin: next } }));
+      }
     } else if (usePerDayTimeMonthly && selectedMonthDay !== null) {
-      setPerMonthTimes(prev => ({
-        ...prev,
-        [selectedMonthDay]: { startMin: (prev[selectedMonthDay]?.startMin ?? startMin), endMin: next }
-      }));
+      if (isFirstMonthDay) {
+        setPerMonthTimes(prev => {
+          const newP: typeof prev = {};
+          for (const d of monthDays) {
+            const cur = prev[d] ?? { startMin, endMin };
+            newP[d] = d === selectedMonthDay || !customizedMonthDays.has(d)
+              ? { startMin: cur.startMin, endMin: next }
+              : cur;
+          }
+          return newP;
+        });
+      } else {
+        setCustomizedMonthDays(prev => new Set([...prev, selectedMonthDay]));
+        setPerMonthTimes(prev => ({ ...prev, [selectedMonthDay]: { startMin: prev[selectedMonthDay]?.startMin ?? startMin, endMin: next } }));
+      }
     } else {
       setEndMin(next);
+    }
+  };
+
+  const currentDailyOccurrences = usePerDayOccWeekly && selectedDow !== null
+    ? (perDayOccurrences[selectedDow] ?? dailyOccurrences)
+    : usePerDayOccMonthly && selectedMonthDay !== null
+      ? (perMonthOccurrences[selectedMonthDay] ?? dailyOccurrences)
+      : dailyOccurrences;
+  const updateCurrentDailyOccurrences = (next: number) => {
+    if (usePerDayOccWeekly && selectedDow !== null) {
+      if (isFirstDow) {
+        setPerDayOccurrences(prev => {
+          const newP: typeof prev = {};
+          for (const d of daysOfWeek) {
+            newP[d] = d === selectedDow || !customizedDows.has(d) ? next : (prev[d] ?? dailyOccurrences);
+          }
+          return newP;
+        });
+        setDailyOccurrences(next);
+      } else {
+        setCustomizedDows(prev => new Set([...prev, selectedDow]));
+        setPerDayOccurrences(prev => ({ ...prev, [selectedDow]: next }));
+      }
+    } else if (usePerDayOccMonthly && selectedMonthDay !== null) {
+      if (isFirstMonthDay) {
+        setPerMonthOccurrences(prev => {
+          const newP: typeof prev = {};
+          for (const d of monthDays) {
+            newP[d] = d === selectedMonthDay || !customizedMonthDays.has(d) ? next : (prev[d] ?? dailyOccurrences);
+          }
+          return newP;
+        });
+        setDailyOccurrences(next);
+      } else {
+        setCustomizedMonthDays(prev => new Set([...prev, selectedMonthDay]));
+        setPerMonthOccurrences(prev => ({ ...prev, [selectedMonthDay]: next }));
+      }
+    } else {
+      setDailyOccurrences(next);
     }
   };
 
@@ -458,7 +592,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           title: 'Conferma cancellazione',
           message: `Selezionando ${dayNames[d]} cancellerai i ${monthlyDaysText} del mese. Sei sicuro?`,
           onConfirm: () => {
-            setDaysOfWeek(prev => [...prev, d].sort());
+            setDaysOfWeek(prev => sortDow([...prev, d]));
             setMonthDays([]);
             setConfirmationModal(prev => ({ ...prev, visible: false }));
           },
@@ -466,12 +600,29 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         return;
       }
       setDaysOfWeek(prev => {
-        const next = [...prev, d].sort();
-        // initialize per-day times if in timed mode
-        if (mode === 'timed') {
-          setPerDayTimes(p => ({ ...p, [d]: { startMin, endMin } }));
-          if (next.length > 1) setSelectedDow(d);
-        }
+        const next = sortDow([...prev, d]);
+        const firstDay = prev.length > 0 ? prev[0] : null;
+        // When going from 1→2 days, sync the first day from globals first (since in
+        // single-day mode the user edits globals, not perDayTimes).
+        setPerDayTimes(p => {
+          const newP = { ...p };
+          if (firstDay !== null && prev.length === 1) {
+            newP[firstDay] = { startMin, endMin };
+          }
+          const template = firstDay !== null ? (newP[firstDay] ?? { startMin, endMin }) : { startMin, endMin };
+          newP[d] = { startMin: template.startMin, endMin: template.endMin };
+          return newP;
+        });
+        setPerDayOccurrences(po => {
+          const newPo = { ...po };
+          if (firstDay !== null && prev.length === 1) {
+            newPo[firstDay] = dailyOccurrences;
+          }
+          const occTemplate = firstDay !== null ? (newPo[firstDay] ?? dailyOccurrences) : dailyOccurrences;
+          newPo[d] = occTemplate;
+          return newPo;
+        });
+        if (next.length > 1) setSelectedDow(next[0]);
         // ensure UI shows 'timed' when user selects weekly days
         if (mode !== 'timed') setMode('timed');
         return next;
@@ -480,11 +631,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       // Removing a day - no confirmation needed
       setDaysOfWeek(prev => {
         const next = prev.filter(x => x !== d);
-        setPerDayTimes(p => {
-          const cp = { ...p } as any;
-          delete cp[d];
-          return cp;
-        });
+        setPerDayTimes(p => { const cp = { ...p } as any; delete cp[d]; return cp; });
+        setPerDayOccurrences(p => { const cp = { ...p } as any; delete cp[d]; return cp; });
+        setCustomizedDows(prev => { const s = new Set(prev); s.delete(d); return s; });
         if (selectedDow === d) {
           const mondayFirst = [1, 2, 3, 4, 5, 6, 0];
           const pick = mondayFirst.find(x => next.includes(x));
@@ -518,12 +667,39 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       }
       setMonthDays(prev => {
         const next = [...prev, d].sort();
+        const firstDay = prev.length > 0 ? prev[0] : null;
+        setPerMonthTimes(p => {
+          const newP = { ...p };
+          if (firstDay !== null && prev.length === 1) {
+            newP[firstDay] = { startMin, endMin };
+          }
+          const template = firstDay !== null ? (newP[firstDay] ?? { startMin, endMin }) : { startMin, endMin };
+          newP[d] = { startMin: template.startMin, endMin: template.endMin };
+          return newP;
+        });
+        setPerMonthOccurrences(po => {
+          const newPo = { ...po };
+          if (firstDay !== null && prev.length === 1) {
+            newPo[firstDay] = dailyOccurrences;
+          }
+          const occTemplate = firstDay !== null ? (newPo[firstDay] ?? dailyOccurrences) : dailyOccurrences;
+          newPo[d] = occTemplate;
+          return newPo;
+        });
+        if (next.length > 1) setSelectedMonthDay(next[0]);
         if (mode !== 'timed') setMode('timed');
         return next;
       });
     } else {
       // Removing a day - no confirmation needed
-      setMonthDays(prev => prev.filter(x => x !== d));
+      setMonthDays(prev => {
+        const next = prev.filter(x => x !== d);
+        setPerMonthTimes(p => { const cp = { ...p } as any; delete cp[d]; return cp; });
+        setPerMonthOccurrences(p => { const cp = { ...p } as any; delete cp[d]; return cp; });
+        setCustomizedMonthDays(prev => { const s = new Set(prev); s.delete(d); return s; });
+        if (selectedMonthDay === d) setSelectedMonthDay(next[0] ?? null);
+        return next;
+      });
     }
   }
 
@@ -849,7 +1025,15 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 }
                 schedule.time = null;
                 schedule.endTime = null;
+                // Persist per-day occurrences
+                schedule.weeklyOccurrences = {};
+                for (const d of daysOfWeek) {
+                  schedule.weeklyOccurrences[d] = perDayOccurrences[d] ?? occNForVal;
+                }
+              } else {
+                schedule.weeklyOccurrences = undefined;
               }
+              schedule.monthlyOccurrences = undefined;
               return { ...patchHabitOccurrences(h), schedule };
             }));
             // Clear one-off overrides for recurring weekly tasks
@@ -865,7 +1049,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 onConfirm: () => {
                   const base = candidates[0];
                   // Merge days
-                  const mergedDays = Array.from(new Set([...(base.schedule?.daysOfWeek ?? []), ...daysOfWeek])).sort();
+                  const mergedDays = sortDow(Array.from(new Set([...(base.schedule?.daysOfWeek ?? []), ...daysOfWeek])));
                   setHabits(prev => prev.map(h => {
                     if (h.id !== base.id) return h;
                     const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
@@ -910,7 +1094,15 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 }
                 schedule.time = null;
                 schedule.endTime = null;
+                // Persist per-day occurrences
+                schedule.monthlyOccurrences = {};
+                for (const d of monthDays) {
+                  schedule.monthlyOccurrences[d] = perMonthOccurrences[d] ?? occNForVal;
+                }
+              } else {
+                schedule.monthlyOccurrences = undefined;
               }
+              schedule.weeklyOccurrences = undefined;
               return { ...patchHabitOccurrences(h), schedule };
             }));
             // Clear one-off overrides for recurring monthly tasks
@@ -1176,7 +1368,15 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             }
             schedule.time = null;
             schedule.endTime = null;
+            const occN = Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
+            schedule.weeklyOccurrences = {};
+            for (const d of daysOfWeek) {
+              schedule.weeklyOccurrences[d] = perDayOccurrences[d] ?? occN;
+            }
+          } else {
+            schedule.weeklyOccurrences = undefined;
           }
+          schedule.monthlyOccurrences = undefined;
           return { ...h, schedule };
         }));
         // Clear one-off overrides for recurring weekly tasks
@@ -1190,7 +1390,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             message: 'Esiste una task con stesso nome e colore. Vuoi combinarle?',
             onConfirm: () => {
               const base = candidates[0];
-              const mergedDays = Array.from(new Set([...(base.schedule?.daysOfWeek ?? []), ...daysOfWeek])).sort();
+              const mergedDays = sortDow(Array.from(new Set([...(base.schedule?.daysOfWeek ?? []), ...daysOfWeek])));
               setHabits(prev => prev.map(h => {
                 if (h.id !== base.id) return h;
                 const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as any;
@@ -1233,7 +1433,15 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             }
             schedule.time = null;
             schedule.endTime = null;
+            const occN = Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
+            schedule.monthlyOccurrences = {};
+            for (const d of monthDays) {
+              schedule.monthlyOccurrences[d] = perMonthOccurrences[d] ?? occN;
+            }
+          } else {
+            schedule.monthlyOccurrences = undefined;
           }
+          schedule.weeklyOccurrences = undefined;
           return { ...h, schedule };
         }));
         // Clear one-off overrides for recurring monthly tasks
@@ -1474,6 +1682,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     topLabels,
     dailyOccurrences,
     setDailyOccurrences,
+    currentDailyOccurrences,
+    updateCurrentDailyOccurrences,
     occurrenceGapMinutes,
     setOccurrenceGapMinutes,
   };

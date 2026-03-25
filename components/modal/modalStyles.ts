@@ -34,13 +34,13 @@ export const styles = StyleSheet.create({
     elevation: 3
   },
   cancelBtn: {
-    backgroundColor: '#991b1b' // Less dimmed red
+    backgroundColor: '#991b1b'
   },
   saveBtn: {
-    backgroundColor: '#065f46' // Less dimmed green
+    backgroundColor: '#065f46'
   },
 
-  // Fixed position buttons (sfondo opaco: altrimenti tra i due tasti si vede la schermata sotto / contenuto che scorre)
+  // Fixed position buttons
   fixedButtonsContainer: {
     position: 'absolute',
     bottom: 30,
@@ -51,7 +51,6 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     zIndex: 1000,
-    backgroundColor: '#0b1220',
   },
 
   sectionHeader: { marginTop: 8 },

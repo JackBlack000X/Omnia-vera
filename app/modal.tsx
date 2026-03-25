@@ -1841,14 +1841,14 @@ export default function ModalScreen() {
                         <View style={[styles.timeControls, { flex: 0, minWidth: 160 }]}>
                           <Text style={styles.timeLabel}>Volte al giorno</Text>
                           <View style={styles.timeStepperRow}>
-                            <HoldableStepperButton onPress={() => m.setDailyOccurrences((v) => Math.max(1, v - 1))}>−</HoldableStepperButton>
-                            <Text style={styles.timeValue}>{m.dailyOccurrences}</Text>
-                            <HoldableStepperButton onPress={() => m.setDailyOccurrences((v) => Math.min(30, v + 1))}>+</HoldableStepperButton>
+                            <HoldableStepperButton onPress={() => m.updateCurrentDailyOccurrences(Math.max(1, m.currentDailyOccurrences - 1))}>−</HoldableStepperButton>
+                            <Text style={styles.timeValue}>{m.currentDailyOccurrences}</Text>
+                            <HoldableStepperButton onPress={() => m.updateCurrentDailyOccurrences(Math.min(30, m.currentDailyOccurrences + 1))}>+</HoldableStepperButton>
                           </View>
                         </View>
                       </View>
                     </View>
-                    {m.dailyOccurrences > 1 && (
+                    {m.currentDailyOccurrences > 1 && (
                       <View style={styles.timeSection}>
                         <Text style={styles.timeSectionTitle}>Distacco</Text>
                         <View style={styles.timePicker}>
@@ -1869,6 +1869,24 @@ export default function ModalScreen() {
                             </View>
                           </View>
                         </View>
+                        {(() => {
+                          const sM = m.currentStartMin;
+                          const eM = m.currentEndMin ?? (sM + 60);
+                          const dur = Math.max(5, eM - sM);
+                          const gap = Math.max(5, m.occurrenceGapMinutes);
+                          const slots: string[] = [];
+                          for (let i = 1; i < m.currentDailyOccurrences; i++) {
+                            const slotS = sM + i * gap;
+                            if (slotS >= 24 * 60) break;
+                            const slotE = Math.min(24 * 60, slotS + dur);
+                            slots.push(`${minutesToHhmmSafe(slotS)}–${minutesToHhmmSafe(slotE)}`);
+                          }
+                          return (
+                            <Text style={[styles.subtle, { marginTop: 6, textAlign: 'center', fontSize: 11 }]}>
+                              {slots.join('  ·  ')}
+                            </Text>
+                          );
+                        })()}
                       </View>
                     )}
                   </View>

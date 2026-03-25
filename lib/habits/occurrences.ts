@@ -7,6 +7,19 @@ export function getDailyOccurrenceTotal(habit: Habit): number {
   return Math.min(MAX_DAILY_OCCURRENCES, Math.max(1, Math.floor(raw)));
 }
 
+/** Date-aware version: resolves per-weekday or per-day-of-month overrides when present. */
+export function getDailyOccurrenceTotalForDate(habit: Habit, weekday: number, dayOfMonth: number): number {
+  const wo = habit.schedule?.weeklyOccurrences;
+  if (wo && wo[weekday] !== undefined) {
+    return Math.min(MAX_DAILY_OCCURRENCES, Math.max(1, Math.floor(wo[weekday])));
+  }
+  const mo = habit.schedule?.monthlyOccurrences;
+  if (mo && mo[dayOfMonth] !== undefined) {
+    return Math.min(MAX_DAILY_OCCURRENCES, Math.max(1, Math.floor(mo[dayOfMonth])));
+  }
+  return getDailyOccurrenceTotal(habit);
+}
+
 /** Done count 0..n for today (or given day entry). */
 export function getOccurrenceDoneForDay(day: DayCompletion | undefined, habit: Habit): number {
   const n = getDailyOccurrenceTotal(habit);
