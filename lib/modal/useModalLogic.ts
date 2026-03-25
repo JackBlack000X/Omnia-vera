@@ -1009,6 +1009,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
               const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as NonNullable<Habit['schedule']>;
+              schedule.daysOfWeek = daysOfWeek;
               schedule.monthDays = undefined;
               schedule.yearMonth = undefined;
               schedule.yearDay = undefined;
