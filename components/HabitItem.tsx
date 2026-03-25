@@ -398,7 +398,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
           <View
             style={[
               styles.check,
-              isWhiteBg ? { borderColor: 'rgba(0,0,0,0.25)' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
+              isWhiteBg ? { borderColor: 'rgba(0,0,0,0.5)' } : { borderColor: 'rgba(255, 255, 255, 0.8)' },
               !selectionMode && lineStrikeDone && styles.checkDone,
               selectionMode && isSelected && (isWhiteBg ? styles.checkSelectedWhite : styles.checkSelected),
               activeTheme === 'futuristic' && {
