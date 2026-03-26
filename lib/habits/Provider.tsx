@@ -62,7 +62,7 @@ function generateUUID(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
-function getLogicalDayKey(date: Date | string, dayResetTime: string): string {
+export function getLogicalDayKey(date: Date | string, dayResetTime: string): string {
   if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
 
   const d = typeof date === 'string' ? parseYmdSafe(date) : date;
@@ -111,12 +111,14 @@ export type HabitsContextType = {
   setTimeOverrideRange: (id: string, date: string, startTime: string | null, endTime: string | null) => void;
   /** Override orario per uno slot (Oggi, N>1 occorrenze) */
   setOccurrenceSlotTimeRange: (habitId: string, ymd: string, slotIndex: number, start: string, end: string) => void;
+  /** Salva override per più slot in un colpo solo (usato quando si trascina uno slot e si congelano gli altri) */
+  setMultipleOccurrenceSlotOverrides: (habitId: string, ymd: string, slots: Record<number, { start: string; end: string }>) => void;
   /** Imposta distacco minuti e rimuove override slot per quel giorno (es. conferma menu con 2 occorrenze) */
   setOccurrenceGapMinutesAndClearDayOverrides: (habitId: string, gapMinutes: number, ymd: string) => void;
   updateScheduleTime: (id: string, hhmm: string | null) => void;
   updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   updateSchedule: (id: string, daysOfWeek: number[], hhmm: string | null) => void;
-  setDayResetTime: (time: string) => Promise<void>;
+  setDayResetTime: (timeOrFn: string | ((prev: string) => string)) => Promise<void>;
   setHabits: React.Dispatch<React.SetStateAction<Habit[]>>;
   resetStorage: () => Promise<void>;
   /** Persist completion for a day (used by calendar). Uses same "habits for that day" as tasks tab. */
@@ -816,6 +818,15 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const setMultipleOccurrenceSlotOverrides = useCallback((habitId: string, ymd: string, slots: Record<number, { start: string; end: string }>) => {
+    setHabits(prev => prev.map(h => {
+      if (h.id !== habitId) return h;
+      const day = { ...(h.occurrenceSlotOverrides?.[ymd] ?? {}), ...slots };
+      const next = { ...(h.occurrenceSlotOverrides ?? {}), [ymd]: day };
+      return { ...h, occurrenceSlotOverrides: next };
+    }));
+  }, []);
+
   const setOccurrenceGapMinutesAndClearDayOverrides = useCallback((habitId: string, gapMinutes: number, ymd: string) => {
     setHabits(prev => prev.map(h => {
       if (h.id !== habitId) return h;
@@ -922,18 +933,23 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const setDayResetTime = useCallback(async (time: string) => {
-    // Nuova configurazione scelta dall'utente
-    const newTime = time;
+  const setDayResetTime = useCallback(async (timeOrFn: string | ((prev: string) => string)) => {
+    // Get latest value from ref to be synchronous and accurate during rapid calls
+    const oldTime = dayResetConfiguredRef.current;
+    
+    let newTime: string;
+    if (typeof timeOrFn === 'function') {
+      newTime = timeOrFn(oldTime);
+    } else {
+      newTime = timeOrFn;
+    }
+
     const [nh, nm] = newTime.split(':').map(Number);
     const newMinutes = nh * 60 + nm;
 
-    // Reset effettivo attuale (usato per il giorno logico corrente)
-    const oldTime = dayResetTimeRef.current;
     const [oh, om] = oldTime.split(':').map(Number);
     const oldMinutes = oh * 60 + om;
 
-    // Ora attuale in minuti (timezone app)
     const now = new Date();
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
@@ -942,26 +958,17 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     const curM = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
     const currentMinutes = curH * 60 + curM;
 
-    // Applica le regole descritte dall'utente:
-    // - Se siamo PRIMA del vecchio reset:
-    //   - Se il nuovo orario è dopo adesso -> vale già per oggi.
-    //   - Se il nuovo orario è prima di adesso -> vale solo da domani.
-    // - Se siamo DOPO il vecchio reset: il nuovo orario vale solo da domani.
-    let effectiveForToday = oldTime;
+    let effectiveForToday = dayResetTimeRef.current;
     if (currentMinutes < oldMinutes) {
       if (newMinutes > currentMinutes) {
-        // Caso tipo: vecchio 22:00, ora 20:00, nuovo 21:00 -> oggi si chiude alle 21:00
         effectiveForToday = newTime;
       } else {
-        // Caso tipo: vecchio 22:00, ora 20:00, nuovo 19:00 -> oggi resta 22:00
         effectiveForToday = oldTime;
       }
     } else {
-      // Vecchio reset già passato (giorno chiuso): nuovo vale dal prossimo giorno
       effectiveForToday = oldTime;
     }
 
-    // Aggiorna configurazione e reset effettivo
     setDayResetTimeState(newTime);
     dayResetConfiguredRef.current = newTime;
     dayResetTimeRef.current = effectiveForToday;
@@ -1053,11 +1060,11 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded,
     addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
-    setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
+    setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
     markDateReviewed, saveDayReview, updateHabitAskReview,
     trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople,
     tables, addTable, updateTable, deleteTable,
-  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
+  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

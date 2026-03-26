@@ -9,6 +9,8 @@ export type HabitSchedule = {
   monthlyTimes?: Record<number, { start: string | null; end: string | null }>; // per-day-of-month times
   weeklyOccurrences?: Record<number, number>; // per-dow occurrence count
   monthlyOccurrences?: Record<number, number>; // per-day-of-month occurrence count
+  weeklyGaps?: Record<number, number>; // per-dow gap between occurrences
+  monthlyGaps?: Record<number, number>; // per-day-of-month gap between occurrences
   repeatEndDate?: string | null; // 'YYYY-MM-DD' — last day of recurrence (inclusive)
   repeatStartDate?: string | null; // 'YYYY-MM-DD' — first day of recurrence (inclusive)
 };

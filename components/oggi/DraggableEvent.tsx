@@ -130,7 +130,7 @@ function DraggableEvent({
 
   const panResponder = useMemo(() => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => !isTravel,
+      onStartShouldSetPanResponder: () => !isTravel && !dragDisabled,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
         if (isTravel) return false;
         if (dragDisabled) return false;
@@ -364,13 +364,26 @@ function DraggableEvent({
 
         const originalStartM = toMinutes(event.startTime);
         const originalEndM = toMinutes(event.endTime);
+        const resetBridgeM = 1440; // logical reset is always at 1440 in our coordinate system
+        const startM = clampedMinutes;
         const duration = originalEndM - originalStartM;
-        const newEndMinutes = Math.min(1440, clampedMinutes + duration);
+        const endM = startM + duration;
 
-        const newStartTime = minutesToTime(clampedMinutes);
-        const newEndTime = minutesToTime(newEndMinutes);
+        let finalClampedStart = clampedMinutes;
+        
+        if (startM < resetBridgeM && endM > resetBridgeM) {
+           // Bridging reset boundary. Enforce 5 min on each side.
+           if (startM > resetBridgeM - 5) {
+              finalClampedStart = resetBridgeM - 5;
+           } else if (endM < resetBridgeM + 5) {
+              finalClampedStart = resetBridgeM + 5 - duration;
+           }
+        }
 
-        setPendingEventPositions((prev) => ({ ...prev, [event.id]: clampedMinutes }));
+        const finalStartTime = minutesToTime(finalClampedStart);
+        const finalEndTime = minutesToTime(finalClampedStart + duration);
+
+        setPendingEventPositions((prev) => ({ ...prev, [event.id]: finalClampedStart }));
 
         if (hasMovedRef.current) {
            setRecentlyMovedEventId(event.id);
@@ -381,8 +394,8 @@ function DraggableEvent({
         const isRepeating = event.habitFreq && event.habitFreq !== 'single';
 
         if (hasMovedRef.current && event.multiOccurrenceSlot && onOccurrenceSlotDragEnd) {
-          onOccurrenceSlotDragEnd({ event, ymd: selectedYmd, newStartTime, newEndTime });
-        } else if (hasMovedRef.current && isRepeating && (newStartTime !== event.startTime || newEndTime !== event.endTime)) {
+          onOccurrenceSlotDragEnd({ event, ymd: selectedYmd, newStartTime: finalStartTime, newEndTime: finalEndTime });
+        } else if (hasMovedRef.current && isRepeating && (finalStartTime !== event.startTime || finalEndTime !== event.endTime)) {
           Alert.alert(
             'Modifica attività ricorrente',
             'Vuoi modificare solo questa occorrenza o anche tutte quelle successive?',
@@ -396,16 +409,16 @@ function DraggableEvent({
                 });
               }},
               { text: 'Solo oggi', onPress: () => {
-                setTimeOverrideRange(resolveOggiHabitId(event), selectedYmd, newStartTime, newEndTime);
+                setTimeOverrideRange(resolveOggiHabitId(event), selectedYmd, finalStartTime, finalEndTime);
               }},
               { text: 'Da oggi in poi', onPress: () => {
-                updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, newStartTime, newEndTime);
+                updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, finalStartTime, finalEndTime);
               }}
             ]
           );
         } else if (hasMovedRef.current) {
           // Single task or no time change (just reorder)
-          updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, newStartTime, newEndTime);
+          updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, finalStartTime, finalEndTime);
         }
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

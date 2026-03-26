@@ -8,8 +8,8 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 
-export function useModalLogic(params: { type: string; id?: string; folder?: string; scrollRef: React.RefObject<ScrollView | null> }) {
-  const { type, id, folder, scrollRef } = params;
+export function useModalLogic(params: { type: string; id?: string; folder?: string; ymd?: string; scrollRef: React.RefObject<ScrollView | null> }) {
+  const { type, id, folder, ymd, scrollRef } = params;
   const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
   const router = useRouter();
   const existing = useMemo(() => habits.find(h => h.id === id), [habits, id]);
@@ -25,7 +25,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   }, [existing?.tipo]);
 
   const inferredExistingTipo: 'task' | 'abitudine' | 'evento' | 'viaggio' = (existing?.tipo ?? 'task');
-  const todayForInit = useMemo(() => new Date(), []);
+  const todayForInit = useMemo(() => (ymd ? new Date(ymd + 'T00:00:00') : new Date()), [ymd]);
   const todayYmdForInit = useMemo(() => getDay(todayForInit), [getDay, todayForInit]);
   const todayWeekdayForInit = useMemo(() => todayForInit.getDay(), [todayForInit]);
   const todayDayOfMonthForInit = useMemo(() => todayForInit.getDate(), [todayForInit]);
@@ -239,7 +239,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
     return base;
   });
-  const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(monthDays[0] ?? null);
+  const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(() => {
+    if (monthDays.includes(todayDayOfMonthForInit)) return todayDayOfMonthForInit;
+    return monthDays[0] ?? null;
+  });
   // For single tasks, get date from timeOverrides (YYYY-MM-DD keys); for recurring from repeatStartDate; for annual from schedule
   const initialSingleDate = useMemo(() => {
     const startYmd = existing?.schedule?.repeatStartDate;
@@ -320,13 +323,77 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
   const [startMin, setStartMin] = useState<number>(hhmmToMinutes(initialStart ?? '08:00') ?? 8 * 60);
   const [endMin, setEndMin] = useState<number | null>(hhmmToMinutes(initialEnd) ?? null);
-  const [dailyOccurrences, setDailyOccurrences] = useState(() =>
-    Math.min(30, Math.max(1, Math.floor(existing?.dailyOccurrences ?? 1))));
+  const [dailyOccurrences, setDailyOccurrences] = useState(() => {
+    if (existing) {
+      if ((existing.schedule?.daysOfWeek?.length ?? 0) > 0) {
+        const firstDay = existing.schedule!.daysOfWeek![0];
+        const wo = existing.schedule?.weeklyOccurrences;
+        if (wo && wo[firstDay] !== undefined) return Math.min(30, Math.max(1, Math.floor(wo[firstDay])));
+      }
+      if ((existing.schedule?.monthDays?.length ?? 0) > 0) {
+        const firstDay = existing.schedule!.monthDays![0];
+        const mo = existing.schedule?.monthlyOccurrences;
+        if (mo && mo[firstDay] !== undefined) return Math.min(30, Math.max(1, Math.floor(mo[firstDay])));
+      }
+    }
+    return Math.min(30, Math.max(1, Math.floor(existing?.dailyOccurrences ?? 1)));
+  });
   const [occurrenceGapMinutes, setOccurrenceGapMinutes] = useState(() =>
     Math.max(5, Math.floor(existing?.occurrenceGapMinutes ?? 5)));
+
+  // Per-day occurrence gaps (weekly)
+  const [perDayGaps, setPerDayGaps] = useState<Record<number, number>>(() => {
+    const base: Record<number, number> = {};
+    const wg = existing?.schedule?.weeklyGaps;
+    if (wg) {
+      Object.entries(wg).forEach(([k, v]) => { base[Number(k)] = Math.max(5, Math.floor(v)); });
+    }
+    return base;
+  });
+
+  // Per-day occurrence gaps (monthly)
+  const [perMonthGaps, setPerMonthGaps] = useState<Record<number, number>>(() => {
+    const base: Record<number, number> = {};
+    const mg = existing?.schedule?.monthlyGaps;
+    if (mg) {
+      Object.entries(mg).forEach(([k, v]) => { base[Number(k)] = Math.max(5, Math.floor(v)); });
+    }
+    return base;
+  });
+
   useEffect(() => {
-    setDailyOccurrences(Math.min(30, Math.max(1, Math.floor(existing?.dailyOccurrences ?? 1))));
+    let newDailyOccurrences = Math.min(30, Math.max(1, Math.floor(existing?.dailyOccurrences ?? 1)));
+    if (existing) {
+      if ((existing.schedule?.daysOfWeek?.length ?? 0) > 0) {
+        const firstDay = existing.schedule!.daysOfWeek![0];
+        const wo = existing.schedule?.weeklyOccurrences;
+        if (wo && wo[firstDay] !== undefined) newDailyOccurrences = Math.min(30, Math.max(1, Math.floor(wo[firstDay])));
+      } else if ((existing.schedule?.monthDays?.length ?? 0) > 0) {
+        const firstDay = existing.schedule!.monthDays![0];
+        const mo = existing.schedule?.monthlyOccurrences;
+        if (mo && mo[firstDay] !== undefined) newDailyOccurrences = Math.min(30, Math.max(1, Math.floor(mo[firstDay])));
+      }
+    }
+    setDailyOccurrences(newDailyOccurrences);
     setOccurrenceGapMinutes(Math.max(5, Math.floor(existing?.occurrenceGapMinutes ?? 5)));
+    
+    const wg = existing?.schedule?.weeklyGaps;
+    if (wg) {
+      const pGaps: Record<number, number> = {};
+      Object.entries(wg).forEach(([k, v]) => { pGaps[Number(k)] = Math.max(5, Math.floor(v)); });
+      setPerDayGaps(pGaps);
+    } else {
+      setPerDayGaps({});
+    }
+
+    const mg = existing?.schedule?.monthlyGaps;
+    if (mg) {
+      const mGaps: Record<number, number> = {};
+      Object.entries(mg).forEach(([k, v]) => { mGaps[Number(k)] = Math.max(5, Math.floor(v)); });
+      setPerMonthGaps(mGaps);
+    } else {
+      setPerMonthGaps({});
+    }
   }, [existing?.id]);
   // Per-day weekly times (minutes)
   const [perDayTimes, setPerDayTimes] = useState<Record<number, { startMin: number; endMin: number | null }>>(() => {
@@ -343,6 +410,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     return base;
   });
   const [selectedDow, setSelectedDow] = useState<number | null>(() => {
+    if (initialDays.includes(todayWeekdayForInit)) return todayWeekdayForInit;
     const mondayFirst = [1, 2, 3, 4, 5, 6, 0];
     const pick = mondayFirst.find(d => initialDays.includes(d));
     return pick !== undefined ? pick : (initialDays[0] ?? null);
@@ -351,14 +419,29 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [perDayOccurrences, setPerDayOccurrences] = useState<Record<number, number>>(() => {
     const base: Record<number, number> = {};
     const wo = existing?.schedule?.weeklyOccurrences;
-    if (wo) Object.entries(wo).forEach(([k, v]) => { base[Number(k)] = v; });
+    if (wo) {
+      // Find unified value
+      let unified = existing?.dailyOccurrences ?? 1;
+      const days = existing?.schedule?.daysOfWeek ?? [];
+      if (days.length > 0 && wo[days[0]] !== undefined) {
+        unified = wo[days[0]];
+      }
+      Object.entries(wo).forEach(([k, v]) => { base[Number(k)] = unified; });
+    }
     return base;
   });
   // Per-day occurrence counts (monthly)
   const [perMonthOccurrences, setPerMonthOccurrences] = useState<Record<number, number>>(() => {
     const base: Record<number, number> = {};
     const mo = existing?.schedule?.monthlyOccurrences;
-    if (mo) Object.entries(mo).forEach(([k, v]) => { base[Number(k)] = v; });
+    if (mo) {
+      let unified = existing?.dailyOccurrences ?? 1;
+      const days = existing?.schedule?.monthDays ?? [];
+      if (days.length > 0 && mo[days[0]] !== undefined) {
+        unified = mo[days[0]];
+      }
+      Object.entries(mo).forEach(([k, v]) => { base[Number(k)] = unified; });
+    }
     return base;
   });
 
@@ -493,44 +576,101 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
   };
 
-  const currentDailyOccurrences = usePerDayOccWeekly && selectedDow !== null
-    ? (perDayOccurrences[selectedDow] ?? dailyOccurrences)
-    : usePerDayOccMonthly && selectedMonthDay !== null
-      ? (perMonthOccurrences[selectedMonthDay] ?? dailyOccurrences)
-      : dailyOccurrences;
+  const currentDailyOccurrences = dailyOccurrences;
   const updateCurrentDailyOccurrences = (next: number) => {
-    if (usePerDayOccWeekly && selectedDow !== null) {
-      if (isFirstDow) {
-        setPerDayOccurrences(prev => {
-          const newP: typeof prev = {};
-          for (const d of daysOfWeek) {
-            newP[d] = d === selectedDow || !customizedDows.has(d) ? next : (prev[d] ?? dailyOccurrences);
-          }
-          return newP;
-        });
-        setDailyOccurrences(next);
-      } else {
-        setCustomizedDows(prev => new Set([...prev, selectedDow]));
-        setPerDayOccurrences(prev => ({ ...prev, [selectedDow]: next }));
-      }
-    } else if (usePerDayOccMonthly && selectedMonthDay !== null) {
-      if (isFirstMonthDay) {
-        setPerMonthOccurrences(prev => {
-          const newP: typeof prev = {};
-          for (const d of monthDays) {
-            newP[d] = d === selectedMonthDay || !customizedMonthDays.has(d) ? next : (prev[d] ?? dailyOccurrences);
-          }
-          return newP;
-        });
-        setDailyOccurrences(next);
-      } else {
-        setCustomizedMonthDays(prev => new Set([...prev, selectedMonthDay]));
-        setPerMonthOccurrences(prev => ({ ...prev, [selectedMonthDay]: next }));
-      }
-    } else {
-      setDailyOccurrences(next);
+    if (next > 1 && !occurrenceChainFitsLogicalDay(dayResetTime, currentStartMin, next, currentGapMinutes)) {
+      return;
     }
+    setDailyOccurrences(next);
+    setPerDayOccurrences(prev => {
+      const newP: typeof prev = {};
+      for (const d of daysOfWeek) {
+        newP[d] = next;
+      }
+      return newP;
+    });
+    setPerMonthOccurrences(prev => {
+      const newP: typeof prev = {};
+      for (const d of monthDays) {
+        newP[d] = next;
+      }
+      return newP;
+    });
   };
+
+  const currentGapMinutes = useMemo(() => {
+    if (freq === 'weekly' && selectedDow !== null) return perDayGaps[selectedDow] ?? occurrenceGapMinutes;
+    if (freq === 'monthly' && selectedMonthDay !== null) return perMonthGaps[selectedMonthDay] ?? occurrenceGapMinutes;
+    return occurrenceGapMinutes;
+  }, [freq, selectedDow, selectedMonthDay, perDayGaps, perMonthGaps, occurrenceGapMinutes]);
+
+  /**
+   * Analyzes occurrenceSlotOverrides for today to determine if occurrences
+   * have been manually moved (via drag), creating a non-uniform gap.
+   *
+   * Returns:
+   *  { kind: 'uniform', gap: number } – all consecutive gaps are the same (including n=2)
+   *  { kind: 'custom' }              – n>2 with at least two different gaps
+   *  { kind: 'none' }                – no slot overrides for today
+   */
+  const slotGapInfo = useMemo(() => {
+    if (!existing) return { kind: 'none' as const };
+    const n = getDailyOccurrenceTotal(existing);
+    if (n < 2) return { kind: 'none' as const };
+    const dayOv = existing.occurrenceSlotOverrides?.[todayYmdForInit];
+    if (!dayOv || Object.keys(dayOv).length === 0) return { kind: 'none' as const };
+    // Compute gaps between consecutive overridden slots
+    const gaps: number[] = [];
+    for (let i = 0; i < n - 1; i++) {
+      const a = dayOv[i];
+      const b = dayOv[i + 1];
+      if (!a || !b) return { kind: 'none' as const }; // not all slots overridden – ignore
+      const aMin = (parseInt(a.start.split(':')[0], 10) * 60) + parseInt(a.start.split(':')[1], 10);
+      const bMin = (parseInt(b.start.split(':')[0], 10) * 60) + parseInt(b.start.split(':')[1], 10);
+      gaps.push(bMin - aMin);
+    }
+    if (gaps.length === 0) return { kind: 'none' as const };
+    const firstGap = gaps[0];
+    const allSame = gaps.every(g => g === firstGap);
+    if (allSame) return { kind: 'uniform' as const, gap: Math.max(5, firstGap) };
+    return { kind: 'custom' as const };
+  }, [existing, todayYmdForInit]);
+
+  const updateCurrentGapMinutes = useCallback((valOrUpdater: number | ((prev: number) => number)) => {
+    const resolveGap = (prev: number) => {
+      let nextGap = typeof valOrUpdater === 'function' ? valOrUpdater(prev) : valOrUpdater;
+      nextGap = Math.max(5, nextGap);
+      if (currentDailyOccurrences > 1 && !occurrenceChainFitsLogicalDay(dayResetTime, currentStartMin, currentDailyOccurrences, nextGap)) {
+        return prev;
+      }
+      return nextGap;
+    };
+
+    // When the user manually edits the gap, clear dragged slot overrides for today
+    // so all occurrences revert to equal spacing from that gap.
+    if (existing && existing.occurrenceSlotOverrides?.[todayYmdForInit]) {
+      setHabits(prev => prev.map(h => {
+        if (h.id !== existing.id) return h;
+        const rest = { ...(h.occurrenceSlotOverrides ?? {}) };
+        delete rest[todayYmdForInit];
+        return { ...h, occurrenceSlotOverrides: Object.keys(rest).length ? rest : undefined };
+      }));
+    }
+
+    if (freq === 'weekly' && selectedDow !== null) {
+      setPerDayGaps(prev => ({
+        ...prev,
+        [selectedDow]: resolveGap(prev[selectedDow] ?? occurrenceGapMinutes)
+      }));
+    } else if (freq === 'monthly' && selectedMonthDay !== null) {
+      setPerMonthGaps(prev => ({
+        ...prev,
+        [selectedMonthDay]: resolveGap(prev[selectedMonthDay] ?? occurrenceGapMinutes)
+      }));
+    } else {
+      setOccurrenceGapMinutes(prev => resolveGap(prev));
+    }
+  }, [freq, selectedDow, selectedMonthDay, occurrenceGapMinutes, dayResetTime, currentStartMin, currentDailyOccurrences, existing, todayYmdForInit, setHabits]);
 
   // When editing an existing task, keep Task → Orario aligned with persisted data.
   // Important: include single-date overrides (including all-day marker '00:00'),
@@ -1026,13 +1166,16 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 }
                 schedule.time = null;
                 schedule.endTime = null;
-                // Persist per-day occurrences
+                // Persist per-day occurrences and gaps
                 schedule.weeklyOccurrences = {};
+                schedule.weeklyGaps = {};
                 for (const d of daysOfWeek) {
                   schedule.weeklyOccurrences[d] = perDayOccurrences[d] ?? occNForVal;
+                  schedule.weeklyGaps[d] = perDayGaps[d] ?? (Math.max(5, Math.floor(occurrenceGapMinutes)));
                 }
               } else {
                 schedule.weeklyOccurrences = undefined;
+                schedule.weeklyGaps = undefined;
               }
               schedule.monthlyOccurrences = undefined;
               return { ...patchHabitOccurrences(h), schedule };
@@ -1095,15 +1238,19 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 }
                 schedule.time = null;
                 schedule.endTime = null;
-                // Persist per-day occurrences
+                // Persist per-day occurrences and gaps
                 schedule.monthlyOccurrences = {};
+                schedule.monthlyGaps = {};
                 for (const d of monthDays) {
                   schedule.monthlyOccurrences[d] = perMonthOccurrences[d] ?? occNForVal;
+                  schedule.monthlyGaps[d] = perMonthGaps[d] ?? (Math.max(5, Math.floor(occurrenceGapMinutes)));
                 }
               } else {
                 schedule.monthlyOccurrences = undefined;
+                schedule.monthlyGaps = undefined;
               }
               schedule.weeklyOccurrences = undefined;
+              schedule.weeklyGaps = undefined;
               return { ...patchHabitOccurrences(h), schedule };
             }));
             // Clear one-off overrides for recurring monthly tasks
@@ -1686,6 +1833,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     currentDailyOccurrences,
     updateCurrentDailyOccurrences,
     occurrenceGapMinutes,
+    currentGapMinutes,
+    slotGapInfo,
     setOccurrenceGapMinutes,
+    updateCurrentGapMinutes,
   };
 }

@@ -18,6 +18,7 @@ export type OggiEvent = {
   multiOccurrenceSlot?: boolean;
   occurrenceSlotIndex?: number;
   occurrenceTotal?: number;
+  dragDisabled?: boolean;
 };
 
 const OCC_ID_MARKER = '::occ::';

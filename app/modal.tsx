@@ -43,6 +43,7 @@ function HoldableStepperButton({ onPress, children }: HoldableStepperButtonProps
   };
 
   const handlePressIn = () => {
+    clearTimers();
     onPressRef.current();
     holdTimeoutRef.current = setTimeout(() => {
       intervalRef.current = setInterval(() => onPressRef.current(), HOLD_INTERVAL_MS);
@@ -371,12 +372,12 @@ function RepeatEndCustomPicker({
 
 // Modal multipurpose: type=new|rename|schedule|color
 export default function ModalScreen() {
-  const { type = 'new', id, folder } = useLocalSearchParams<{ type?: string; id?: string; folder?: string }>();
+  const { type = 'new', id, folder, ymd } = useLocalSearchParams<{ type?: string; id?: string; folder?: string; ymd?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const m = useModalLogic({ type, id, folder, scrollRef });
+  const m = useModalLogic({ type, id, folder, ymd, scrollRef });
   const [places, setPlaces] = React.useState<{ id: string; name: string }[]>([]);
   const [selectedPlaceId, setSelectedPlaceId] = React.useState<string | null>(m.locationRule?.placeId ?? null);
   const [locationStatus, setLocationStatus] = React.useState<LocationPermissionStatus>('none');
@@ -1848,47 +1849,64 @@ export default function ModalScreen() {
                         </View>
                       </View>
                     </View>
-                    {m.currentDailyOccurrences > 1 && (
-                      <View style={styles.timeSection}>
-                        <Text style={styles.timeSectionTitle}>Distacco</Text>
-                        <View style={styles.timePicker}>
-                          <View style={styles.timeControls}>
-                            <Text style={styles.timeLabel}>Ore</Text>
-                            <View style={styles.timeStepperRow}>
-                              <HoldableStepperButton onPress={() => m.setOccurrenceGapMinutes((g) => Math.max(5, Math.min(24 * 60, g - 60)))}>−</HoldableStepperButton>
-                              <Text style={styles.timeValue}>{Math.floor(m.occurrenceGapMinutes / 60)}</Text>
-                              <HoldableStepperButton onPress={() => m.setOccurrenceGapMinutes((g) => Math.max(5, Math.min(24 * 60, g + 60)))}>+</HoldableStepperButton>
+                    {m.currentDailyOccurrences > 1 && (() => {
+                        const sgi = m.slotGapInfo;
+                        const displayGap = sgi.kind === 'uniform' ? sgi.gap : m.currentGapMinutes;
+                        const isCustom = sgi.kind === 'custom';
+                        return (
+                          <View style={styles.timeSection}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <Text style={styles.timeSectionTitle}>Distacco</Text>
+                              {isCustom && (
+                                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.18)', borderWidth: 1, borderColor: '#f59e0b' }}>
+                                  <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>Custom</Text>
+                                </View>
+                              )}
                             </View>
-                          </View>
-                          <View style={styles.timeControls}>
-                            <Text style={styles.timeLabel}>Min</Text>
-                            <View style={styles.timeStepperRow}>
-                              <HoldableStepperButton onPress={() => m.setOccurrenceGapMinutes((g) => Math.max(5, Math.min(24 * 60, g - 5)))}>−</HoldableStepperButton>
-                              <Text style={styles.timeValue}>{m.occurrenceGapMinutes % 60}</Text>
-                              <HoldableStepperButton onPress={() => m.setOccurrenceGapMinutes((g) => Math.max(5, Math.min(24 * 60, g + 5)))}>+</HoldableStepperButton>
+                            <View style={styles.timePicker}>
+                              <View style={styles.timeControls}>
+                                <Text style={styles.timeLabel}>Ore</Text>
+                                <View style={styles.timeStepperRow}>
+                                  <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g - 60)))}>−</HoldableStepperButton>
+                                  <Text style={styles.timeValue}>{Math.floor(displayGap / 60)}</Text>
+                                  <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g + 60)))}>+</HoldableStepperButton>
+                                </View>
+                              </View>
+                              <View style={styles.timeControls}>
+                                <Text style={styles.timeLabel}>Min</Text>
+                                <View style={styles.timeStepperRow}>
+                                  <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g - 5)))}>−</HoldableStepperButton>
+                                  <Text style={styles.timeValue}>{displayGap % 60}</Text>
+                                  <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g + 5)))}>+</HoldableStepperButton>
+                                </View>
+                              </View>
                             </View>
+                            {isCustom && (
+                              <Text style={[styles.subtle, { marginTop: 4, textAlign: 'center', fontSize: 11, color: '#f59e0b' }]}>
+                                Modifica per reimpostare un distacco uguale per tutte
+                              </Text>
+                            )}
+                            {(() => {
+                              const sM = m.currentStartMin;
+                              const eM = m.currentEndMin ?? (sM + 60);
+                              const dur = Math.max(5, eM - sM);
+                              const gap = Math.max(5, displayGap);
+                              const slots: string[] = [];
+                              for (let i = 1; i < m.currentDailyOccurrences; i++) {
+                                const slotS = sM + i * gap;
+                                if (slotS >= 24 * 60) break;
+                                const slotE = Math.min(24 * 60, slotS + dur);
+                                slots.push(`${minutesToHhmmSafe(slotS)}–${minutesToHhmmSafe(slotE)}`);
+                              }
+                              return (
+                                <Text style={[styles.subtle, { marginTop: 6, textAlign: 'center', fontSize: 11 }]}>
+                                  {slots.join('  ·  ')}
+                                </Text>
+                              );
+                            })()}
                           </View>
-                        </View>
-                        {(() => {
-                          const sM = m.currentStartMin;
-                          const eM = m.currentEndMin ?? (sM + 60);
-                          const dur = Math.max(5, eM - sM);
-                          const gap = Math.max(5, m.occurrenceGapMinutes);
-                          const slots: string[] = [];
-                          for (let i = 1; i < m.currentDailyOccurrences; i++) {
-                            const slotS = sM + i * gap;
-                            if (slotS >= 24 * 60) break;
-                            const slotE = Math.min(24 * 60, slotS + dur);
-                            slots.push(`${minutesToHhmmSafe(slotS)}–${minutesToHhmmSafe(slotE)}`);
-                          }
-                          return (
-                            <Text style={[styles.subtle, { marginTop: 6, textAlign: 'center', fontSize: 11 }]}>
-                              {slots.join('  ·  ')}
-                            </Text>
-                          );
-                        })()}
-                      </View>
-                    )}
+                        );
+                      })()}
                   </View>
                   <Text style={[styles.subtle, { marginTop: 8, textAlign: 'center', fontSize: 12 }]}>
                     La prima occorrenza usa l’orario di inizio sopra; le altre si calcolano col distacco, senza uscire dalla giornata logica.

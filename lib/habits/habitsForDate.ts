@@ -57,7 +57,7 @@ function spansReset(h: Habit, ymd: string, resetMin: number): boolean {
 }
 
 /** Returns true if the habit appears on ymd according to schedule/override rules only */
-function appearsOnDateRaw(h: Habit, ymd: string): boolean {
+export function appearsOnDateRaw(h: Habit, ymd: string): boolean {
   const { weekday, dayOfMonth, monthIndex } = datePartsFromYmd(ymd);
   const hasOverrideForDay = !!h.timeOverrides?.[ymd];
   if (h.createdAt && ymd < h.createdAt && !hasOverrideForDay) return false;
@@ -100,22 +100,58 @@ function appearsOnDateRaw(h: Habit, ymd: string): boolean {
  * When dayResetTime is provided (and not '00:00'), tasks that start before the reset
  * and end after the reset on day D are excluded from D and included on D+1 instead.
  */
+/**
+ * Returns habits that "appear" on the given logical date.
+ * A logical day starting at dayResetTime (e.g., 06:00) includes:
+ * 1. Tasks scheduled for YMD that start AT OR AFTER the reset.
+ * 2. Tasks scheduled for YMD+1 that start BEFORE the reset.
+ * 3. All-day tasks scheduled for YMD.
+ */
 export function getHabitsAppearingOnDate(habits: Habit[], ymd: string, dayResetTime?: string): Habit[] {
   const resetMin = dayResetTime && dayResetTime !== '00:00' ? toMinutes(dayResetTime) : 0;
-  const prev = prevYmd(ymd);
+  if (resetMin === 0) {
+    return habits.filter((h) => appearsOnDateRaw(h, ymd));
+  }
 
+  const next = nextYmd(ymd);
   const result: Habit[] = [];
 
   for (const h of habits) {
+    // Check if it's an all-day task for this logical day
+    const isAllDayForYmd = appearsOnDateRaw(h, ymd) && (() => {
+      const { startMin, endMin } = getTaskTimesForDate(h, ymd);
+      return startMin === null && endMin === null;
+    })();
+
+    if (isAllDayForYmd) {
+      result.push(h);
+      continue;
+    }
+
+    // Check if it starts on YMD after or at reset
     if (appearsOnDateRaw(h, ymd)) {
-      if (resetMin > 0 && spansReset(h, ymd, resetMin)) {
+      const { startMin } = getTaskTimesForDate(h, ymd);
+      if (startMin !== null && startMin >= resetMin) {
+        result.push(h);
         continue;
       }
-      result.push(h);
-    } else if (resetMin > 0 && h.tipo === 'task' && appearsOnDateRaw(h, prev) && spansReset(h, prev, resetMin)) {
-      result.push(h);
+    }
+
+    // Check if it starts on YMD+1 before reset
+    if (appearsOnDateRaw(h, next)) {
+      const { startMin } = getTaskTimesForDate(h, next);
+      if (startMin !== null && startMin < resetMin) {
+        result.push(h);
+        continue;
+      }
     }
   }
 
   return result;
+}
+
+function nextYmd(ymd: string): string {
+  const d = new Date(ymd + 'T12:00:00.000Z');
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }

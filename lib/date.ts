@@ -74,3 +74,13 @@ export function addMonths(date: Date, months: number): Date {
   result.setMonth(result.getMonth() + months);
   return result;
 }
+
+export function parseYmdSafe(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const result = new Date();
+  result.setFullYear(y);
+  result.setMonth(m - 1);
+  result.setDate(d);
+  result.setHours(12, 0, 0, 0); // Noon UTC to avoid TZ issues
+  return result;
+}
