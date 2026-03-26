@@ -30,6 +30,43 @@ function pruneHistory(history: HabitsState['history']): HabitsState['history'] {
   return pruned;
 }
 
+function mergeDayCompletionEntries(
+  targetDate: string,
+  target: HabitsState['history'][string] | undefined,
+  source: HabitsState['history'][string] | undefined,
+): HabitsState['history'][string] | undefined {
+  if (!target && !source) return undefined;
+  if (!target && source) return { ...source, date: targetDate };
+  if (target && !source) return target;
+
+  const targetEntry = target!;
+  const sourceEntry = source!;
+  const mergedCompleted: Record<string, boolean> = {
+    ...targetEntry.completedByHabitId,
+    ...sourceEntry.completedByHabitId,
+  };
+  const mergedOccurrenceCounts = {
+    ...(targetEntry.occurrenceDoneCountByHabitId ?? {}),
+    ...(sourceEntry.occurrenceDoneCountByHabitId ?? {}),
+  };
+  const mergedRatings = {
+    ...(targetEntry.ratings ?? {}),
+    ...(sourceEntry.ratings ?? {}),
+  };
+  const mergedComments = {
+    ...(targetEntry.comments ?? {}),
+    ...(sourceEntry.comments ?? {}),
+  };
+
+  return {
+    date: targetDate,
+    completedByHabitId: mergedCompleted,
+    occurrenceDoneCountByHabitId: Object.keys(mergedOccurrenceCounts).length ? mergedOccurrenceCounts : undefined,
+    ratings: Object.keys(mergedRatings).length ? mergedRatings : undefined,
+    comments: Object.keys(mergedComments).length ? mergedComments : undefined,
+  };
+}
+
 function isOutOfSpaceError(error: unknown): boolean {
   const msg = (() => {
     if (typeof error === 'string') return error;
@@ -944,36 +981,37 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       newTime = timeOrFn;
     }
 
-    const [nh, nm] = newTime.split(':').map(Number);
-    const newMinutes = nh * 60 + nm;
-
-    const [oh, om] = oldTime.split(':').map(Number);
-    const oldMinutes = oh * 60 + om;
-
     const now = new Date();
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
-    }).formatToParts(now);
-    const curH = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
-    const curM = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
-    const currentMinutes = curH * 60 + curM;
-
-    let effectiveForToday = dayResetTimeRef.current;
-    if (currentMinutes < oldMinutes) {
-      if (newMinutes > currentMinutes) {
-        effectiveForToday = newTime;
-      } else {
-        effectiveForToday = oldTime;
-      }
-    } else {
-      effectiveForToday = oldTime;
-    }
+    const oldLogicalDay = getLogicalDayKey(now, oldTime);
+    const newLogicalDay = getLogicalDayKey(now, newTime);
+    const logicalDayChanged = oldLogicalDay !== newLogicalDay;
+    const effectiveForToday = newTime;
 
     setDayResetTimeState(newTime);
     dayResetConfiguredRef.current = newTime;
     dayResetTimeRef.current = effectiveForToday;
+    dateRef.current = newLogicalDay;
+    setLastResetDate(newLogicalDay);
 
-    await AsyncStorage.setItem(STORAGE_DAYRESETTIME, newTime);
+    if (logicalDayChanged) {
+      setHistory(prev => {
+        const source = prev[oldLogicalDay];
+        const target = prev[newLogicalDay];
+        const merged = mergeDayCompletionEntries(newLogicalDay, target, source);
+        if (!merged) return prev;
+
+        const next = { ...prev, [newLogicalDay]: merged };
+        if (oldLogicalDay !== newLogicalDay) {
+          delete next[oldLogicalDay];
+        }
+        return next;
+      });
+    }
+
+    await Promise.all([
+      AsyncStorage.setItem(STORAGE_DAYRESETTIME, newTime),
+      AsyncStorage.setItem(STORAGE_LASTRESET, newLogicalDay),
+    ]);
   }, []);
 
   const markDateReviewed = useCallback(async (ymd: string) => {
@@ -1074,5 +1112,3 @@ export function useHabits() {
   if (!ctx) throw new Error('useHabits must be used within HabitsProvider');
   return ctx;
 }
-
-

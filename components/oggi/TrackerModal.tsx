@@ -87,22 +87,6 @@ function parseYmdDisplay(ymd: string): string {
   }
 }
 
-function isLightColor(hex: string): boolean {
-  const c = (hex || '').toLowerCase();
-  if (!c.startsWith('#') || (c.length !== 7 && c.length !== 4)) return false;
-  let r: number, g: number, b: number;
-  if (c.length === 7) {
-    r = parseInt(c.slice(1, 3), 16);
-    g = parseInt(c.slice(3, 5), 16);
-    b = parseInt(c.slice(5, 7), 16);
-  } else {
-    r = parseInt(c[1] + c[1], 16);
-    g = parseInt(c[2] + c[2], 16);
-    b = parseInt(c[3] + c[3], 16);
-  }
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b >= 140;
-}
-
 function StarRating({ value, onChange }: { value: number | null; onChange: (v: number) => void }) {
   return (
     <View style={s.starRow}>
@@ -404,7 +388,7 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
                   <TimeControl label="Fine" value={endTime} onChange={setEndTime} maxMinutes={2879} />
                 </View>
                 {timeInvalid && (
-                  <Text style={s.errorText}>L'ora di fine deve essere dopo l'inizio</Text>
+                  <Text style={s.errorText}>L&apos;ora di fine deve essere dopo l&apos;inizio</Text>
                 )}
               </View>
 
