@@ -135,8 +135,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 }
                 return null;
               })
-              .filter((n): n is string => typeof n === 'string');
-            setAvailableFolders(names);
+              .filter((n): n is string => typeof n === 'string')
+              .map(n => n.trim())
+              .filter(Boolean);
+            const uniqueNames = Array.from(new Set(names));
+            setAvailableFolders(uniqueNames);
           }
         }
       } catch {}
