@@ -77,3 +77,29 @@ test('keeps the post-hour event start anchored to its hour line', () => {
   assert.equal(atFiveHours?.top! - lineTopAtFive, 2);
   assert.equal(atSixHours?.top! - lineTopAtSix, 2);
 });
+
+test('makes :50 visibly lower than :45 for short events in compressed views', () => {
+  const endsAt45 = calculateEventVerticalMetrics({
+    startM: 7 * 60 + 35,
+    endM: 7 * 60 + 45,
+    windowStartMin: 6 * 60,
+    windowEndMin: 22 * 60,
+    hourHeight: 30,
+    fiveHourReferenceHeight: 96,
+    visibleHours: 16,
+  });
+  const endsAt50 = calculateEventVerticalMetrics({
+    startM: 7 * 60 + 40,
+    endM: 7 * 60 + 50,
+    windowStartMin: 6 * 60,
+    windowEndMin: 22 * 60,
+    hourHeight: 30,
+    fiveHourReferenceHeight: 96,
+    visibleHours: 16,
+  });
+
+  assert.ok(endsAt45);
+  assert.ok(endsAt50);
+  assert.ok(endsAt50.top > endsAt45.top);
+  assert.ok(endsAt50.height > endsAt45.height);
+});

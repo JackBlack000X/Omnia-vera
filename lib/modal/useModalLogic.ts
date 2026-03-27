@@ -31,6 +31,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const todayYmdForInit = useMemo(() => getDay(todayForInit), [getDay, todayForInit]);
   const todayWeekdayForInit = useMemo(() => todayForInit.getDay(), [todayForInit]);
   const todayDayOfMonthForInit = useMemo(() => todayForInit.getDate(), [todayForInit]);
+  const firstOccurrenceSlotForToday = useMemo(() => {
+    const slot = existing?.occurrenceSlotOverrides?.[todayYmdForInit]?.[0];
+    if (!slot?.start) return null;
+    return { start: slot.start, end: slot.end ?? null };
+  }, [existing, todayYmdForInit]);
 
   const effectiveTimeForToday = useMemo(() => {
     if (!existing) return { isAllDayMarker: false, start: null as string | null, end: null as string | null };
@@ -45,10 +50,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
     const weekly = existing.schedule?.weeklyTimes?.[todayWeekdayForInit] ?? null;
     const monthlyT = existing.schedule?.monthlyTimes?.[todayDayOfMonthForInit] ?? null;
-    const start = overrideStart ?? (weekly?.start ?? monthlyT?.start ?? (existing.schedule?.time ?? null));
-    const end = overrideEnd ?? (weekly?.end ?? monthlyT?.end ?? (existing.schedule?.endTime ?? null));
+    const start = firstOccurrenceSlotForToday?.start ?? overrideStart ?? (weekly?.start ?? monthlyT?.start ?? (existing.schedule?.time ?? null));
+    const end = firstOccurrenceSlotForToday?.end ?? overrideEnd ?? (weekly?.end ?? monthlyT?.end ?? (existing.schedule?.endTime ?? null));
     return { isAllDayMarker, start, end };
-  }, [existing, todayYmdForInit, todayWeekdayForInit, todayDayOfMonthForInit]);
+  }, [existing, todayYmdForInit, todayWeekdayForInit, todayDayOfMonthForInit, firstOccurrenceSlotForToday]);
 
   // For tasks and habits: whether to show the schedule/time block.
   // New from Oggi = true. Existing: true if item has any schedule/override (including all-day '00:00') so edit shows Frequenza/Giorno/Orario.
@@ -1509,6 +1514,29 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       // Se c'è orario di inizio ma nessuna fine impostata, salva fine = inizio + 1 ora (come in Oggi)
       const rawEndMin = mode === 'timed' && endMin !== null ? endMin : (mode === 'timed' && time ? startMin + 60 : null);
       const endTime = rawEndMin != null ? minutesToHhmm(Math.min(rawEndMin, 24 * 60)) as string : null;
+      const shouldPersistEditedFirstOccurrence =
+        type === 'edit' &&
+        !!existing &&
+        !!ymd &&
+        mode === 'timed' &&
+        occNForVal > 1 &&
+        !!time &&
+        !!endTime;
+
+      if (shouldPersistEditedFirstOccurrence) {
+        setHabits(prev => prev.map(h => {
+          if (h.id !== existing!.id) return h;
+          const daySlots = { ...(h.occurrenceSlotOverrides?.[todayYmdForInit] ?? {}) };
+          daySlots[0] = { start: time!, end: endTime! };
+          return {
+            ...h,
+            occurrenceSlotOverrides: {
+              ...(h.occurrenceSlotOverrides ?? {}),
+              [todayYmdForInit]: daySlots,
+            },
+          };
+        }));
+      }
 
       if (freq === 'single') {
         // For single frequency, save as one-off override for selected date only (remove today if moved)
