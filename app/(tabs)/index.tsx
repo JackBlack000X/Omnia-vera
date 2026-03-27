@@ -15,11 +15,16 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, InteractionManager, LayoutAnimation, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { FadeInDown, Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TASKS_DRAG_AUTOSCROLL_THRESHOLD = 108;
 const TASKS_DRAG_AUTOSCROLL_SPEED = 72;
 const TASKS_DRAG_AUTOSCROLL_TOP_THRESHOLD = 28;
+const TASKS_DROP_COVER_DURATION_MS = 160;
+const IOS_TAB_BAR_BASE_HEIGHT = 49;
+const TASKS_TAB_BAR_EDGE_OVERLAP = 28;
+const TASKS_DROP_COVER_BOTTOM_LIFT = 65;
+const TASKS_DROP_COVER_DEBUG_LINES = false;
 const TASKS_DRAG_ANIMATION_CONFIG = {
   damping: 26,
   stiffness: 165,
@@ -73,6 +78,7 @@ const ChevronIcon = ({ isCollapsed, folderColor }: { isCollapsed: boolean; folde
 export default function IndexScreen() {
   const { activeTheme } = useAppTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { duplicateHabit } = useHabits();
   const [activeSection, setActiveSection] = useState<'tasks' | 'tabelle'>('tasks');
 
@@ -128,14 +134,15 @@ export default function IndexScreen() {
     dragDirectionSV,
     isMergeHoverAtReleaseRef,
     dragDirectionAtReleaseRef,
-    lastMergeHoverTimeRef,
-    mergeDirectionRef,
+    lastMergeHoverTimeSV,
+    mergeDirectionSV,
     overlapHoverStateRef,
     overlapHoverState,
     animVals,
     setAnimVals,
     folderHeightsSV,
     displayList,
+    folderMergeResetVersion,
     optionsMenuVisible,
     setOptionsMenuVisible,
     selectionMode,
@@ -176,6 +183,34 @@ export default function IndexScreen() {
   const [isDraggingFolder, setIsDraggingFolder] = React.useState(false);
   const dragInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.createInteractionHandle> | null>(null);
   const lastPlaceholderIndexRef = useRef<number | null>(null);
+  const dropCoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dropCoverData, setDropCoverData] = useState<SectionItem[] | null>(null);
+  const [taskScrollOffset, setTaskScrollOffset] = useState(0);
+  const taskCoverBottomInset = IOS_TAB_BAR_BASE_HEIGHT + insets.bottom;
+
+  React.useEffect(() => {
+    return () => {
+      if (dropCoverTimeoutRef.current != null) clearTimeout(dropCoverTimeoutRef.current);
+    };
+  }, []);
+
+  const clearDropCover = useCallback(() => {
+    if (dropCoverTimeoutRef.current != null) {
+      clearTimeout(dropCoverTimeoutRef.current);
+      dropCoverTimeoutRef.current = null;
+    }
+    setDropCoverData(null);
+  }, []);
+
+  const showDropCover = useCallback((data: SectionItem[]) => {
+    if (!data.length) return;
+    if (dropCoverTimeoutRef.current != null) clearTimeout(dropCoverTimeoutRef.current);
+    setDropCoverData(data);
+    dropCoverTimeoutRef.current = setTimeout(() => {
+      dropCoverTimeoutRef.current = null;
+      setDropCoverData(null);
+    }, TASKS_DROP_COVER_DURATION_MS);
+  }, []);
 
   // Never collapse the list data. Changing keys triggers the library's reset()
   // which freezes shared values, breaking multi-drag. Instead, we keep the same
@@ -225,6 +260,84 @@ export default function IndexScreen() {
     });
     return result;
   }, [multiDragAnchorId, selectedIds, selectionOrder, listData]);
+
+  const renderDropCoverTaskCard = useCallback((habit: Habit, key: string, inFolder = false) => {
+    return (
+      <View key={key} style={inFolder ? styles.taskInFolder : undefined}>
+        <HabitItem
+          habit={habit}
+          index={0}
+          isDone={Boolean(completedByHabitId[habit.id])}
+          onRename={handleSchedule}
+          onSchedule={handleSchedule}
+          onColor={handleSchedule}
+          shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
+          onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+          selectionMode={selectionMode}
+          isSelected={selectedIds.has(habit.id)}
+          onToggleSelect={toggleSelect}
+          onMenuOpen={handleMenuOpen}
+          onMenuClose={handleMenuClose}
+        />
+      </View>
+    );
+  }, [
+    activeFolder,
+    closingMenuId,
+    completedByHabitId,
+    handleMenuClose,
+    handleMenuOpen,
+    handleMoveToFolder,
+    handleSchedule,
+    selectedIds,
+    selectionMode,
+    toggleSelect,
+  ]);
+
+  const renderDropCoverItem = useCallback((item: SectionItem, index: number) => {
+    if (item.type === 'folderBlock') {
+      const folderMeta = folders.find(f => (f.name ?? '').trim() === (item.folderName ?? '').trim());
+      const folderColor = folderMeta?.color ?? THEME.textMuted;
+      const isCollapsed = collapsedFolderIds.has(item.folderId);
+      return (
+        <View key={`cover-folder-${item.folderId}`}>
+          <View style={styles.folderSeparator}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[styles.folderSeparatorText, { color: folderColor }]}>
+                  {typeof item.folderName === 'string' ? item.folderName : 'Tutte'}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View>
+                  <ChevronIcon isCollapsed={isCollapsed} folderColor={folderColor} />
+                </View>
+              </View>
+            </View>
+          </View>
+          {isCollapsed ? (
+            <View style={{ height: 4 }} />
+          ) : (
+            <View style={styles.folderDebugBoxWrap}>
+              <View style={styles.folderTaskGroup}>
+                {item.tasks.map((habit) => renderDropCoverTaskCard(habit, `cover-task-${habit.id}`, true))}
+              </View>
+            </View>
+          )}
+        </View>
+      );
+    }
+
+    if (item.type === 'multiDragBlock') {
+      return (
+        <View key={`cover-multi-${item.habits[0]?.id ?? index}`} style={styles.multiDragBlockRow}>
+          {item.habits.map((habit) => renderDropCoverTaskCard(habit, `cover-multi-task-${habit.id}`))}
+        </View>
+      );
+    }
+
+    return renderDropCoverTaskCard(item.habit, `cover-task-${item.habit.id}`);
+  }, [collapsedFolderIds, folders, renderDropCoverTaskCard]);
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
     if (item.type === 'folderBlock') {
@@ -455,44 +568,45 @@ export default function IndexScreen() {
       const canStartDrag =
         canDragTask &&
         (!selectionMode || selectedIds.size === 0 || selectedIds.has(item.habit.id));
+      const taskRowLayout = isPostDragRef.current ? undefined : Layout;
       return (
-        <Animated.View layout={Layout}>
-        <ScaleDecorator>
-          <Pressable
-            onLongPress={canStartDrag ? drag : undefined}
-            disabled={isActive || !canStartDrag}
-            delayLongPress={200}
-            onPress={() => {
-              if (selectionMode) return;
-              const id = item.habit.id;
-              const now = Date.now();
-              if (lastTapRef.current?.id === id && now - lastTapRef.current.time < 300) {
-                lastTapRef.current = null;
-                handleDuplicate(item.habit);
-              } else {
-                lastTapRef.current = { id, time: now };
-              }
-            }}
-          >
-            <HabitItem
-              habit={item.habit}
-              index={0}
-              isDone={Boolean(completedByHabitId[item.habit.id])}
-              onRename={handleSchedule}
-              onSchedule={handleSchedule}
-              onColor={handleSchedule}
-              shouldCloseMenu={closingMenuId === item.habit.id || closingMenuId === 'all'}
-              onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-              selectionMode={selectionMode}
-              isSelected={selectedIds.has(item.habit.id)}
-              onToggleSelect={toggleSelect}
+        <Animated.View layout={taskRowLayout}>
+          <ScaleDecorator>
+            <Pressable
               onLongPress={canStartDrag ? drag : undefined}
-              dragBadgeCount={isActive && draggingSelectionCount > 1 ? draggingSelectionCount : undefined}
-              onMenuOpen={handleMenuOpen}
-              onMenuClose={handleMenuClose}
-            />
-          </Pressable>
-        </ScaleDecorator>
+              disabled={isActive || !canStartDrag}
+              delayLongPress={200}
+              onPress={() => {
+                if (selectionMode) return;
+                const id = item.habit.id;
+                const now = Date.now();
+                if (lastTapRef.current?.id === id && now - lastTapRef.current.time < 300) {
+                  lastTapRef.current = null;
+                  handleDuplicate(item.habit);
+                } else {
+                  lastTapRef.current = { id, time: now };
+                }
+              }}
+            >
+              <HabitItem
+                habit={item.habit}
+                index={0}
+                isDone={Boolean(completedByHabitId[item.habit.id])}
+                onRename={handleSchedule}
+                onSchedule={handleSchedule}
+                onColor={handleSchedule}
+                shouldCloseMenu={closingMenuId === item.habit.id || closingMenuId === 'all'}
+                onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                selectionMode={selectionMode}
+                isSelected={selectedIds.has(item.habit.id)}
+                onToggleSelect={toggleSelect}
+                onLongPress={canStartDrag ? drag : undefined}
+                dragBadgeCount={isActive && draggingSelectionCount > 1 ? draggingSelectionCount : undefined}
+                onMenuOpen={handleMenuOpen}
+                onMenuClose={handleMenuClose}
+              />
+            </Pressable>
+          </ScaleDecorator>
         </Animated.View>
       );
     }
@@ -521,6 +635,7 @@ export default function IndexScreen() {
     listData,
     overlapHoverState,
     handleDuplicate,
+    isPostDragRef,
   ]);
 
   return (
@@ -770,83 +885,136 @@ export default function IndexScreen() {
         </View>
       ) : (
         <View style={styles.listWrap}>
-          <DraggableFlatList<SectionItem>
-            data={listData}
-            keyExtractor={(item) =>
-              item.type === 'folderBlock' ? `folder-${item.folderId}` :
-              item.type === 'multiDragBlock' ? `task-${item.habits[0].id}` :
-              `task-${item.habit.id}`}
-            renderItem={renderSectionItem}
-            extraData={extraDataForDrag}
-            contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
-            style={[activeTheme === 'futuristic' && { marginHorizontal: -16 }]}
-            containerStyle={styles.dragListContainer}
-            showsVerticalScrollIndicator={false}
-            dragItemOverflow
-            autoscrollThreshold={TASKS_DRAG_AUTOSCROLL_THRESHOLD}
-            autoscrollSpeed={TASKS_DRAG_AUTOSCROLL_SPEED}
-            // @ts-ignore — patched prop for separate top threshold
-            autoscrollTopThreshold={TASKS_DRAG_AUTOSCROLL_TOP_THRESHOLD}
-            windowSize={60}
-            initialNumToRender={12}
-            removeClippedSubviews={false}
-            animationConfig={TASKS_DRAG_ANIMATION_CONFIG}
-            onAnimValInit={(v) => setAnimVals(v)}
-            // @ts-ignore — patched prop: override cell measurements inside drag()
-            onCellMeasureOverride={(index: number, _key: string, cellData: any, _cellDataMap: Map<string, any>) => {
-              // When the anchor task renders the multi-drag block, the library
-              // may have a stale single-task measurement (83px). Override with
-              // the actual block size. The cell's offset from cellDataRef is
-              // still correct since the key didn't change.
-              const item = listData[index];
-              if (item?.type === 'task' && item.habit.id === multiDragAnchorId && multiDragHabits.length > 1) {
-                return { size: multiDragHabits.length * 83 };
-              }
-              return null;
-            }}
-            onDragBegin={(idx) => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-              lastPlaceholderIndexRef.current = idx;
-              isDraggingRef.current = true;
-              setIsDraggingFolder(listData[idx]?.type === 'folderBlock');
-              dragInteractionHandleRef.current = InteractionManager.createInteractionHandle();
-              isMergeHoverSV.value = false;
-              dragDirectionSV.value = 0;
-              isPostDragRef.current = false;
-              lastMergeHoverTimeRef.current = 0;
-              mergeDirectionRef.current = 0;
-              const list = displayList ?? sectionedList;
-              preDragSnapshotRef.current = [...list];
-              recordDragStartSelection(selectedIds);
-            }}
-            onPlaceholderIndexChange={(index) => {
-              if (lastPlaceholderIndexRef.current !== null && lastPlaceholderIndexRef.current !== index) {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              }
-              lastPlaceholderIndexRef.current = index;
-            }}
-            onRelease={(index) => {
-              // Capture exactly what the UI thread values are at the moment of finger lift,
-              // BEFORE any snap-back animations destroy the hover state.
-              const wasMergeHoverRecently = (Date.now() - lastMergeHoverTimeRef.current) < 500;
-              isMergeHoverAtReleaseRef.current = isMergeHoverSV.value || wasMergeHoverRecently;
-              dragDirectionAtReleaseRef.current =
-                mergeDirectionRef.current !== 0 ? mergeDirectionRef.current : dragDirectionSV.value;
-            }}
-            onDragEnd={(params) => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-              lastPlaceholderIndexRef.current = null;
-              isDraggingRef.current = false;
-              setIsDraggingFolder(false);
-              // Release the interaction handle so any pending reset() can fire
-              // now that the drag is over.
-              if (dragInteractionHandleRef.current !== null) {
-                InteractionManager.clearInteractionHandle(dragInteractionHandleRef.current);
-                dragInteractionHandleRef.current = null;
-              }
-              handleSectionedDragEnd(params);
-            }}
-          />
+          <View>
+            <DraggableFlatList<SectionItem>
+              data={listData}
+              keyExtractor={(item) =>
+                item.type === 'folderBlock' ? `folder-${item.folderId}-${folderMergeResetVersion}` :
+                item.type === 'multiDragBlock' ? `task-${item.habits[0].id}` :
+                `task-${item.habit.id}`}
+              renderItem={renderSectionItem}
+              extraData={extraDataForDrag}
+              contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
+              style={[activeTheme === 'futuristic' && { marginHorizontal: -16 }]}
+              containerStyle={styles.dragListContainer}
+              showsVerticalScrollIndicator={false}
+              dragItemOverflow
+              autoscrollThreshold={TASKS_DRAG_AUTOSCROLL_THRESHOLD}
+              autoscrollSpeed={TASKS_DRAG_AUTOSCROLL_SPEED}
+              // @ts-ignore — patched prop for separate top threshold
+              autoscrollTopThreshold={TASKS_DRAG_AUTOSCROLL_TOP_THRESHOLD}
+              windowSize={60}
+              initialNumToRender={12}
+              removeClippedSubviews={false}
+              animationConfig={TASKS_DRAG_ANIMATION_CONFIG}
+              onAnimValInit={(v) => setAnimVals(v)}
+              // @ts-ignore — patched prop: override cell measurements inside drag()
+              onCellMeasureOverride={(index: number, _key: string, cellData: any, _cellDataMap: Map<string, any>) => {
+                // When the anchor task renders the multi-drag block, the library
+                // may have a stale single-task measurement (83px). Override with
+                // the actual block size. The cell's offset from cellDataRef is
+                // still correct since the key didn't change.
+                const item = listData[index];
+                if (item?.type === 'task' && item.habit.id === multiDragAnchorId && multiDragHabits.length > 1) {
+                  return { size: multiDragHabits.length * 83 };
+                }
+                return null;
+              }}
+              onDragBegin={(idx) => {
+                clearDropCover();
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                lastPlaceholderIndexRef.current = idx;
+                isDraggingRef.current = true;
+                setIsDraggingFolder(listData[idx]?.type === 'folderBlock');
+                dragInteractionHandleRef.current = InteractionManager.createInteractionHandle();
+                isMergeHoverSV.value = false;
+                dragDirectionSV.value = 0;
+                isPostDragRef.current = false;
+                lastMergeHoverTimeSV.value = 0;
+                mergeDirectionSV.value = 0;
+                const list = displayList ?? sectionedList;
+                preDragSnapshotRef.current = [...list];
+                recordDragStartSelection(selectedIds);
+              }}
+              onPlaceholderIndexChange={(index) => {
+                if (lastPlaceholderIndexRef.current !== null && lastPlaceholderIndexRef.current !== index) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                }
+                lastPlaceholderIndexRef.current = index;
+              }}
+              onRelease={(index) => {
+                // Capture exactly what the UI thread values are at the moment of finger lift,
+                // BEFORE any snap-back animations destroy the hover state.
+                const wasMergeHoverRecently = (Date.now() - lastMergeHoverTimeSV.value) < 500;
+                isMergeHoverAtReleaseRef.current = isMergeHoverSV.value || wasMergeHoverRecently;
+                dragDirectionAtReleaseRef.current =
+                  mergeDirectionSV.value !== 0 ? mergeDirectionSV.value : dragDirectionSV.value;
+              }}
+              onDragEnd={(params) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                lastPlaceholderIndexRef.current = null;
+                isDraggingRef.current = false;
+                setIsDraggingFolder(false);
+                if (params.from !== params.to) {
+                  showDropCover(params.data);
+                }
+                // Release the interaction handle so any pending reset() can fire
+                // now that the drag is over.
+                if (dragInteractionHandleRef.current !== null) {
+                  InteractionManager.clearInteractionHandle(dragInteractionHandleRef.current);
+                  dragInteractionHandleRef.current = null;
+                }
+                handleSectionedDragEnd(params);
+              }}
+              onScrollOffsetChange={setTaskScrollOffset}
+            />
+          </View>
+          {dropCoverData && dropCoverData.length > 0 && (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: Math.max(0, taskCoverBottomInset - TASKS_TAB_BAR_EDGE_OVERLAP + TASKS_DROP_COVER_BOTTOM_LIFT),
+                overflow: 'hidden',
+                zIndex: 40,
+              }}
+            >
+              <View style={[styles.listContainer, { transform: [{ translateY: -taskScrollOffset }] }]}>
+                {dropCoverData.map(renderDropCoverItem)}
+              </View>
+            </View>
+          )}
+          {TASKS_DROP_COVER_DEBUG_LINES && dropCoverData && dropCoverData.length > 0 && (
+            <>
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: 2,
+                  backgroundColor: '#ff2d2d',
+                  zIndex: 60,
+                }}
+              />
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: Math.max(0, taskCoverBottomInset - TASKS_TAB_BAR_EDGE_OVERLAP + TASKS_DROP_COVER_BOTTOM_LIFT),
+                  height: 2,
+                  backgroundColor: '#ff2d2d',
+                  zIndex: 60,
+                }}
+              />
+            </>
+          )}
         </View>
       )}
 

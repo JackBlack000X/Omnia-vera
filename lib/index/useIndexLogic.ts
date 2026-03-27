@@ -33,6 +33,48 @@ const DEFAULT_OVERLAP_HOVER_STATE: OverlapHoverState = {
   direction: 0,
 };
 
+function hasSelectedFolderFilters(filters?: FolderFilters): boolean {
+  return !!(filters?.tipos?.length || filters?.colors?.length || filters?.frequencies?.length);
+}
+
+function expandSelectedFolderFilters(filters: FolderFilters | undefined, habits: Habit[]): FolderFilters | undefined {
+  if (!hasSelectedFolderFilters(filters)) return filters;
+
+  const next: FolderFilters = { ...filters };
+
+  if (filters?.tipos?.length) {
+    const tipos = new Set(filters.tipos);
+    for (const habit of habits) tipos.add(habit.tipo ?? 'task');
+    next.tipos = Array.from(tipos);
+  }
+
+  if (filters?.colors?.length) {
+    const colors = new Set(filters.colors);
+    for (const habit of habits) {
+      if (habit.color) colors.add(habit.color);
+    }
+    next.colors = Array.from(colors);
+  }
+
+  if (filters?.frequencies?.length) {
+    const frequencies = new Set(filters.frequencies);
+    for (const habit of habits) frequencies.add(habit.habitFreq ?? 'single');
+    next.frequencies = Array.from(frequencies);
+  }
+
+  return next;
+}
+
+function cloneSelectedFolderFilters(filters: FolderFilters | undefined): FolderFilters | undefined {
+  if (!filters) return undefined;
+
+  return {
+    tipos: filters.tipos ? [...filters.tipos] : undefined,
+    colors: filters.colors ? [...filters.colors] : undefined,
+    frequencies: filters.frequencies ? [...filters.frequencies] : undefined,
+  };
+}
+
 function nextYmd(ymd: string): string {
   const d = new Date(ymd + 'T12:00:00.000Z');
   d.setUTCDate(d.getUTCDate() + 1);
@@ -71,8 +113,8 @@ export function useIndexLogic() {
   const dragDirectionSV = useSharedValue(0); // -1 for up, 1 for down
   const isMergeHoverAtReleaseRef = useRef(false);
   const dragDirectionAtReleaseRef = useRef(0);
-  const lastMergeHoverTimeRef = useRef<number>(0);
-  const mergeDirectionRef = useRef(0); // last non-zero direction while merge indicator was active
+  const lastMergeHoverTimeSV = useSharedValue(0);
+  const mergeDirectionSV = useSharedValue(0); // last non-zero direction while merge indicator was active
   const [overlapHoverState, setOverlapHoverState] = useState<OverlapHoverState>(DEFAULT_OVERLAP_HOVER_STATE);
   const overlapHoverStateRef = useRef<OverlapHoverState>(DEFAULT_OVERLAP_HOVER_STATE);
   const [animVals, setAnimVals] = useState<unknown>(null);
@@ -80,6 +122,7 @@ export function useIndexLogic() {
   const folderHeightsSV = useSharedValue<number[]>([]);
 
   const [displayList, setDisplayList] = useState<SectionItem[] | null>(null);
+  const [folderMergeResetVersion, setFolderMergeResetVersion] = useState(0);
   const [sectionOrder, setSectionOrder] = useState<(string | null)[] | null>(null);
   const [fadingOutFolderId, setFadingOutFolderId] = useState<string | null>(null);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
@@ -728,13 +771,16 @@ export function useIndexLogic() {
       : isDomaniView
         ? habitsAppearingTomorrow
       : habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
-    const byFolder = new Map<string | null, Habit[]>();
-    for (const h of sourceHabits) {
-      const f = (h.folder ?? '').trim() || null;
-      if (!byFolder.has(f)) byFolder.set(f, []);
-      byFolder.get(f)!.push(h);
-    }
-    const folderNames = new Set(folders.map(f => (f.name ?? '').trim()));
+    const folderEntries = folders
+      .map(f => ({ name: (f.name ?? '').trim(), folder: f }))
+      .filter((entry): entry is { name: string; folder: typeof folders[number] } => !!entry.name);
+    const folderNames = new Set(folderEntries.map(entry => entry.name));
+    const folderMap = new Map(folderEntries.map(entry => [entry.name, entry.folder]));
+    const hasActiveFilters = (folderName: string | null) => {
+      if (folderName == null) return false;
+      const filters = folderMap.get(folderName)?.filters;
+      return !!(filters?.tipos?.length || filters?.colors?.length || filters?.frequencies?.length);
+    };
     let resolvedOrder: (string | null)[];
     if (sectionOrder && sectionOrder.length > 0) {
       resolvedOrder = sectionOrder
@@ -748,25 +794,46 @@ export function useIndexLogic() {
         }
       }
     } else {
-      resolvedOrder = [null];
-      for (const f of folders) {
-        const name = (f.name ?? '').trim();
-        if (name && byFolder.has(name)) resolvedOrder.push(name);
-      }
+      resolvedOrder = [null, ...folderEntries.map(entry => entry.name)];
     }
     if (resolvedOrder.length === 0) {
-      resolvedOrder = [null];
-      for (const f of folders) {
-        const name = (f.name ?? '').trim();
-        if (name && byFolder.has(name)) resolvedOrder.push(name);
+      resolvedOrder = [null, ...folderEntries.map(entry => entry.name)];
+    }
+    const byFolder = new Map<string | null, Habit[]>();
+    const assignedHabitIds = new Set<string>();
+
+    for (const h of sourceHabits) {
+      const explicitFolder = (h.folder ?? '').trim();
+      if (!explicitFolder || hasActiveFilters(explicitFolder) || !folderNames.has(explicitFolder)) continue;
+      const existing = byFolder.get(explicitFolder) ?? [];
+      existing.push(h);
+      byFolder.set(explicitFolder, existing);
+      assignedHabitIds.add(h.id);
+    }
+
+    for (const folderName of resolvedOrder) {
+      if (folderName == null || !hasActiveFilters(folderName)) continue;
+      const folderDef = folderMap.get(folderName);
+      const matching = applyFolderFilters(
+        sourceHabits.filter(h => !assignedHabitIds.has(h.id)),
+        folderDef?.filters
+      );
+      if (matching.length > 0) {
+        byFolder.set(folderName, matching);
+        for (const h of matching) assignedHabitIds.add(h.id);
       }
     }
+
+    byFolder.set(
+      null,
+      sourceHabits.filter(h => !assignedHabitIds.has(h.id))
+    );
+
     const out: SectionItem[] = [];
     const orderList = [...resolvedOrder];
     for (let i = 0; i < orderList.length; i++) {
       const folderName = orderList[i];
       const tasks = byFolder.get(folderName) ?? [];
-      if (sectionOrder == null && (!tasks || tasks.length === 0)) continue;
       if ((isOggiView || isDomaniView) && tasks.length === 0) continue;
       const folderId = folderName === null ? TUTTE_KEY : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
       const folderSortMode: SortModeType =
@@ -1294,8 +1361,53 @@ export function useIndexLogic() {
               },
               {
                 text: 'Sì', onPress: () => {
+                  const sourceFolderName = (draggedItem as FolderBlockItem).folderName;
+                  const targetFolderName = actualTarget!.folderName;
+                  const sourceFolderDef = typeof sourceFolderName === 'string'
+                    ? folders.find(f => (f.name ?? '').trim() === sourceFolderName.trim())
+                    : undefined;
+                  const targetFolderDef = typeof targetFolderName === 'string'
+                    ? folders.find(f => (f.name ?? '').trim() === targetFolderName.trim())
+                    : undefined;
+                  const sourceHadFilters = hasSelectedFolderFilters(sourceFolderDef?.filters);
+                  const targetHadFilters = hasSelectedFolderFilters(targetFolderDef?.filters);
+                  const targetWasEmpty = actualTarget!.tasks.length === 0;
                   const targetFolder = actualTarget!.folderName === null ? undefined : (actualTarget!.folderName as string);
                   sourceTasks.forEach(h => updateHabitFolder(h.id, targetFolder));
+
+                  if (sourceHadFilters || targetHadFilters) {
+                    setFolders(prev => {
+                      let changed = false;
+                      const next = prev.map(folder => {
+                        const folderName = (folder.name ?? '').trim();
+
+                        if (sourceHadFilters && typeof sourceFolderName === 'string' && folderName === sourceFolderName.trim()) {
+                          if (folder.filters !== undefined) changed = true;
+                          return folder.filters !== undefined ? { ...folder, filters: undefined } : folder;
+                        }
+
+                        if (typeof targetFolderName === 'string' && folderName === targetFolderName.trim()) {
+                          const nextFilters =
+                            targetHadFilters
+                              ? expandSelectedFolderFilters(folder.filters, sourceTasks)
+                              : (sourceHadFilters && targetWasEmpty
+                                ? cloneSelectedFolderFilters(sourceFolderDef?.filters)
+                                : folder.filters);
+                          const sameFilters = JSON.stringify(folder.filters ?? {}) === JSON.stringify(nextFilters ?? {});
+                          if (!sameFilters) changed = true;
+                          return sameFilters ? folder : { ...folder, filters: nextFilters };
+                        }
+
+                        return folder;
+                      });
+
+                      if (changed) {
+                        AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
+                      }
+
+                      return changed ? next : prev;
+                    });
+                  }
                   
                   // Se la cartella di destinazione era collassata, la apriamo
                   if (actualTarget!.folderId) {
@@ -1305,7 +1417,9 @@ export function useIndexLogic() {
                       return next;
                     });
                   }
-                  
+
+                  pendingDisplayRef.current = null;
+                  setFolderMergeResetVersion(prev => prev + 1);
                   isPostDragRef.current = false;
                   preDragSnapshotRef.current = null;
                   commitDragEnd();
@@ -1347,11 +1461,8 @@ export function useIndexLogic() {
       const direction = hover === 0 ? 0 : (hover < 0 ? -1 : 1);
       const absHover = Math.abs(hover);
 
-      // Block the merge indicator if the TARGET (the folder being approached) is empty.
-      // We check the neighbor slot, not activeIdx, because after a swap the dragged item
-      // occupies the slot that originally belonged to another folder, and
-      // folderTaskCountsSV (built from the pre-drag order) would wrongly flag it as empty.
-      // The neighbor one step ahead has never been displaced, so its original index is still valid.
+      // Regola di business: una cartella vuota non puo' fare merge come sorgente,
+      // ma una cartella piena puo' fare merge anche in una cartella vuota.
       let upperBound = 75.5;
       let lowerBound = 48.75;
       let virtualHover = absHover;
@@ -1359,8 +1470,13 @@ export function useIndexLogic() {
       let currentDir = direction;
       let isTargetEmpty = false;
       let isValidTarget = false;
+      const sourceTaskCount =
+        activeIdx >= 0 && activeIdx < folderTaskCountsSV.value.length
+          ? folderTaskCountsSV.value[activeIdx]
+          : 0;
+      const canSourceMerge = sourceTaskCount > 0;
       
-      if (direction !== 0) {
+      if (direction !== 0 && canSourceMerge) {
         // Cicliamo per vedere quante cartelle abbiamo effettivamente "scavalcato" con il nostro hover
         while (true) {
           const nextIdx = currentSimulatedIndex + currentDir;
@@ -1396,8 +1512,8 @@ export function useIndexLogic() {
                upperBound = currentUpperBound;
                lowerBound = 48.75;
             } else {
-               upperBound = 19;
-               lowerBound = 12;
+               upperBound = 28;
+               lowerBound = 6;
             }
             break;
           }
@@ -1405,7 +1521,7 @@ export function useIndexLogic() {
       }
 
       return {
-        isHovering: isValidTarget && (virtualHover > lowerBound && virtualHover < upperBound),
+        isHovering: canSourceMerge && isValidTarget && (virtualHover > lowerBound && virtualHover < upperBound),
         direction: currentDir,
         activeIndex: activeIdx,
         simulatedIndex: currentSimulatedIndex,
@@ -1420,8 +1536,8 @@ export function useIndexLogic() {
         direction: res.direction,
       });
       if (res.isHovering && res.direction !== 0) {
-        lastMergeHoverTimeRef.current = Date.now();
-        mergeDirectionRef.current = res.direction;
+        lastMergeHoverTimeSV.value = Date.now();
+        mergeDirectionSV.value = res.direction;
       }
     },
     [animVals, updateOverlapHoverState]
@@ -1475,8 +1591,8 @@ export function useIndexLogic() {
     dragDirectionSV,
     isMergeHoverAtReleaseRef,
     dragDirectionAtReleaseRef,
-    lastMergeHoverTimeRef,
-    mergeDirectionRef,
+    lastMergeHoverTimeSV,
+    mergeDirectionSV,
     overlapHoverStateRef,
     overlapHoverState,
     animVals,
@@ -1484,6 +1600,7 @@ export function useIndexLogic() {
     folderTaskCountsSV,
     folderHeightsSV,
     displayList,
+    folderMergeResetVersion,
     setDisplayList,
     sectionOrder,
     fadingOutFolderId,

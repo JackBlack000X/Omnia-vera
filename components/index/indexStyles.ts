@@ -395,6 +395,7 @@ export const styles = StyleSheet.create({
     position: 'absolute',
     right: 20,
     bottom: 98,
+    zIndex: 1000,
     backgroundColor: '#1d4ed8',
     width: 83,
     height: 83,
