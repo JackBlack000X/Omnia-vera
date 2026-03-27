@@ -528,31 +528,31 @@ export default function IndexScreen() {
       // Anchor task: render the multi-drag block (all selected habits stacked)
       if (isAnchor && multiDragHabits.length > 1) {
         return (
-          <Animated.View>
-          <ScaleDecorator>
-            <View style={styles.multiDragBlockRow}>
-              {multiDragHabits.map((habit) => (
-                <HabitItem
-                  key={habit.id}
-                  habit={habit}
-                  index={0}
-                  isDone={Boolean(completedByHabitId[habit.id])}
-                  onRename={handleSchedule}
-                  onSchedule={handleSchedule}
-                  onColor={handleSchedule}
-                  shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
-                  onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                  selectionMode={selectionMode}
-                  isSelected={selectedIds.has(habit.id)}
-                  onToggleSelect={toggleSelect}
-                  onLongPress={drag}
-                  onMenuOpen={handleMenuOpen}
-                  onMenuClose={handleMenuClose}
-                />
-              ))}
-            </View>
-          </ScaleDecorator>
-          </Animated.View>
+          <View>
+            <ScaleDecorator>
+              <View style={styles.multiDragBlockRow}>
+                {multiDragHabits.map((habit) => (
+                  <HabitItem
+                    key={habit.id}
+                    habit={habit}
+                    index={0}
+                    isDone={Boolean(completedByHabitId[habit.id])}
+                    onRename={handleSchedule}
+                    onSchedule={handleSchedule}
+                    onColor={handleSchedule}
+                    shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
+                    onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                    selectionMode={selectionMode}
+                    isSelected={selectedIds.has(habit.id)}
+                    onToggleSelect={toggleSelect}
+                    onLongPress={drag}
+                    onMenuOpen={handleMenuOpen}
+                    onMenuClose={handleMenuClose}
+                  />
+                ))}
+              </View>
+            </ScaleDecorator>
+          </View>
         );
       }
 
@@ -569,44 +569,51 @@ export default function IndexScreen() {
         canDragTask &&
         (!selectionMode || selectedIds.size === 0 || selectedIds.has(item.habit.id));
       const taskRowLayout = isPostDragRef.current ? undefined : Layout;
+      const shouldUseStaticTaskWrapper = selectionMode && selectedIds.size > 0;
+      const taskCard = (
+        <ScaleDecorator>
+          <Pressable
+            onLongPress={canStartDrag ? drag : undefined}
+            disabled={isActive || !canStartDrag}
+            delayLongPress={200}
+            onPress={() => {
+              if (selectionMode) return;
+              const id = item.habit.id;
+              const now = Date.now();
+              if (lastTapRef.current?.id === id && now - lastTapRef.current.time < 300) {
+                lastTapRef.current = null;
+                handleDuplicate(item.habit);
+              } else {
+                lastTapRef.current = { id, time: now };
+              }
+            }}
+          >
+            <HabitItem
+              habit={item.habit}
+              index={0}
+              isDone={Boolean(completedByHabitId[item.habit.id])}
+              onRename={handleSchedule}
+              onSchedule={handleSchedule}
+              onColor={handleSchedule}
+              shouldCloseMenu={closingMenuId === item.habit.id || closingMenuId === 'all'}
+              onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+              selectionMode={selectionMode}
+              isSelected={selectedIds.has(item.habit.id)}
+              onToggleSelect={toggleSelect}
+              onLongPress={canStartDrag ? drag : undefined}
+              dragBadgeCount={isActive && draggingSelectionCount > 1 ? draggingSelectionCount : undefined}
+              onMenuOpen={handleMenuOpen}
+              onMenuClose={handleMenuClose}
+            />
+          </Pressable>
+        </ScaleDecorator>
+      );
+      if (shouldUseStaticTaskWrapper) {
+        return <View>{taskCard}</View>;
+      }
       return (
         <Animated.View layout={taskRowLayout}>
-          <ScaleDecorator>
-            <Pressable
-              onLongPress={canStartDrag ? drag : undefined}
-              disabled={isActive || !canStartDrag}
-              delayLongPress={200}
-              onPress={() => {
-                if (selectionMode) return;
-                const id = item.habit.id;
-                const now = Date.now();
-                if (lastTapRef.current?.id === id && now - lastTapRef.current.time < 300) {
-                  lastTapRef.current = null;
-                  handleDuplicate(item.habit);
-                } else {
-                  lastTapRef.current = { id, time: now };
-                }
-              }}
-            >
-              <HabitItem
-                habit={item.habit}
-                index={0}
-                isDone={Boolean(completedByHabitId[item.habit.id])}
-                onRename={handleSchedule}
-                onSchedule={handleSchedule}
-                onColor={handleSchedule}
-                shouldCloseMenu={closingMenuId === item.habit.id || closingMenuId === 'all'}
-                onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                selectionMode={selectionMode}
-                isSelected={selectedIds.has(item.habit.id)}
-                onToggleSelect={toggleSelect}
-                onLongPress={canStartDrag ? drag : undefined}
-                dragBadgeCount={isActive && draggingSelectionCount > 1 ? draggingSelectionCount : undefined}
-                onMenuOpen={handleMenuOpen}
-                onMenuClose={handleMenuClose}
-              />
-            </Pressable>
-          </ScaleDecorator>
+          {taskCard}
         </Animated.View>
       );
     }
@@ -961,8 +968,9 @@ export default function IndexScreen() {
                 lastPlaceholderIndexRef.current = null;
                 isDraggingRef.current = false;
                 const draggedWasFolder = listData[params.from]?.type === 'folderBlock';
+                const draggedSelectedTask = !draggedWasFolder && draggingSelectionCount > 0;
                 setIsDraggingFolder(false);
-                if (params.from !== params.to && !draggedWasFolder) {
+                if (params.from !== params.to && !draggedWasFolder && !draggedSelectedTask) {
                   showDropCover(params.data);
                 } else {
                   clearDropCover();
