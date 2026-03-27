@@ -752,7 +752,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && m.tipo === 'task' && (
+          {(type === 'new' || type === 'edit') && (m.tipo === 'task' || m.tipo === 'abitudine') && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>Orario</Text>
               <View style={[styles.row, { marginTop: 8 }]}>
@@ -1562,7 +1562,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(m.tipo !== 'viaggio') && (type === 'schedule' || ((type === 'new' || type === 'edit') && (m.tipo !== 'task' || m.taskHasTime))) && (
+          {(m.tipo !== 'viaggio') && (type === 'schedule' || ((type === 'new' || type === 'edit') && ((m.tipo !== 'task' && m.tipo !== 'abitudine') || m.taskHasTime))) && (
             <View>
               <>
                   {/* Giorno / Data inizio: sempre visibile sopra Ripetizione */}
@@ -1613,16 +1613,46 @@ export default function ModalScreen() {
                     </TouchableOpacity>
                   </View>
                   <View style={[styles.row, { marginTop: 8 }]}>
-                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('weekly'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, m.freq === 'weekly' ? styles.chipActive : styles.chipGhost]}>
+                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('weekly'); }} style={[styles.chip, m.freq === 'weekly' ? styles.chipActive : styles.chipGhost]}>
                       <Text style={m.freq === 'weekly' ? styles.chipActiveText : styles.chipGhostText}>Settimanale</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('monthly'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, m.freq === 'monthly' ? styles.chipActive : styles.chipGhost]}>
+                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('monthly'); }} style={[styles.chip, m.freq === 'monthly' ? styles.chipActive : styles.chipGhost]}>
                       <Text style={m.freq === 'monthly' ? styles.chipActiveText : styles.chipGhostText}>Mensile</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('annual'); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }} style={[styles.chip, m.freq === 'annual' ? styles.chipActive : styles.chipGhost]}>
+                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('annual'); }} style={[styles.chip, m.freq === 'annual' ? styles.chipActive : styles.chipGhost]}>
                       <Text style={m.freq === 'annual' ? styles.chipActiveText : styles.chipGhostText}>Annuale</Text>
                     </TouchableOpacity>
                   </View>
+
+                  {m.freq === 'weekly' && (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={styles.subtle}>Giorni della settimana</Text>
+                      <View style={styles.daysWrap}>
+                        {['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map((d, i) => {
+                          const sundayIndex = (i + 1) % 7; // map Mon->1 ... Sun->0
+                          const selected = m.daysOfWeek.includes(sundayIndex);
+                          return (
+                            <TouchableOpacity key={i} onPress={() => m.toggleDow(sundayIndex)} style={[styles.dayPill, selected ? styles.dayPillOn : styles.dayPillOff]}>
+                              <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{d}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
+                  {m.freq === 'monthly' && (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={styles.subtle}>Giorni del mese</Text>
+                      <View style={styles.monthlyDaysWrap}>
+                        {Array.from({ length: 31 }).map((_, i) => (
+                          <TouchableOpacity key={i} onPress={() => m.toggleMonthDay(i + 1)} style={[styles.monthlyDayPill, m.monthDays.includes(i + 1) ? styles.dayPillOn : styles.dayPillOff]}>
+                            <Text style={m.monthDays.includes(i + 1) ? styles.dayTextOn : styles.dayTextOff}>{i + 1}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
                 </>
 
               {m.freq !== 'single' && (
@@ -1673,37 +1703,6 @@ export default function ModalScreen() {
                   </View>}
                 </View>
               )}
-
-              {m.freq === 'weekly' && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Giorni della settimana</Text>
-                  <View style={styles.daysWrap}>
-                    {['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map((d, i) => {
-                      const sundayIndex = (i + 1) % 7; // map Mon->1 ... Sun->0
-                      const selected = m.daysOfWeek.includes(sundayIndex);
-                      return (
-                        <TouchableOpacity key={i} onPress={() => m.toggleDow(sundayIndex)} style={[styles.dayPill, selected ? styles.dayPillOn : styles.dayPillOff]}>
-                          <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{d}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-
-              {m.freq === 'monthly' && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Giorni del mese</Text>
-                  <View style={styles.monthlyDaysWrap}>
-                    {Array.from({ length: 31 }).map((_, i) => (
-                      <TouchableOpacity key={i} onPress={() => m.toggleMonthDay(i + 1)} style={[styles.monthlyDayPill, m.monthDays.includes(i + 1) ? styles.dayPillOn : styles.dayPillOff]}>
-                        <Text style={m.monthDays.includes(i + 1) ? styles.dayTextOn : styles.dayTextOff}>{i + 1}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
 
               <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Orario</Text></View>
               <View style={styles.row}>

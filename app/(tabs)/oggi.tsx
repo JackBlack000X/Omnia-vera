@@ -473,7 +473,7 @@ export default function OggiScreen() {
         const durationMin = Math.max(5, endM - startM);
         const nOcc = getDailyOccurrenceTotalForDate(h, weekday, dayOfMonth);
         const specificGap = h.schedule?.weeklyGaps?.[weekday] ?? h.schedule?.monthlyGaps?.[dayOfMonth];
-        const gapMin = Math.max(5, specificGap ?? h.occurrenceGapMinutes ?? 5);
+        const gapMin = Math.max(5, specificGap ?? h.occurrenceGapMinutes ?? 360);
 
         const baseMeta = {
           color: h.color ?? '#3b82f6',
@@ -623,7 +623,7 @@ export default function OggiScreen() {
           const eventTime = new Date();
           eventTime.setHours(h, m, 0, 0);
           if (eventTime <= now) continue;
-          const minutesBefore = notifCfg?.minutesBefore ?? 5;
+          const minutesBefore = notifCfg?.minutesBefore ?? 0;
           triggerTime = new Date(eventTime.getTime() - minutesBefore * 60000);
         }
 

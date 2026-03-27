@@ -1,7 +1,9 @@
 import { useHabits } from '@/lib/habits/Provider';
+import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import {
+    DOMANI_TOMORROW_KEY,
     FOLDER_COLORS,
     FOLDER_ICONS,
     FolderBlockItem,
@@ -30,6 +32,12 @@ const DEFAULT_OVERLAP_HOVER_STATE: OverlapHoverState = {
   activeIndex: -1,
   direction: 0,
 };
+
+function nextYmd(ymd: string): string {
+  const d = new Date(ymd + 'T12:00:00.000Z');
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 export function useIndexLogic() {
   const router = useRouter();
@@ -87,6 +95,7 @@ export function useIndexLogic() {
   const today = getDay(new Date());
   // Giorno di calendario in Zurich (può differire da today quando dayResetTime > 00:00 e siamo prima del reset)
   const calendarToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const tomorrow = useMemo(() => nextYmd(calendarToday), [calendarToday]);
 
   const prevSectionedListRef = useRef<SectionItem[]>([]);
 
@@ -115,7 +124,7 @@ export function useIndexLogic() {
       habit.habitFreq ?? '',
       habit.isAllDay ? '1' : '0',
       String(habit.dailyOccurrences ?? 1),
-      String(habit.occurrenceGapMinutes ?? 5),
+      String(habit.occurrenceGapMinutes ?? 360),
       habit.schedule?.time ?? '',
       habit.schedule?.endTime ?? '',
       (habit.schedule?.daysOfWeek ?? []).join('.'),
@@ -557,6 +566,8 @@ export function useIndexLogic() {
       ? sortMode
       : activeFolder === OGGI_TODAY_KEY
         ? (sortModeByFolder[OGGI_TODAY_KEY] ?? sortMode)
+        : activeFolder === DOMANI_TOMORROW_KEY
+          ? (sortModeByFolder[DOMANI_TOMORROW_KEY] ?? sortMode)
         : (sortModeByFolder[activeFolder.trim()] ?? 'creation');
 
   const sortHabitsWithMode = useCallback((list: Habit[], mode: SortModeType) => {
@@ -593,8 +604,9 @@ export function useIndexLogic() {
       });
     }
     if (mode === 'time') {
+      const referenceYmd = activeFolder === DOMANI_TOMORROW_KEY ? tomorrow : today;
       const getStartTime = (h: Habit) => {
-        const override = h.timeOverrides?.[today];
+        const override = h.timeOverrides?.[referenceYmd];
         const isAllDayMarker = override === '00:00';
         if (isAllDayMarker || h.isAllDay) return -1;
         const overrideStart = !isAllDayMarker && typeof override === 'string' ? override : (!isAllDayMarker ? override?.start : undefined);
@@ -602,9 +614,9 @@ export function useIndexLogic() {
           const [hh, mm] = overrideStart.split(':').map(Number);
           return hh * 60 + mm;
         }
-        const dateObj = new Date();
-        const weekday = dateObj.getDay();
-        const dayOfMonth = dateObj.getDate();
+        const dateObj = new Date(referenceYmd + 'T12:00:00.000Z');
+        const weekday = dateObj.getUTCDay();
+        const dayOfMonth = dateObj.getUTCDate();
         const weekly = h.schedule?.weeklyTimes?.[weekday] ?? null;
         const monthlyT = h.schedule?.monthlyTimes?.[dayOfMonth] ?? null;
         const start = weekly?.start ?? monthlyT?.start ?? (h.schedule?.time ?? null);
@@ -623,7 +635,7 @@ export function useIndexLogic() {
       });
     }
     return list;
-  }, [today]);
+  }, [activeFolder, today, tomorrow]);
 
   const sortHabitsList = useCallback(
     (list: Habit[]) => sortHabitsWithMode(list, effectiveSortMode),
@@ -653,6 +665,12 @@ export function useIndexLogic() {
     return set;
   }, [history, habits, today]);
 
+  const habitsAppearingTomorrow = useMemo(() => {
+    return getHabitsAppearingOnDate(habits, tomorrow, dayResetTime).filter(
+      h => !singleHabitsHiddenAfterReset.has(h.id)
+    );
+  }, [habits, tomorrow, dayResetTime, singleHabitsHiddenAfterReset]);
+
   const sortedHabits = useMemo(() => {
     let list: Habit[];
     if (activeFolder === OGGI_TODAY_KEY) {
@@ -674,6 +692,8 @@ export function useIndexLogic() {
           return (a.order ?? 0) - (b.order ?? 0);
         });
       }
+    } else if (activeFolder === DOMANI_TOMORROW_KEY) {
+      list = habitsAppearingTomorrow;
     } else if (activeFolder) {
       const target = activeFolder.trim();
       const folderDef = folders.find(f => (f.name ?? '').trim() === target);
@@ -691,12 +711,13 @@ export function useIndexLogic() {
       list = habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
     }
     return sortHabitsList(list);
-  }, [habits, habitsAppearingToday, sortMode, today, activeFolder, folders, applyFolderFilters, sortHabitsList, singleHabitsHiddenAfterReset, effectiveSortMode, oggiCustomOrder]);
+  }, [habits, habitsAppearingToday, habitsAppearingTomorrow, sortMode, today, activeFolder, folders, applyFolderFilters, sortHabitsList, singleHabitsHiddenAfterReset, effectiveSortMode, oggiCustomOrder]);
 
   const sectionedList = useMemo((): SectionItem[] => {
     const isOggiView = activeFolder === OGGI_TODAY_KEY;
+    const isDomaniView = activeFolder === DOMANI_TOMORROW_KEY;
     const isFolderStructureView =
-      (activeFolder === null || isOggiView) && effectiveSortMode === 'folder';
+      (activeFolder === null || isOggiView || isDomaniView) && effectiveSortMode === 'folder';
 
     if (!isFolderStructureView) {
       return sortedHabits.map(h => ({ type: 'task' as const, habit: h }));
@@ -704,6 +725,8 @@ export function useIndexLogic() {
 
     const sourceHabits = isOggiView
       ? habitsAppearingToday.filter(h => !singleHabitsHiddenAfterReset.has(h.id))
+      : isDomaniView
+        ? habitsAppearingTomorrow
       : habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
     const byFolder = new Map<string | null, Habit[]>();
     for (const h of sourceHabits) {
@@ -744,7 +767,7 @@ export function useIndexLogic() {
       const folderName = orderList[i];
       const tasks = byFolder.get(folderName) ?? [];
       if (sectionOrder == null && (!tasks || tasks.length === 0)) continue;
-      if (isOggiView && tasks.length === 0) continue;
+      if ((isOggiView || isDomaniView) && tasks.length === 0) continue;
       const folderId = folderName === null ? TUTTE_KEY : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
       const folderSortMode: SortModeType =
         folderName === null ? (sortModeByFolder[TUTTE_KEY] ?? 'creation') : (sortModeByFolder[folderName] ?? 'creation');
@@ -778,7 +801,7 @@ export function useIndexLogic() {
 
     prevSectionedListRef.current = finalized;
     return finalized;
-  }, [habits, habitsAppearingToday, folders, activeFolder, sortMode, sortModeByFolder, sortedHabits, sortHabitsWithMode, sectionOrder, singleHabitsHiddenAfterReset]);
+  }, [habits, habitsAppearingToday, habitsAppearingTomorrow, folders, activeFolder, sortMode, sortModeByFolder, sortedHabits, sortHabitsWithMode, sectionOrder, singleHabitsHiddenAfterReset]);
 
   useEffect(() => {
     // Keep the UI thread synchronously updated with which active indices correspond to empty/collapsed folders
@@ -825,7 +848,7 @@ export function useIndexLogic() {
   );
 
   const isFolderModeWithSections =
-    (activeFolder === null || activeFolder === OGGI_TODAY_KEY) && effectiveSortMode === 'folder';
+    (activeFolder === null || activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY) && effectiveSortMode === 'folder';
 
   const folderTabsOrder = useMemo(() => {
     const folderNames = new Set(folders.map(f => (f.name ?? '').trim()));
@@ -844,7 +867,7 @@ export function useIndexLogic() {
     } else {
       base = [null, ...folders.map(f => (f.name ?? '').trim())];
     }
-    return [OGGI_TODAY_KEY, ...base];
+    return [OGGI_TODAY_KEY, DOMANI_TOMORROW_KEY, ...base];
   }, [sectionOrder, folders]);
 
   const commitDragEnd = useCallback(() => {

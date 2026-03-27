@@ -88,6 +88,17 @@ function getNoiseColor(hex: string): [number, number, number, number] {
   return [r / 255, g / 255, b / 255, 1.0];
 }
 
+function normalizeHexColor(hex?: string | null): string | null {
+  if (!hex) return null;
+  const c = hex.trim().toLowerCase();
+  if (!c.startsWith('#')) return null;
+  if (c.length === 4) {
+    return `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`;
+  }
+  if (c.length === 7) return c;
+  return null;
+}
+
 const noiseShaderSource = `
   uniform float threshold;
   uniform float2 resolution;
@@ -186,6 +197,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   );
 
   const cardColor = habit.color ?? CARD_COLORS[index % CARD_COLORS.length];
+  const normalizedCardColor = useMemo(() => normalizeHexColor(cardColor), [cardColor]);
   // Calculate noise color matching the task color
   const noiseColor = useMemo(() => getNoiseColor(cardColor), [cardColor]);
   // Only treat exact white as white background; all others use white text
@@ -305,6 +317,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
       ? (optDone !== null ? optDone : isDone)
       : displayOccK >= occN;
   const checkVisualDone = selectionMode ? isSelected : lineStrikeDone;
+  const isFullyCompletedToday = occN > 1 ? displayOccK >= occN : (optDone !== null ? optDone : isDone);
 
   // White circle ONLY if truly "every day":
   // no monthly-specific days, no annual date, and daysOfWeek is empty or all 7
@@ -320,6 +333,33 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
 
   // Don't show frequency text for daily tasks since white circle already indicates this
   const shouldShowFrequency = !isDaily;
+  const useDarkContrastOnSolidCard = normalizedCardColor != null && (
+    (!multiOccSegments && !isFullyCompletedToday) ||
+    (multiOccSegments && isFullyCompletedToday)
+  );
+  const shouldCenterContent = timeText === 'Tutto il giorno' && !shouldShowFrequency;
+  const activeBadges = [
+    habit.askReview
+      ? { key: 'review', icon: 'star', color: '#facc15' }
+      : null,
+    habit.notification?.enabled
+      ? {
+          key: 'notification',
+          icon: 'notifications',
+          color: useDarkContrastOnSolidCard && normalizedCardColor === '#ef4444' ? '#111111' : '#ef4444'
+        }
+      : null,
+    habit.label?.trim()
+      ? { key: 'label', icon: 'pricetag', color: useDarkContrastOnSolidCard ? '#111111' : '#ffffff' }
+      : null,
+    habit.locationRule
+      ? {
+          key: 'location',
+          icon: 'map',
+          color: useDarkContrastOnSolidCard && normalizedCardColor === '#3b82f6' ? '#111111' : '#3b82f6'
+        }
+      : null,
+  ].filter((badge): badge is { key: string; icon: React.ComponentProps<typeof Ionicons>['name']; color: string } => Boolean(badge));
 
   const cardInner = (
     <View
@@ -364,6 +404,15 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
       )}
       {activeTheme === 'futuristic' && cardDimensions.width > 0 && cardDimensions.height > 0 && (
         <NoiseOverlay width={cardDimensions.width} height={cardDimensions.height} darkColor={noiseColor} />
+      )}
+      {activeBadges.length > 0 && (
+        <View style={styles.activeBadges} pointerEvents="none">
+          {activeBadges.map((badge) => (
+            <View key={badge.key} style={styles.activeBadge}>
+              <Ionicons name={badge.icon} size={17} color={badge.color} />
+            </View>
+          ))}
+        </View>
       )}
       {/* Cerchio completamento/selezone:
           - Per i viaggi nascosto in modalità normale (niente completamento)
@@ -436,7 +485,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
         </Pressable>
       )}
 
-      <View style={[styles.content, timeText === 'Tutto il giorno' && { justifyContent: 'center' }]}>
+      <View style={[styles.content, shouldCenterContent && { justifyContent: 'center' }]}>
         <Text
           style={[styles.habitText, { color: textPrimaryColor }, lineStrikeDone && styles.habitDone]}
           numberOfLines={isTravel ? 2 : 1}
@@ -448,7 +497,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
             {timeText}
           </Text>
         )}
-        {shouldShowFrequency && timeText !== 'Tutto il giorno' && (
+        {shouldShowFrequency && (
           <Text style={[styles.frequencyText, { color: textTertiaryColor }]} numberOfLines={1}>
             {frequencyText}
           </Text>
@@ -520,6 +569,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  activeBadges: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    zIndex: 9,
+  },
+  activeBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   card: {
     borderRadius: 16,

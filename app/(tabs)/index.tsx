@@ -3,7 +3,7 @@ import { FolderModals } from '@/components/index/FolderModals';
 import { styles } from '@/components/index/indexStyles';
 import TabelleView from '@/components/index/TabelleView';
 import { THEME } from '@/constants/theme';
-import { OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
+import { DOMANI_TOMORROW_KEY, OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { useIndexLogic } from '@/lib/index/useIndexLogic';
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
@@ -710,6 +710,14 @@ export default function IndexScreen() {
                 onPress={() => setActiveFolder(OGGI_TODAY_KEY)}
               >
                 <Text style={[styles.folderLabel, activeFolder === OGGI_TODAY_KEY && styles.folderLabelActive]}>Oggi</Text>
+              </TouchableOpacity>
+            ) : folderNameOrNull === DOMANI_TOMORROW_KEY ? (
+              <TouchableOpacity
+                key="domani"
+                style={styles.folderRow}
+                onPress={() => setActiveFolder(DOMANI_TOMORROW_KEY)}
+              >
+                <Text style={[styles.folderLabel, activeFolder === DOMANI_TOMORROW_KEY && styles.folderLabelActive]}>Domani</Text>
               </TouchableOpacity>
             ) : folderNameOrNull === null ? (
               <TouchableOpacity

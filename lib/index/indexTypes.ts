@@ -32,3 +32,4 @@ export const FOLDER_ICONS: { name: string; label: string }[] = [
 
 export const TUTTE_KEY = '__tutte__';
 export const OGGI_TODAY_KEY = '__oggi__'; // virtual folder: tasks appearing today only
+export const DOMANI_TOMORROW_KEY = '__domani__'; // virtual folder: tasks appearing tomorrow only
