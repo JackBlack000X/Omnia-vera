@@ -14,7 +14,7 @@ import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, InteractionManager, LayoutAnimation, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import Animated, { FadeInDown, Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TASKS_DRAG_AUTOSCROLL_THRESHOLD = 108;
@@ -135,6 +135,7 @@ export default function IndexScreen() {
     isMergeHoverAtReleaseRef,
     dragDirectionAtReleaseRef,
     lastMergeHoverTimeSV,
+    lastMergeHoverExitTimeSV,
     mergeDirectionSV,
     overlapHoverStateRef,
     overlapHoverState,
@@ -424,7 +425,7 @@ export default function IndexScreen() {
       }
 
       return (
-        <Animated.View onLayout={(e) => {
+        <View onLayout={(e) => {
           if (typeof getIndex === 'function') {
             const idx = getIndex();
             if (idx != null && idx >= 0) {
@@ -489,11 +490,10 @@ export default function IndexScreen() {
             ) : (
               <View style={styles.folderDebugBoxWrap}>
                 <View style={styles.folderTaskGroup}>
-                  {item.tasks.map((h, index) => (
-                    <Animated.View
+                  {item.tasks.map((h) => (
+                    <View
                       key={h.id}
                       style={styles.taskInFolder}
-                      entering={FadeInDown.duration(260).delay(index * 60)}
                     >
                       <HabitItem
                         habit={h}
@@ -510,14 +510,14 @@ export default function IndexScreen() {
                         onMenuOpen={handleMenuOpen}
                         onMenuClose={handleMenuClose}
                       />
-                    </Animated.View>
+                    </View>
                   ))}
                 </View>
               </View>
             )}
           </View>
         </ScaleDecorator>
-        </Animated.View>
+        </View>
       );
     }
     if (item.type === 'task') {
@@ -889,7 +889,9 @@ export default function IndexScreen() {
             <DraggableFlatList<SectionItem>
               data={listData}
               keyExtractor={(item) =>
-                item.type === 'folderBlock' ? `folder-${item.folderId}-${folderMergeResetVersion}` :
+                item.type === 'folderBlock'
+                  ? `folder-${item.folderId}-${folderMergeResetVersion}-${item.tasks.map(task => task.id).join('|')}`
+                  :
                 item.type === 'multiDragBlock' ? `task-${item.habits[0].id}` :
                 `task-${item.habit.id}`}
               renderItem={renderSectionItem}
@@ -931,6 +933,7 @@ export default function IndexScreen() {
                 dragDirectionSV.value = 0;
                 isPostDragRef.current = false;
                 lastMergeHoverTimeSV.value = 0;
+                lastMergeHoverExitTimeSV.value = 0;
                 mergeDirectionSV.value = 0;
                 const list = displayList ?? sectionedList;
                 preDragSnapshotRef.current = [...list];
@@ -945,7 +948,10 @@ export default function IndexScreen() {
               onRelease={(index) => {
                 // Capture exactly what the UI thread values are at the moment of finger lift,
                 // BEFORE any snap-back animations destroy the hover state.
-                const wasMergeHoverRecently = (Date.now() - lastMergeHoverTimeSV.value) < 500;
+                const now = Date.now();
+                const wasMergeHoverRecently =
+                  (now - lastMergeHoverTimeSV.value) < 120 &&
+                  lastMergeHoverExitTimeSV.value <= lastMergeHoverTimeSV.value;
                 isMergeHoverAtReleaseRef.current = isMergeHoverSV.value || wasMergeHoverRecently;
                 dragDirectionAtReleaseRef.current =
                   mergeDirectionSV.value !== 0 ? mergeDirectionSV.value : dragDirectionSV.value;
@@ -954,9 +960,12 @@ export default function IndexScreen() {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                 lastPlaceholderIndexRef.current = null;
                 isDraggingRef.current = false;
+                const draggedWasFolder = listData[params.from]?.type === 'folderBlock';
                 setIsDraggingFolder(false);
-                if (params.from !== params.to) {
+                if (params.from !== params.to && !draggedWasFolder) {
                   showDropCover(params.data);
+                } else {
+                  clearDropCover();
                 }
                 // Release the interaction handle so any pending reset() can fire
                 // now that the drag is over.

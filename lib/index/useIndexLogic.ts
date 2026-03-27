@@ -114,6 +114,7 @@ export function useIndexLogic() {
   const isMergeHoverAtReleaseRef = useRef(false);
   const dragDirectionAtReleaseRef = useRef(0);
   const lastMergeHoverTimeSV = useSharedValue(0);
+  const lastMergeHoverExitTimeSV = useSharedValue(0);
   const mergeDirectionSV = useSharedValue(0); // last non-zero direction while merge indicator was active
   const [overlapHoverState, setOverlapHoverState] = useState<OverlapHoverState>(DEFAULT_OVERLAP_HOVER_STATE);
   const overlapHoverStateRef = useRef<OverlapHoverState>(DEFAULT_OVERLAP_HOVER_STATE);
@@ -1527,7 +1528,7 @@ export function useIndexLogic() {
         simulatedIndex: currentSimulatedIndex,
       };
     },
-    (res) => {
+    (res, prev) => {
       isMergeHoverSV.value = res.isHovering;
       dragDirectionSV.value = res.direction;
       runOnJS(updateOverlapHoverState)({
@@ -1538,6 +1539,8 @@ export function useIndexLogic() {
       if (res.isHovering && res.direction !== 0) {
         lastMergeHoverTimeSV.value = Date.now();
         mergeDirectionSV.value = res.direction;
+      } else if (prev?.isHovering && !res.isHovering) {
+        lastMergeHoverExitTimeSV.value = Date.now();
       }
     },
     [animVals, updateOverlapHoverState]
@@ -1592,6 +1595,7 @@ export function useIndexLogic() {
     isMergeHoverAtReleaseRef,
     dragDirectionAtReleaseRef,
     lastMergeHoverTimeSV,
+    lastMergeHoverExitTimeSV,
     mergeDirectionSV,
     overlapHoverStateRef,
     overlapHoverState,
