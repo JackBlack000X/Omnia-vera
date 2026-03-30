@@ -1,8 +1,11 @@
 import { useHabits } from '@/lib/habits/Provider';
+import { canUseHealthKit, getHealthSnapshotAsync } from '@/lib/health';
+import { getHealthHabitOption } from '@/lib/healthHabits';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
-import type { Habit } from '@/lib/habits/schema';
+import { isTravelLikeTipo, type Habit } from '@/lib/habits/schema';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -99,6 +102,35 @@ function normalizeHexColor(hex?: string | null): string | null {
   return null;
 }
 
+function formatVacationPeriod(habit: Habit): string | null {
+  if (habit.tipo !== 'vacanza' || !habit.travel) return null;
+
+  const months = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+  const parseYmd = (ymd?: string | null) => {
+    if (!ymd) return null;
+    const [year, month, day] = ymd.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    return { year, month, day };
+  };
+  const formatDate = (ymd?: string | null) => {
+    const parsed = parseYmd(ymd);
+    if (!parsed) return null;
+    return `${parsed.day} ${months[Math.max(0, Math.min(months.length - 1, parsed.month - 1))]}`;
+  };
+
+  const startDate = formatDate(habit.travel.giornoPartenza);
+  const endDate = formatDate(habit.travel.giornoRitorno ?? habit.travel.giornoPartenza);
+  const startTime = habit.travel.orarioPartenza;
+  const endTime = habit.travel.orarioArrivoRitorno ?? habit.travel.orarioArrivo;
+
+  if (!startDate || !startTime || !endDate || !endTime) return null;
+  if ((habit.travel.giornoRitorno ?? habit.travel.giornoPartenza) === habit.travel.giornoPartenza) {
+    return `${startDate} ${startTime} - ${endTime}`;
+  }
+
+  return `${startDate} ${startTime} → ${endDate} ${endTime}`;
+}
+
 const noiseShaderSource = `
   uniform float threshold;
   uniform float2 resolution;
@@ -154,7 +186,11 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const swipeableRef = useRef<Swipeable>(null);
   const [cardDimensions, setCardDimensions] = useState({ width: 0, height: 0 });
   const [checkDimensions, setCheckDimensions] = useState({ width: 0, height: 0 });
-  const isTravel = habit.tipo === 'viaggio';
+  const isTravel = isTravelLikeTipo(habit.tipo);
+  const isVacation = habit.tipo === 'vacanza';
+  const healthOption = useMemo(() => getHealthHabitOption(habit.health?.metric), [habit.health?.metric]);
+  const isHealthHabit = habit.tipo === 'salute' && !!healthOption;
+  const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
 
   // Close menu when shouldCloseMenu becomes true
   useEffect(() => {
@@ -162,6 +198,30 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
       swipeableRef.current.close();
     }
   }, [shouldCloseMenu]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isHealthHabit || habit.health?.metric !== 'sleep' || !canUseHealthKit()) {
+      setSleepMinutes(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    (async () => {
+      try {
+        const snapshot = await getHealthSnapshotAsync();
+        if (!cancelled) setSleepMinutes(snapshot.sleepMinutesLastNight);
+      } catch {
+        if (!cancelled) setSleepMinutes(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [habit.id, habit.health?.metric, isHealthHabit]);
 
   const renderRightActions = () => (
     <View style={[styles.rightActions, styles.actionsTall]}>
@@ -196,7 +256,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     </View>
   );
 
-  const cardColor = habit.color ?? CARD_COLORS[index % CARD_COLORS.length];
+  const cardColor = healthOption?.solidColor ?? habit.color ?? CARD_COLORS[index % CARD_COLORS.length];
   const normalizedCardColor = useMemo(() => normalizeHexColor(cardColor), [cardColor]);
   // Calculate noise color matching the task color
   const noiseColor = useMemo(() => getNoiseColor(cardColor), [cardColor]);
@@ -208,6 +268,13 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const textPrimaryColor = isWhiteBg ? '#111111' : 'white';
   const textSecondaryColor = isWhiteBg ? '#111111' : 'rgba(255, 255, 255, 0.9)';
   const textTertiaryColor = isWhiteBg ? '#222222' : 'rgba(255, 255, 255, 0.7)';
+  const vacationPeriod = useMemo(() => formatVacationPeriod(habit), [habit]);
+  const primaryTextColor = isVacation ? '#18230f' : textPrimaryColor;
+  const secondaryTextColor = isVacation ? '#243b16' : textSecondaryColor;
+  const tertiaryTextColor = isVacation ? '#3d571b' : textTertiaryColor;
+  const healthPrimaryTextColor = 'white';
+  const healthSecondaryTextColor = 'rgba(255, 255, 255, 0.9)';
+  const healthTertiaryTextColor = 'rgba(255, 255, 255, 0.78)';
 
   const formatDisplayTime = (value: string | null | undefined) => {
     if (!value) return null;
@@ -329,6 +396,23 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
 
   const timeText = getTimeText();
   const frequencyText = getFrequencyText();
+  const displayTitle = isVacation ? 'Vacanza' : (isHealthHabit ? (healthOption?.label ?? habit.text) : habit.text);
+  const displaySubtext = isVacation ? vacationPeriod : timeText;
+  const displayFrequency = isVacation ? null : frequencyText;
+  const sleepGoalHours = habit.health?.metric === 'sleep' ? Math.max(1, habit.health?.goalHours ?? 8) : null;
+  const sleepGoalMinutes = sleepGoalHours ? sleepGoalHours * 60 : null;
+  const sleepProgressRatio = sleepMinutes !== null && sleepGoalMinutes
+    ? Math.max(0, Math.min(1, sleepMinutes / sleepGoalMinutes))
+    : 0;
+  const sleepReachedGoal = sleepMinutes !== null && sleepGoalMinutes !== null && sleepMinutes >= sleepGoalMinutes;
+  const sleepHoursLabel = (() => {
+    if (sleepMinutes === null) return null;
+    const hours = Math.floor(Math.max(0, sleepMinutes) / 60);
+    const minutes = Math.max(0, sleepMinutes) % 60;
+    if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h`;
+    return `${minutes}m`;
+  })();
 
   const todayYmdForOcc = getDay(new Date());
   const dayEntryForOcc = history[todayYmdForOcc];
@@ -408,7 +492,8 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     <View
       style={[
         styles.card,
-        { backgroundColor: multiOccSegments ? 'transparent' : cardColor },
+        { backgroundColor: multiOccSegments || isVacation || isHealthHabit ? 'transparent' : cardColor },
+        isVacation && styles.vacationCard,
         activeTheme === 'futuristic' && {
           borderRadius: 0,
           transform: [{ skewX: '-30deg' }],
@@ -425,6 +510,24 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
         setCardDimensions({ width, height });
       }}
     >
+      {isVacation && (
+        <LinearGradient
+          pointerEvents="none"
+          colors={['#fde047', '#bef264', '#22c55e']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      {isHealthHabit && healthOption && (
+        <LinearGradient
+          pointerEvents="none"
+          colors={[healthOption.gradient[0], healthOption.gradient[1]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
       {multiOccSegments && (
         <View style={[StyleSheet.absoluteFill, styles.occurrenceSegmentsRow]} pointerEvents="none">
           {Array.from({ length: occN }, (_, i) => (
@@ -536,20 +639,46 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
       )}
 
       <View style={[styles.content, shouldCenterContent && { justifyContent: 'center' }]}>
-        <Text
-          style={[styles.habitText, { color: textPrimaryColor }, lineStrikeDone && styles.habitDone]}
-          numberOfLines={isTravel ? 2 : 1}
-        >
-          {habit.text}
-        </Text>
-        {timeText !== 'Tutto il giorno' && (
-          <Text style={[styles.habitSubtext, { color: textSecondaryColor }]} numberOfLines={1}>
-            {timeText}
+        <View style={styles.titleRow}>
+          <Text
+            style={[
+              styles.habitText,
+              { color: isHealthHabit ? healthPrimaryTextColor : primaryTextColor },
+              lineStrikeDone && styles.habitDone,
+              isVacation && styles.vacationTitle,
+            ]}
+            numberOfLines={isTravel ? 2 : 1}
+          >
+            {displayTitle}
+          </Text>
+          {habit.health?.metric === 'sleep' && sleepHoursLabel && (
+            <Text style={styles.sleepHoursInline}>{sleepHoursLabel}</Text>
+          )}
+        </View>
+        {habit.health?.metric === 'sleep' && (
+          <View style={styles.sleepBarWrap}>
+            <View style={[styles.sleepBarTrack, sleepReachedGoal && styles.sleepBarTrackGold]}>
+              {!sleepReachedGoal && (
+                <View style={[styles.sleepBarFill, { width: `${sleepProgressRatio * 100}%` }]} />
+              )}
+            </View>
+          </View>
+        )}
+        {displaySubtext && displaySubtext !== 'Tutto il giorno' && (
+          <Text
+            style={[
+              styles.habitSubtext,
+              { color: isHealthHabit ? healthSecondaryTextColor : secondaryTextColor },
+              isVacation && styles.vacationPeriod,
+            ]}
+            numberOfLines={1}
+          >
+            {displaySubtext}
           </Text>
         )}
-        {shouldShowFrequency && (
-          <Text style={[styles.frequencyText, { color: textTertiaryColor }]} numberOfLines={1}>
-            {frequencyText}
+        {!isVacation && shouldShowFrequency && displayFrequency && (
+          <Text style={[styles.frequencyText, { color: isHealthHabit ? healthTertiaryTextColor : tertiaryTextColor }]} numberOfLines={1}>
+            {displayFrequency}
           </Text>
         )}
       </View>
@@ -657,6 +786,10 @@ const styles = StyleSheet.create({
     height: 75,
     overflow: 'hidden',
   },
+  vacationCard: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
 
   occurrenceSegmentsRow: {
     flexDirection: 'row',
@@ -698,6 +831,12 @@ const styles = StyleSheet.create({
     flex: 1
   },
 
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
   habitText: {
     color: 'white',
     fontSize: 16,
@@ -721,6 +860,39 @@ const styles = StyleSheet.create({
   frequencyText: {
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 12
+  },
+  vacationTitle: {
+    marginBottom: 2,
+  },
+  vacationPeriod: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 0,
+  },
+  sleepHoursInline: {
+    color: 'rgba(255,255,255,0.96)',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  sleepBarWrap: {
+    marginTop: 2,
+    marginBottom: 6,
+    paddingRight: 8,
+  },
+  sleepBarTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(148,163,184,0.5)',
+    overflow: 'hidden',
+  },
+  sleepBarTrackGold: {
+    backgroundColor: '#facc15',
+  },
+  sleepBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#22c55e',
   },
 
   dailyIndicator: {

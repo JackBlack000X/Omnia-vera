@@ -5,7 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Alert, AppState, Platform } from 'react-native';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay, migrateOccurrenceCompletionForNewDailyTotal } from './occurrences';
 import { getHabitsAppearingOnDate } from './habitsForDate';
-import { Habit, HabitsState, TrackerEntry, UserTable } from './schema';
+import { Habit, HabitTipo, HabitsState, TrackerEntry, UserTable } from './schema';
 
 const STORAGE_HABITS = 'habitcheck_habits_v1';
 const STORAGE_TABLES = 'habitcheck_tables_v1';
@@ -223,12 +223,12 @@ export type HabitsContextType = {
   dayResetTime: string;
   reviewedDates: string[];
   isLoaded: boolean;
-  addHabit: (text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => string;
+  addHabit: (text: string, color?: string, folder?: string, tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => string;
   duplicateHabit: (id: string) => string | null;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
   updateHabitFolder: (id: string, folder: string | undefined) => void;
-  updateHabitTipo: (id: string, tipo: 'task' | 'abitudine' | 'evento') => void;
+  updateHabitTipo: (id: string, tipo: HabitTipo) => void;
   removeHabit: (id: string) => void;
   toggleDone: (id: string) => void;
   reorder: (id: string, direction: 'up' | 'down') => void;
@@ -693,7 +693,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [checkEventAutoComplete]);
 
-  const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: 'task' | 'abitudine' | 'evento', initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => {
+  const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: Habit['isAllDay']; habitFreq?: Habit['habitFreq']; label?: string }) => {
     const newId = generateUUID();
     const base = { id: newId, text, order: 0, color: color ?? '#4A148C', createdAt: formatYmd(), createdAtMs: Date.now(), folder, tipo };
     setHabits((prev) => {
@@ -783,7 +783,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     });
   }, [savedTrackerPeople]);
 
-  const updateHabitTipo = useCallback((id: string, tipo: 'task' | 'abitudine' | 'evento') => {
+  const updateHabitTipo = useCallback((id: string, tipo: HabitTipo) => {
     setHabits((prev) => {
       const next = prev.map((h) => (h.id === id ? { ...h, tipo } : h));
       return next;

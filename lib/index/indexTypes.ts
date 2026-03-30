@@ -1,7 +1,7 @@
-import type { Habit } from '@/lib/habits/schema';
+import type { Habit, HabitTipo } from '@/lib/habits/schema';
 
 export type FolderFilters = {
-  tipos?: ('task' | 'abitudine' | 'evento' | 'viaggio')[]; // filter by tipo
+  tipos?: HabitTipo[]; // filter by tipo
   colors?: string[]; // filter by habit color
   frequencies?: ('single' | 'daily' | 'weekly' | 'monthly' | 'annual')[]; // filter by frequency
 };

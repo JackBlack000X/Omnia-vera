@@ -55,6 +55,14 @@ export type TrackerEntry = {
   createdAt: string; // YYYY-MM-DD
 };
 
+export type HabitTipo = 'task' | 'abitudine' | 'evento' | 'viaggio' | 'vacanza' | 'salute';
+
+export type HealthMetric = 'sleep' | 'steps' | 'distance' | 'activeEnergy';
+
+export function isTravelLikeTipo(tipo?: HabitTipo): boolean {
+  return tipo === 'viaggio' || tipo === 'vacanza';
+}
+
 export type Habit = {
   id: string;
   text: string;
@@ -68,7 +76,7 @@ export type Habit = {
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; // explicit frequency flag
   folder?: string; // custom folder/category name
   label?: string; // free-form label/tag
-  tipo?: 'task' | 'abitudine' | 'evento' | 'viaggio'; // task type
+  tipo?: HabitTipo; // task type
   notification?: NotificationConfig;
   /** Dati opzionali per i viaggi */
   travel?: TravelMeta;
@@ -80,8 +88,15 @@ export type Habit = {
     placeId: string;
     minOutsideMinutes?: number;
   };
+  /** If true, hide/suspend this habit while a travel interval is active */
+  pauseDuringTravel?: boolean;
   /** If true, this habit will be included in the daily review modal */
   askReview?: boolean;
+  /** Metadata for Apple Salute driven tasks */
+  health?: {
+    metric: HealthMetric;
+    goalHours?: number;
+  };
   /** Quante volte al giorno (Tasks: una riga; completamento N/N). 1–30, default 1 se assente. */
   dailyOccurrences?: number;
   /** Minuti tra un’occorrenza e la successiva (ancora = orario inizio in schedule / modale). */
@@ -119,4 +134,3 @@ export type HabitsState = {
   dayResetTime?: string; // 'HH:MM' for when the day resets (default: '00:00')
   reviewedDates: string[]; // YYYY-MM-DD dates that have been reviewed
 };
-

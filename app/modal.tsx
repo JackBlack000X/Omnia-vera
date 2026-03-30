@@ -1,6 +1,8 @@
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ConfirmationModal } from '@/components/modal/ConfirmationModal';
 import { styles, COLORS } from '@/components/modal/modalStyles';
+import { canUseHealthKit, getHealthConnectionStateAsync, requestHealthAuthorizationAsync, type HealthConnectionInfo } from '@/lib/health';
+import { getHealthHabitOption, HEALTH_HABIT_OPTIONS } from '@/lib/healthHabits';
 import { useModalLogic } from '@/lib/modal/useModalLogic';
 import { formatDuration } from '@/lib/modal/helpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,8 +12,9 @@ import { searchCities, type CityInfo } from '@/lib/weather';
 import { canAskLocationPermission, getLocationPermissionStatusAsync, type LocationPermissionStatus } from '@/lib/location';
 import type { NotificationConfig } from '@/lib/habits/schema';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type HoldableStepperButtonProps = {
@@ -98,6 +101,27 @@ function clampYmdNotBefore(min: Date, year: number, month: number, day: number):
     };
   }
   return { year, month, day };
+}
+
+function shiftYmd(value: string, deltaDays: number): string {
+  const { year, month, day } = parseYmdSafe(value);
+  const next = new Date(year, month - 1, day);
+  next.setDate(next.getDate() + deltaDays);
+  return formatYmd(next.getFullYear(), next.getMonth() + 1, next.getDate());
+}
+
+function shiftYmdByMonths(value: string, deltaMonths: number): string {
+  const { year, month, day } = parseYmdSafe(value);
+  const next = new Date(year, month - 1 + deltaMonths, 1);
+  const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  return formatYmd(next.getFullYear(), next.getMonth() + 1, Math.min(day, maxDay));
+}
+
+function shiftYmdByYears(value: string, deltaYears: number): string {
+  const { year, month, day } = parseYmdSafe(value);
+  const nextYear = year + deltaYears;
+  const maxDay = new Date(nextYear, month, 0).getDate();
+  return formatYmd(nextYear, month, Math.min(day, maxDay));
 }
 
 function hhmmToMinutesSafe(value: string | null | undefined, fallback: number): number {
@@ -381,6 +405,11 @@ export default function ModalScreen() {
   const [places, setPlaces] = React.useState<{ id: string; name: string }[]>([]);
   const [selectedPlaceId, setSelectedPlaceId] = React.useState<string | null>(m.locationRule?.placeId ?? null);
   const [locationStatus, setLocationStatus] = React.useState<LocationPermissionStatus>('none');
+  const [healthConnection, setHealthConnection] = React.useState<HealthConnectionInfo>({
+    state: canUseHealthKit() ? 'unknown' : 'unsupported',
+    requestStatus: null,
+  });
+  const [healthConnecting, setHealthConnecting] = React.useState(false);
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [repeatEndOpen, setRepeatEndOpen] = React.useState(false);
   const [repeatSubOpen, setRepeatSubOpen] = React.useState(false);
@@ -398,6 +427,23 @@ export default function ModalScreen() {
   const toSelectedRef = React.useRef(false);
   const toInputRef = React.useRef<TextInput>(null);
   const [toConfirmed, setToConfirmed] = React.useState(false);
+  const selectedHealthOption = getHealthHabitOption(m.healthMetric);
+  const healthOptionsToShow = healthConnection.state === 'ready'
+    ? HEALTH_HABIT_OPTIONS
+    : (selectedHealthOption ? [selectedHealthOption] : []);
+  const shouldShowSaluteDetails = m.tipo !== 'salute' || Boolean(m.healthMetric);
+
+  const refreshHealthConnection = React.useCallback(async () => {
+    try {
+      const next = await getHealthConnectionStateAsync();
+      setHealthConnection(next);
+    } catch {
+      setHealthConnection({
+        state: canUseHealthKit() ? 'unknown' : 'unsupported',
+        requestStatus: null,
+      });
+    }
+  }, []);
 
   React.useEffect(() => {
     (async () => {
@@ -412,6 +458,11 @@ export default function ModalScreen() {
       }
     })();
   }, [m.locationRule?.placeId]);
+
+  React.useEffect(() => {
+    if ((type !== 'new' && type !== 'edit') || m.tipo !== 'salute') return;
+    void refreshHealthConnection();
+  }, [type, m.tipo, refreshHealthConnection]);
 
   React.useEffect(() => {
     if (fromSelectedRef.current) { fromSelectedRef.current = false; return; }
@@ -566,7 +617,7 @@ export default function ModalScreen() {
             {type === 'new' ? 'Aggiungi' : type === 'rename' ? 'Rinomina Task' : type === 'schedule' ? 'Programma Abitudine' : type === 'edit' ? 'Modifica Task' : 'Scegli Colore'}
           </Text>
 
-          {(type === 'new' || type === 'rename' || type === 'edit') && !(m.tipo === 'viaggio' && (type === 'new' || type === 'edit')) && (
+          {(type === 'new' || type === 'rename' || type === 'edit') && !((m.tipo === 'viaggio' || m.tipo === 'salute') && (type === 'new' || type === 'edit')) && (
             <TextInput
               value={m.text}
               onChangeText={(v) => v.length <= 100 && m.setText(v)}
@@ -599,10 +650,119 @@ export default function ModalScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+              <View style={[styles.row, { marginTop: 8 }]}>
+                {(['vacanza', 'salute'] as const).map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    onPress={() => m.setTipo(t)}
+                    style={[styles.chip, m.tipo === t ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                  >
+                    <Text style={m.tipo === t ? styles.chipActiveText : styles.chipGhostText}>
+                      {t === 'vacanza' ? 'Vacanza' : 'Salute'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && (
+          {(type === 'new' || type === 'edit') && m.tipo === 'salute' && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>Metrica salute</Text>
+              {healthConnection.state !== 'ready' && healthOptionsToShow.length === 0 ? (
+                <View style={{ marginTop: 10, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: '#334155', backgroundColor: '#0f172a', gap: 10 }}>
+                  <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>Collega Apple Salute per scegliere una metrica</Text>
+                  <Text style={{ color: '#94a3b8', fontSize: 13, lineHeight: 18 }}>
+                    Omnia può usare Passi, Km, Calorie e Sonno. Appena dai il permesso, qui sopra compaiono le opzioni.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try {
+                        setHealthConnecting(true);
+                        const granted = await requestHealthAuthorizationAsync();
+                        await refreshHealthConnection();
+                        if (!granted) {
+                          Alert.alert('Permesso non concesso', 'Per creare una task Salute devi autorizzare Apple Salute.');
+                        }
+                      } catch {
+                        Alert.alert('Errore Apple Salute', 'Non sono riuscito a collegare Apple Salute in questo momento.');
+                      } finally {
+                        setHealthConnecting(false);
+                      }
+                    }}
+                    style={[styles.chip, styles.chipActive, { alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 10, opacity: healthConnecting ? 0.6 : 1 }]}
+                    disabled={healthConnecting}
+                  >
+                    <Text style={styles.chipActiveText}>{healthConnecting ? 'Collego...' : 'Collega Apple Salute'}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ marginTop: 10, gap: 10 }}>
+                  {healthOptionsToShow.map((option) => {
+                    const selected = m.healthMetric === option.metric;
+                    return (
+                      <TouchableOpacity
+                        key={option.metric}
+                        onPress={() => m.setHealthMetric(option.metric)}
+                        activeOpacity={0.9}
+                        style={{
+                          borderRadius: 18,
+                          overflow: 'hidden',
+                          borderWidth: 2,
+                          borderColor: selected ? '#ffffff' : 'rgba(148,163,184,0.22)',
+                        }}
+                      >
+                        <LinearGradient
+                          colors={[option.gradient[0], option.gradient[1]]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={{ paddingHorizontal: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(15,23,42,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                              <Ionicons name={option.icon} size={18} color="white" />
+                            </View>
+                            <View>
+                              <Text style={{ color: 'white', fontSize: 17, fontWeight: '800' }}>{option.label}</Text>
+                              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13 }}>
+                                {option.metric === 'sleep'
+                                  ? 'Monitora il sonno'
+                                  : option.metric === 'steps'
+                                  ? 'Conta i passi giornalieri'
+                                  : option.metric === 'distance'
+                                  ? 'Usa i km camminati o corsi'
+                                  : 'Usa le calorie attive'}
+                              </Text>
+                            </View>
+                          </View>
+                          {selected && <Ionicons name="checkmark-circle" size={24} color="white" />}
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && m.tipo === 'salute' && m.healthMetric === 'sleep' && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>Obiettivo sonno</Text>
+              <Text style={styles.subtle}>Quante ore vuoi dormire per considerare completato l’obiettivo.</Text>
+              <View style={[styles.timePicker, { marginTop: 8 }]}>
+                <View style={[styles.timeControls, { flex: 0, minWidth: 180 }]}>
+                  <Text style={styles.timeLabel}>Ore</Text>
+                  <View style={styles.timeStepperRow}>
+                    <HoldableStepperButton onPress={() => m.setHealthGoalHours((prev: number) => Math.max(1, prev - 1))}>−</HoldableStepperButton>
+                    <Text style={styles.timeValue}>{m.healthGoalHours}</Text>
+                    <HoldableStepperButton onPress={() => m.setHealthGoalHours((prev: number) => Math.min(16, prev + 1))}>+</HoldableStepperButton>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>Cartella</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
@@ -631,7 +791,7 @@ export default function ModalScreen() {
             </Text>
           )}
 
-          {(type === 'new' || type === 'edit') && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'vacanza' && m.tipo !== 'salute' && (
             <View style={styles.colorBottom}>
               <View style={[styles.sectionHeader, { marginTop: 12 }]}>
                 <Text style={styles.sectionTitle}>Colore</Text>
@@ -647,7 +807,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'vacanza' && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>Label</Text>
               <TextInput
@@ -690,7 +850,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
@@ -703,6 +863,7 @@ export default function ModalScreen() {
                   {m.notification.enabled && (
                     <TouchableOpacity
                       onPress={(e) => {
+                        if (m.tipo === 'vacanza') return;
                         e.stopPropagation();
                         m.setNotification({ ...m.notification, showAsTaskInOggi: !m.notification.showAsTaskInOggi });
                       }}
@@ -716,6 +877,7 @@ export default function ModalScreen() {
                         borderWidth: 1,
                         borderColor: m.notification.showAsTaskInOggi ? '#f59e0b' : '#475569',
                         backgroundColor: m.notification.showAsTaskInOggi ? '#f59e0b' : 'transparent',
+                        opacity: m.tipo === 'vacanza' ? 0.35 : 1,
                       }}
                     >
                       <Text style={{ color: m.notification.showAsTaskInOggi ? '#111827' : '#cbd5e1', fontSize: 13, fontWeight: '800' }}>
@@ -726,44 +888,106 @@ export default function ModalScreen() {
                 </View>
                 <Switch
                   value={m.notification.enabled}
-                  onValueChange={v => { m.setNotification({ ...m.notification, enabled: v }); if (v) setNotifOpen(true); else setNotifOpen(false); }}
+                  onValueChange={v => {
+                    m.setNotification(
+                      m.tipo === 'vacanza'
+                        ? { ...m.notification, enabled: v, minutesBefore: null, showAsTaskInOggi: false }
+                        : { ...m.notification, enabled: v }
+                    );
+                    if (v) setNotifOpen(true); else setNotifOpen(false);
+                  }}
                   trackColor={{ false: '#334155', true: '#ec4899' }}
                   thumbColor="white"
                 />
               </View>
               {m.notification.enabled && notifOpen && (
                 <View style={{ marginTop: 12, backgroundColor: '#0f172a', borderRadius: 16, borderWidth: 1, borderColor: '#334155', overflow: 'hidden' }}>
-                  {([
-                    { label: 'Al momento dell\'evento', value: 0 },
-                    { label: '5 minuti prima', value: 5 },
-                    { label: '10 minuti prima', value: 10 },
-                    { label: '15 minuti prima', value: 15 },
-                    { label: '30 minuti prima', value: 30 },
-                    { label: '1 ora prima', value: 60 },
-                    { label: '2 ore prima', value: 120 },
-                    { label: 'Orario personalizzato', value: null },
-                  ] as { label: string; value: number | null }[]).map((opt, idx, arr) => {
-                    const isSelected = m.notification.minutesBefore === opt.value;
-                    return (
-                      <TouchableOpacity
-                        key={String(opt.value)}
-                        onPress={() => m.setNotification({ ...m.notification, minutesBefore: opt.value, customTime: opt.value !== null ? null : m.notification.customTime })}
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: '#1e293b' }}
-                      >
-                        <Text style={{ color: '#e2e8f0', fontSize: 15 }}>{opt.label}</Text>
-                        {isSelected && <Ionicons name="checkmark" size={18} color="#ec4899" />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                  {m.notification.minutesBefore === null && (
-                    <NotificationCustomPicker notification={m.notification} setNotification={m.setNotification} />
+                  {m.tipo === 'vacanza' ? (
+                    <>
+                      <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
+                        <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>Notifica con giorno specifico e orario</Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 13, marginTop: 4, marginBottom: 8 }}>
+                          Per le vacanze usiamo solo una notifica personalizzata.
+                        </Text>
+                      </View>
+                      <NotificationCustomPicker
+                        notification={{ ...m.notification, minutesBefore: null, showAsTaskInOggi: false }}
+                        setNotification={(next) => m.setNotification({ ...next, minutesBefore: null, showAsTaskInOggi: false })}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      {([
+                        { label: 'Al momento dell\'evento', value: 0 },
+                        { label: '5 minuti prima', value: 5 },
+                        { label: '10 minuti prima', value: 10 },
+                        { label: '15 minuti prima', value: 15 },
+                        { label: '30 minuti prima', value: 30 },
+                        { label: '1 ora prima', value: 60 },
+                        { label: '2 ore prima', value: 120 },
+                        { label: 'Orario personalizzato', value: null },
+                      ] as { label: string; value: number | null }[]).map((opt, idx, arr) => {
+                        const isSelected = m.notification.minutesBefore === opt.value;
+                        return (
+                          <TouchableOpacity
+                            key={String(opt.value)}
+                            onPress={() => m.setNotification({ ...m.notification, minutesBefore: opt.value, customTime: opt.value !== null ? null : m.notification.customTime })}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: '#1e293b' }}
+                          >
+                            <Text style={{ color: '#e2e8f0', fontSize: 15 }}>{opt.label}</Text>
+                            {isSelected && <Ionicons name="checkmark" size={18} color="#ec4899" />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {m.notification.minutesBefore === null && (
+                        <NotificationCustomPicker notification={m.notification} setNotification={m.setNotification} />
+                      )}
+                    </>
                   )}
                 </View>
               )}
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && m.tipo !== 'viaggio' && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'viaggio' && m.tipo !== 'vacanza' && (
+            <View style={{ marginTop: 20 }}>
+              <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                <View style={{ flex: 1, paddingRight: 12, flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.sectionTitle}>Sospendi in viaggio</Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      Alert.alert(
+                        'Sospendi in viaggio',
+                        'Nasconde questa task in Oggi e Domani mentre un viaggio o una vacanza attivi coprono il suo orario.',
+                        [{ text: 'OK', style: 'default', isPreferred: true }],
+                      )
+                    }
+                    style={{
+                      marginLeft: 8,
+                      width: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#64748b',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700' }}>i</Text>
+                  </TouchableOpacity>
+                </View>
+                <Switch
+                  value={m.pauseDuringTravel}
+                  onValueChange={m.setPauseDuringTravel}
+                  trackColor={{ false: '#334155', true: '#ec4899' }}
+                  thumbColor="white"
+                />
+              </View>
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'viaggio' && m.tipo !== 'vacanza' && (
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <Text style={styles.sectionTitle}>Chiedi valutazione</Text>
@@ -777,7 +1001,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && (m.tipo === 'task' || m.tipo === 'abitudine') && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (m.tipo === 'task' || m.tipo === 'abitudine') && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>Orario</Text>
               <View style={[styles.row, { marginTop: 8 }]}>
@@ -797,7 +1021,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && m.tipo === 'viaggio' && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo === 'viaggio' && (
             <View style={{ marginTop: 20 }}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Dettagli viaggio</Text>
@@ -1587,7 +1811,241 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(m.tipo !== 'viaggio') && (type === 'schedule' || ((type === 'new' || type === 'edit') && ((m.tipo !== 'task' && m.tipo !== 'abitudine') || m.taskHasTime))) && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo === 'vacanza' && (
+            <View style={{ marginTop: 20 }}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Intervallo vacanza</Text>
+              </View>
+
+              {(() => {
+                const startYmd = m.travelGiornoPartenza;
+                const endYmd = m.travelGiornoRitorno ?? m.travelGiornoPartenza;
+                const now = new Date();
+                const todayYmd = formatYmd(now.getFullYear(), now.getMonth() + 1, now.getDate());
+                const startDate = parseYmdSafe(startYmd);
+                const endDate = parseYmdSafe(endYmd);
+                const startDateLabel = new Date(startDate.year, startDate.month - 1, startDate.day);
+                const endDateLabel = new Date(endDate.year, endDate.month - 1, endDate.day);
+                const startMinutes = hhmmToMinutesSafe(m.travelOrarioPartenza, 9 * 60);
+                const endMinutes = hhmmToMinutesSafe(m.travelOrarioArrivoRitorno ?? m.travelOrarioArrivo, 18 * 60);
+                const sameDay = startYmd === endYmd;
+                const isStartToday = startYmd === todayYmd;
+                const isEndToday = endYmd === todayYmd;
+
+                const setStartDate = (delta: number) => {
+                  const next = shiftYmd(startYmd, delta);
+                  m.setTravelGiornoPartenza(next);
+                  if (endYmd < next) m.setTravelGiornoRitorno(next);
+                };
+
+                const setStartMonth = (delta: number) => {
+                  const next = shiftYmdByMonths(startYmd, delta);
+                  m.setTravelGiornoPartenza(next);
+                  if (endYmd < next) m.setTravelGiornoRitorno(next);
+                };
+
+                const setStartYear = (delta: number) => {
+                  const next = shiftYmdByYears(startYmd, delta);
+                  m.setTravelGiornoPartenza(next);
+                  if (endYmd < next) m.setTravelGiornoRitorno(next);
+                };
+
+                const setEndDate = (delta: number) => {
+                  const next = shiftYmd(endYmd, delta);
+                  if (next < startYmd) {
+                    m.setTravelGiornoRitorno(startYmd);
+                    return;
+                  }
+                  m.setTravelGiornoRitorno(next);
+                };
+
+                const setEndMonth = (delta: number) => {
+                  const next = shiftYmdByMonths(endYmd, delta);
+                  if (next < startYmd) {
+                    m.setTravelGiornoRitorno(startYmd);
+                    return;
+                  }
+                  m.setTravelGiornoRitorno(next);
+                };
+
+                const setEndYear = (delta: number) => {
+                  const next = shiftYmdByYears(endYmd, delta);
+                  if (next < startYmd) {
+                    m.setTravelGiornoRitorno(startYmd);
+                    return;
+                  }
+                  m.setTravelGiornoRitorno(next);
+                };
+
+                const setStartTime = (next: number) => {
+                  const clamped = Math.max(0, Math.min(23 * 60 + 55, next));
+                  m.setTravelOrarioPartenza(minutesToHhmmSafe(clamped));
+                  if (sameDay && clamped >= endMinutes - 5) {
+                    m.setTravelOrarioArrivoRitorno(minutesToHhmmSafe(Math.min(24 * 60, clamped + 60)));
+                  }
+                };
+
+                const setEndTime = (next: number) => {
+                  const clamped = Math.max(5, Math.min(24 * 60, next));
+                  const adjusted = sameDay ? Math.max(clamped, startMinutes + 5) : clamped;
+                  m.setTravelOrarioArrivoRitorno(minutesToHhmmSafe(adjusted));
+                  m.setTravelOrarioArrivo(minutesToHhmmSafe(adjusted));
+                };
+
+                return (
+                  <>
+                    <View
+                      style={{
+                        marginTop: 8,
+                        backgroundColor: '#0f172a',
+                        borderRadius: 18,
+                        borderWidth: isStartToday ? 2 : 1,
+                        borderColor: isStartToday ? '#ef4444' : '#334155',
+                        padding: 16,
+                      }}
+                    >
+                      <Text style={styles.subtle}>Data partenza</Text>
+                      <View style={{ marginTop: 12, gap: 12 }}>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <HoldableStepperButton onPress={() => setStartDate(-1)}>−</HoldableStepperButton>
+                            <View
+                              style={{
+                                minWidth: 96,
+                                paddingVertical: 8,
+                                paddingHorizontal: 10,
+                                borderRadius: 14,
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>{startDate.day}</Text>
+                            </View>
+                            <HoldableStepperButton onPress={() => setStartDate(1)}>+</HoldableStepperButton>
+                          </View>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <HoldableStepperButton onPress={() => setStartMonth(-1)}>−</HoldableStepperButton>
+                            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', minWidth: 96, textAlign: 'center', paddingVertical: 8 }}>
+                              {startDateLabel.toLocaleDateString('it-IT', { month: 'long' })}
+                            </Text>
+                            <HoldableStepperButton onPress={() => setStartMonth(1)}>+</HoldableStepperButton>
+                          </View>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <HoldableStepperButton onPress={() => setStartYear(-1)}>−</HoldableStepperButton>
+                            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', minWidth: 96, textAlign: 'center', paddingVertical: 8 }}>
+                              {startDate.year}
+                            </Text>
+                            <HoldableStepperButton onPress={() => setStartYear(1)}>+</HoldableStepperButton>
+                          </View>
+                        </View>
+                      </View>
+                      <View style={{ marginTop: 18 }}>
+                        <Text style={styles.timeSectionTitle}>Orario partenza</Text>
+                        <View style={styles.timePicker}>
+                          <View style={styles.timeControls}>
+                            <Text style={styles.timeLabel}>Ore</Text>
+                            <View style={styles.timeStepperRow}>
+                              <HoldableStepperButton onPress={() => setStartTime(startMinutes - 60)}>−</HoldableStepperButton>
+                              <Text style={styles.timeValue}>{String(Math.floor(startMinutes / 60)).padStart(2, '0')}</Text>
+                              <HoldableStepperButton onPress={() => setStartTime(startMinutes + 60)}>+</HoldableStepperButton>
+                            </View>
+                          </View>
+                          <View style={styles.timeControls}>
+                            <Text style={styles.timeLabel}>Min</Text>
+                            <View style={styles.timeStepperRow}>
+                              <HoldableStepperButton onPress={() => setStartTime(startMinutes - 5)}>−</HoldableStepperButton>
+                              <Text style={styles.timeValue}>{String(startMinutes % 60).padStart(2, '0')}</Text>
+                              <HoldableStepperButton onPress={() => setStartTime(startMinutes + 5)}>+</HoldableStepperButton>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View
+                      style={{
+                        marginTop: 16,
+                        backgroundColor: '#0f172a',
+                        borderRadius: 18,
+                        borderWidth: isEndToday ? 2 : 1,
+                        borderColor: isEndToday ? '#ef4444' : '#334155',
+                        padding: 16,
+                      }}
+                    >
+                      <Text style={styles.subtle}>Data ritorno</Text>
+                      <View style={{ marginTop: 12, gap: 12 }}>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <HoldableStepperButton onPress={() => setEndDate(-1)}>−</HoldableStepperButton>
+                            <View
+                              style={{
+                                minWidth: 96,
+                                paddingVertical: 8,
+                                paddingHorizontal: 10,
+                                borderRadius: 14,
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', textAlign: 'center' }}>{endDate.day}</Text>
+                            </View>
+                            <HoldableStepperButton onPress={() => setEndDate(1)}>+</HoldableStepperButton>
+                          </View>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <HoldableStepperButton onPress={() => setEndMonth(-1)}>−</HoldableStepperButton>
+                            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', minWidth: 96, textAlign: 'center', paddingVertical: 8 }}>
+                              {endDateLabel.toLocaleDateString('it-IT', { month: 'long' })}
+                            </Text>
+                            <HoldableStepperButton onPress={() => setEndMonth(1)}>+</HoldableStepperButton>
+                          </View>
+                        </View>
+                        <View style={{ alignItems: 'center' }}>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <HoldableStepperButton onPress={() => setEndYear(-1)}>−</HoldableStepperButton>
+                            <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', minWidth: 96, textAlign: 'center', paddingVertical: 8 }}>
+                              {endDate.year}
+                            </Text>
+                            <HoldableStepperButton onPress={() => setEndYear(1)}>+</HoldableStepperButton>
+                          </View>
+                        </View>
+                      </View>
+                      <View style={{ marginTop: 18 }}>
+                        <Text style={styles.timeSectionTitle}>Orario ritorno</Text>
+                        <View style={styles.timePicker}>
+                          <View style={styles.timeControls}>
+                            <Text style={styles.timeLabel}>Ore</Text>
+                            <View style={styles.timeStepperRow}>
+                              <HoldableStepperButton onPress={() => setEndTime(endMinutes - 60)}>−</HoldableStepperButton>
+                              <Text style={styles.timeValue}>{String(Math.floor(endMinutes / 60)).padStart(2, '0')}</Text>
+                              <HoldableStepperButton onPress={() => setEndTime(endMinutes + 60)}>+</HoldableStepperButton>
+                            </View>
+                          </View>
+                          <View style={styles.timeControls}>
+                            <Text style={styles.timeLabel}>Min</Text>
+                            <View style={styles.timeStepperRow}>
+                              <HoldableStepperButton onPress={() => setEndTime(endMinutes - 5)}>−</HoldableStepperButton>
+                              <Text style={styles.timeValue}>{String(endMinutes % 60).padStart(2, '0')}</Text>
+                              <HoldableStepperButton onPress={() => setEndTime(endMinutes + 5)}>+</HoldableStepperButton>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  </>
+                );
+              })()}
+            </View>
+          )}
+
+          {shouldShowSaluteDetails && (m.tipo !== 'viaggio' && m.tipo !== 'vacanza') && (type === 'schedule' || ((type === 'new' || type === 'edit') && ((m.tipo !== 'task' && m.tipo !== 'abitudine') || m.taskHasTime))) && (
             <View>
               <>
                   {/* Giorno / Data inizio: sempre visibile sopra Ripetizione */}
@@ -1734,9 +2192,11 @@ export default function ModalScreen() {
                 <TouchableOpacity onPress={() => m.setModeWithConfirmation('allDay')} style={[styles.chip, m.mode === 'allDay' ? styles.chipActive : styles.chipGhost]}>
                   <Text style={m.mode === 'allDay' ? styles.chipActiveText : styles.chipGhostText}>Tutto il giorno</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => m.setModeWithConfirmation('timed')} style={[styles.chip, m.mode === 'timed' ? styles.chipActive : styles.chipGhost]}>
-                  <Text style={m.mode === 'timed' ? styles.chipActiveText : styles.chipGhostText}>Orario specifico</Text>
-                </TouchableOpacity>
+                {m.tipo !== 'salute' && (
+                  <TouchableOpacity onPress={() => m.setModeWithConfirmation('timed')} style={[styles.chip, m.mode === 'timed' ? styles.chipActive : styles.chipGhost]}>
+                    <Text style={m.mode === 'timed' ? styles.chipActiveText : styles.chipGhostText}>Orario specifico</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {m.mode === 'timed' && (
@@ -1925,7 +2385,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && m.tipo === 'task' && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo === 'task' && (
             <View style={{ marginTop: 20 }}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Automazioni posizione</Text>
@@ -2010,10 +2470,20 @@ export default function ModalScreen() {
               (m.travelPartenzaTipo !== 'attuale' && !m.travelPartenzaNome.trim()) ||
               !m.travelDestinazioneNome.trim()
             );
+            const vacationEndYmd = m.travelGiornoRitorno ?? m.travelGiornoPartenza;
+            const vacationEndTime = m.travelOrarioArrivoRitorno ?? m.travelOrarioArrivo;
+            const vacationIncomplete = (type === 'new' || type === 'edit') && m.tipo === 'vacanza' && (
+              !m.travelGiornoPartenza ||
+              !vacationEndYmd ||
+              !m.travelOrarioPartenza ||
+              !vacationEndTime ||
+              new Date(`${vacationEndYmd}T${vacationEndTime}:00`).getTime() <= new Date(`${m.travelGiornoPartenza}T${m.travelOrarioPartenza}:00`).getTime()
+            );
+            const healthIncomplete = (type === 'new' || type === 'edit') && m.tipo === 'salute' && !m.healthMetric;
             return (
               <TouchableOpacity
                 onPress={() => {
-                  if (travelIncomplete) return;
+                  if (travelIncomplete || vacationIncomplete || healthIncomplete) return;
                   if ((type === 'new' || type === 'edit') && m.tipo === 'task') {
                     const placeId = selectedPlaceId ?? null;
                     if (placeId) {
@@ -2028,7 +2498,7 @@ export default function ModalScreen() {
                   }
                   m.save();
                 }}
-                style={[styles.circularBtn, styles.saveBtn, travelIncomplete && { opacity: 0.3 }]}
+                style={[styles.circularBtn, styles.saveBtn, (travelIncomplete || vacationIncomplete || healthIncomplete) && { opacity: 0.3 }]}
               >
                 <Ionicons name="checkmark" size={52} color="#00ff00" />
               </TouchableOpacity>

@@ -6,6 +6,14 @@ import {
   getCalendarEventsAsync,
   requestCalendarPermissionsAsync,
 } from '@/lib/appleCalendar';
+import {
+  canUseHealthKit,
+  getHealthConnectionStateAsync,
+  getHealthSnapshotAsync,
+  requestHealthAuthorizationAsync,
+  type HealthConnectionState,
+  type HealthSnapshot,
+} from '@/lib/health';
 import { canAskLocationPermission, getLocationPermissionStatusAsync, requestLocationPermissionsAsync, type LocationPermissionStatus } from '@/lib/location';
 import { buildCsv } from '@/lib/csv';
 import { useHabits } from '@/lib/habits/Provider';
@@ -18,6 +26,20 @@ import { ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet, Te
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type ProfileSection = 'impostazioni' | 'statistiche';
+
+function formatSleepMinutes(value: number): string {
+  const totalMinutes = Math.max(0, Math.round(value));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
+}
+
+function formatKm(value: number): string {
+  return `${value.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+}
 
 export default function ProfileScreen() {
   const { habits, history, setHabits } = useHabits();
@@ -32,6 +54,10 @@ export default function ProfileScreen() {
   const [citySearch, setCitySearch] = useState('');
   const [cityResults, setCityResults] = useState<CityInfo[]>([]);
   const [citySearching, setCitySearching] = useState(false);
+  const [healthState, setHealthState] = useState<HealthConnectionState>('unsupported');
+  const [healthSnapshot, setHealthSnapshot] = useState<HealthSnapshot | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
   const cityInputRef = React.useRef<TextInput>(null);
 
   useEffect(() => {
@@ -106,6 +132,35 @@ export default function ProfileScreen() {
     })();
   }, []);
 
+  const refreshHealthState = React.useCallback(async (loadSnapshot = true) => {
+    if (!canUseHealthKit()) return;
+
+    setHealthLoading(true);
+    setHealthError(null);
+
+    try {
+      const nextState = await getHealthConnectionStateAsync();
+      setHealthState(nextState.state);
+
+      if (nextState.state === 'ready' && loadSnapshot) {
+        const snapshot = await getHealthSnapshotAsync();
+        setHealthSnapshot(snapshot);
+      } else if (nextState.state !== 'ready') {
+        setHealthSnapshot(null);
+      }
+    } catch {
+      setHealthSnapshot(null);
+      setHealthError('Non sono riuscito a leggere i dati di Apple Salute. Controlla i permessi nelle impostazioni iPhone.');
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!canUseHealthKit()) return;
+    refreshHealthState();
+  }, [refreshHealthState]);
+
   async function sendFeedback() {
     const trimmed = feedbackText.trim();
     if (!trimmed) {
@@ -166,7 +221,7 @@ export default function ProfileScreen() {
       }
       setHabits((prev) => [...prev, ...newHabits]);
       Alert.alert('Calendario', `Importati ${newHabits.length} eventi dal Calendario Apple.`);
-    } catch (e) {
+    } catch {
       Alert.alert('Errore', 'Impossibile importare gli eventi dal calendario.');
     } finally {
       setCalendarImporting(false);
@@ -230,6 +285,38 @@ export default function ProfileScreen() {
       }
     } finally {
       setLocationLoading(false);
+    }
+  }
+
+  async function handleConnectHealth() {
+    setHealthLoading(true);
+    setHealthError(null);
+
+    try {
+      const granted = await requestHealthAuthorizationAsync();
+      if (!granted) {
+        setHealthError('Apple Salute non ha concesso l’accesso ai dati richiesti.');
+      }
+      await refreshHealthState(granted);
+    } catch {
+      setHealthError('Impossibile collegare Apple Salute in questo momento.');
+      setHealthLoading(false);
+    }
+  }
+
+  function getHealthStatusLabel(state: HealthConnectionState): string {
+    switch (state) {
+      case 'ready':
+        return 'Stato: collegato';
+      case 'needsAuthorization':
+        return 'Stato: accesso non ancora autorizzato';
+      case 'unavailable':
+        return 'Stato: Salute non disponibile su questo dispositivo';
+      case 'unknown':
+        return 'Stato: verifica richiesta';
+      case 'unsupported':
+      default:
+        return 'Stato: disponibile solo su iPhone';
     }
   }
 
@@ -319,6 +406,83 @@ export default function ProfileScreen() {
                       : 'Abilita posizione per le automazioni'}
                   </Text>
                 </TouchableOpacity>
+              </View>
+            )}
+            {canUseHealthKit() && (
+              <View style={styles.feedbackBox}>
+                <View style={styles.healthHeaderRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.feedbackLabel}>Apple Salute</Text>
+                    <Text style={styles.feedbackSublabel}>
+                      Collega sonno, calorie attive, passi e km per preparare le abitudini basate su HealthKit.
+                    </Text>
+                    <Text style={[styles.feedbackSublabel, { marginBottom: 10 }]}>
+                      {getHealthStatusLabel(healthState)}
+                    </Text>
+                  </View>
+                  {healthState === 'ready' && (
+                    <TouchableOpacity
+                      style={styles.healthRefreshBtn}
+                      onPress={() => refreshHealthState(true)}
+                      disabled={healthLoading}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="refresh" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {healthLoading ? (
+                  <View style={styles.healthLoadingRow}>
+                    <ActivityIndicator color={THEME.primary} size="small" />
+                    <Text style={styles.healthLoadingText}>Aggiorno i dati Salute...</Text>
+                  </View>
+                ) : healthState === 'ready' && healthSnapshot ? (
+                  <>
+                    <View style={styles.healthMetricsRow}>
+                      <View style={styles.healthMetricCard}>
+                        <Ionicons name="footsteps-outline" size={18} color={THEME.cyan} />
+                        <Text style={styles.healthMetricValue}>{healthSnapshot.stepsToday.toLocaleString('it-IT')}</Text>
+                        <Text style={styles.healthMetricLabel}>Passi oggi</Text>
+                      </View>
+                      <View style={styles.healthMetricCard}>
+                        <Ionicons name="walk-outline" size={18} color="#84cc16" />
+                        <Text style={styles.healthMetricValue}>{formatKm(healthSnapshot.walkingRunningDistanceKmToday)}</Text>
+                        <Text style={styles.healthMetricLabel}>Km oggi</Text>
+                      </View>
+                      <View style={styles.healthMetricCard}>
+                        <Ionicons name="flame-outline" size={18} color={THEME.orange} />
+                        <Text style={styles.healthMetricValue}>{healthSnapshot.activeEnergyBurnedKcalToday.toLocaleString('it-IT')}</Text>
+                        <Text style={styles.healthMetricLabel}>Kcal attive</Text>
+                      </View>
+                      <View style={styles.healthMetricCard}>
+                        <Ionicons name="moon-outline" size={18} color={THEME.primary} />
+                        <Text style={styles.healthMetricValue}>{formatSleepMinutes(healthSnapshot.sleepMinutesLastNight)}</Text>
+                        <Text style={styles.healthMetricLabel}>Ultima notte</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.healthFootnote}>
+                      Anteprima HealthKit pronta. Nel prossimo step possiamo agganciare questi dati alle singole abitudini.
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.sendFeedbackBtn, styles.calendarImportBtn]}
+                      onPress={handleConnectHealth}
+                      disabled={healthLoading || healthState === 'unavailable'}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="heart-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                      <Text style={styles.sendFeedbackBtnText}>
+                        {healthState === 'needsAuthorization' || healthState === 'unknown'
+                          ? 'Collega Apple Salute'
+                          : 'Riprova collegamento'}
+                      </Text>
+                    </TouchableOpacity>
+                    {healthError && <Text style={styles.healthErrorText}>{healthError}</Text>}
+                  </>
+                )}
               </View>
             )}
             <View style={styles.feedbackBox}>
@@ -513,6 +677,16 @@ const styles = StyleSheet.create({
   weatherGpsBtnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   weatherCityItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#0f172a', marginTop: 4 },
   weatherCityItemText: { color: THEME.text, fontSize: 15, fontWeight: '500' },
+  healthHeaderRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  healthRefreshBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1d4ed8', marginTop: 2 },
+  healthLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  healthLoadingText: { color: THEME.textMuted, fontSize: 14, fontWeight: '500' },
+  healthMetricsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 2 },
+  healthMetricCard: { width: '48%', minHeight: 120, backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1, borderRadius: 14, padding: 12, justifyContent: 'space-between' },
+  healthMetricValue: { color: THEME.text, fontSize: 21, fontWeight: '800', marginTop: 10 },
+  healthMetricLabel: { color: THEME.textMuted, fontSize: 13, fontWeight: '600', marginTop: 8 },
+  healthFootnote: { color: THEME.textMuted, fontSize: 13, lineHeight: 19, marginTop: 12 },
+  healthErrorText: { color: '#fca5a5', fontSize: 13, lineHeight: 18, marginTop: 10 },
   feedbackBox: { marginTop: 8 },
   calendarImportBtn: { marginBottom: 4 },
   feedbackLabel: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 4 },
@@ -521,4 +695,3 @@ const styles = StyleSheet.create({
   sendFeedbackBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1d4ed8', paddingVertical: 14, borderRadius: 12, marginTop: 14 },
   sendFeedbackBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });
-

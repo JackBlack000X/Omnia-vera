@@ -1,3 +1,4 @@
+import { isTravelLikeTipo } from '@/lib/habits/schema';
 import { LayoutInfo } from '@/lib/layoutEngine';
 import {
     DRAG_VISUAL_OFFSET,
@@ -103,7 +104,7 @@ function DraggableEvent({
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
   const light = isLightColor(bg);
-  const isTravel = event.tipo === 'viaggio';
+  const isTravel = isTravelLikeTipo(event.tipo as any);
   const isNotificationPreview = Boolean(event.isNotificationPreview);
   const isCompletedNotificationPreview = Boolean(event.notificationPreviewCompleted);
 

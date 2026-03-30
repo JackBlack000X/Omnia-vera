@@ -1,7 +1,8 @@
 import { useHabits } from '@/lib/habits/Provider';
 import { formatYmd } from '@/lib/date';
+import { getHealthHabitOption } from '@/lib/healthHabits';
 import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
-import { Habit, NotificationConfig, TravelMeta } from '@/lib/habits/schema';
+import { Habit, HabitTipo, HealthMetric, NotificationConfig, TravelMeta, isTravelLikeTipo } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
 import { getFallbackCity } from '@/lib/weather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -14,19 +15,28 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
   const router = useRouter();
   const existing = useMemo(() => habits.find(h => h.id === id), [habits, id]);
+  const VACATION_COLOR = '#4A148C';
 
   const [text, setText] = useState(existing?.text ?? '');
   const [color, setColor] = useState<string>(existing?.color ?? '#4A148C');
   const validFolder = (folder && folder !== '__oggi__' && folder !== '__tutte__') ? folder : null;
   const [selectedFolder, setSelectedFolder] = useState<string | null>(existing?.folder ?? validFolder ?? null);
   const [availableFolders, setAvailableFolders] = useState<string[]>([]);
-  const [tipo, setTipo] = useState<'task' | 'abitudine' | 'evento' | 'viaggio'>(existing?.tipo ?? 'task');
+  const [tipo, setTipo] = useState<HabitTipo>(existing?.tipo ?? 'task');
+  const [healthMetric, setHealthMetric] = useState<HealthMetric | null>(existing?.health?.metric ?? null);
+  const [healthGoalHours, setHealthGoalHours] = useState<number>(existing?.health?.goalHours ?? 8);
   useEffect(() => {
     if (existing?.tipo) setTipo(existing.tipo);
   }, [existing?.tipo]);
+  useEffect(() => {
+    setHealthMetric(existing?.health?.metric ?? null);
+  }, [existing?.health?.metric]);
+  useEffect(() => {
+    setHealthGoalHours(existing?.health?.goalHours ?? 8);
+  }, [existing?.health?.goalHours]);
 
-  const inferredExistingTipo: 'task' | 'abitudine' | 'evento' | 'viaggio' = (existing?.tipo ?? 'task');
-  const supportsOptionalTime = (currentTipo: 'task' | 'abitudine' | 'evento' | 'viaggio') =>
+  const inferredExistingTipo: HabitTipo = (existing?.tipo ?? 'task');
+  const supportsOptionalTime = (currentTipo: HabitTipo) =>
     currentTipo === 'task' || currentTipo === 'abitudine';
   const todayYmdForInit = useMemo(() => ymd ?? getDay(new Date()), [ymd, getDay]);
   const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
@@ -96,11 +106,23 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   });
 
   const [locationRule, setLocationRule] = useState<Habit['locationRule'] | null>(existing?.locationRule ?? null);
+  const [pauseDuringTravel, setPauseDuringTravel] = useState<boolean>(existing?.pauseDuringTravel ?? false);
   const [askReview, setAskReview] = useState<boolean>(existing?.askReview ?? false);
 
   const [notification, setNotification] = useState<NotificationConfig>(
     existing?.notification ?? { enabled: false, minutesBefore: 0, customTime: null, customDate: null, showAsTaskInOggi: false }
   );
+
+  useEffect(() => {
+    if (tipo !== 'salute') return;
+    if (mode !== 'allDay') setMode('allDay');
+
+    const option = getHealthHabitOption(healthMetric);
+    if (!option) return;
+
+    setText(option.label);
+    setColor(option.solidColor);
+  }, [tipo, healthMetric, mode]);
 
   // Fine ripetizione
   type RepeatEndType = 'mai' | 'durata' | 'personalizzata';
@@ -192,6 +214,23 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (!trimmed) return '';
     const first = trimmed.split(',')[0];
     return first ? first.trim() : trimmed;
+  };
+
+  const buildVacationTravelMeta = (): TravelMeta => {
+    const endDate = travelGiornoRitorno ?? travelGiornoPartenza;
+    const endTime = travelOrarioArrivoRitorno || travelOrarioArrivo || travelOrarioPartenza;
+
+    return {
+      mezzo: 'altro',
+      partenzaTipo: 'personalizzata',
+      destinazioneNome: '',
+      giornoPartenza: travelGiornoPartenza,
+      giornoRitorno: endDate,
+      orarioPartenza: travelOrarioPartenza,
+      orarioArrivo: endTime,
+      orarioPartenzaRitorno: endTime,
+      orarioArrivoRitorno: endTime,
+    };
   };
 
   // Confirmation modal state
@@ -893,7 +932,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   // otherwise items created from Oggi appear as "Nessun orario" in edit.
   useEffect(() => {
     if (!existing) return;
-    const exTipo: 'task' | 'abitudine' | 'evento' | 'viaggio' = (existing.tipo ?? 'task');
+    const exTipo: HabitTipo = (existing.tipo ?? 'task');
     if (!supportsOptionalTime(exTipo)) return;
 
     const hasAnyOverrides = Object.keys(existing.timeOverrides ?? {}).length > 0;
@@ -993,7 +1032,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         });
         setSelectedDow(next[0] ?? null);
         // ensure UI shows 'timed' when user selects weekly days
-        if (mode !== 'timed') setMode('timed');
+        if (tipo !== 'salute' && mode !== 'timed') setMode('timed');
         return next;
       });
     } else {
@@ -1055,7 +1094,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           newPo[d] = occTemplate;
           return newPo;
         });
-        if (mode !== 'timed') setMode('timed');
+        if (tipo !== 'salute' && mode !== 'timed') setMode('timed');
         return next;
       });
     } else {
@@ -1184,6 +1223,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   function close() { router.back(); }
 
   const executeSave = (skipDuplicateCheck = false) => {
+    const healthOption = tipo === 'salute' ? getHealthHabitOption(healthMetric) : null;
+    if (tipo === 'salute' && !healthOption) {
+      Alert.alert('Seleziona una metrica', 'Scegli prima una metrica Apple Salute da collegare.');
+      return;
+    }
+
     const shouldCheckDuplicate =
       !skipDuplicateCheck &&
       mode === 'timed' &&
@@ -1223,6 +1268,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
     if (type === 'new' || (type === 'edit' && existing)) {
       let t = text.trim();
+      const resolvedColor = tipo === 'salute' && healthOption ? healthOption.solidColor : color;
+      const resolvedHealth = tipo === 'salute' && healthMetric
+        ? {
+            metric: healthMetric,
+            ...(healthMetric === 'sleep' ? { goalHours: Math.max(1, Math.min(16, Math.round(healthGoalHours))) } : {}),
+          }
+        : undefined;
       if (tipo === 'viaggio') {
         const rawFrom =
           travelPartenzaTipo === 'attuale'
@@ -1234,6 +1286,80 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         // In Tasks il titolo resta con la freccia → (come prima)
         if (from && to) t = `${from} → ${to}`;
         else if (to) t = to;
+      }
+      if (tipo === 'salute' && healthOption) {
+        t = healthOption.label;
+      }
+      if (tipo === 'vacanza') {
+        const vacationTitle = t || 'Vacanza';
+        const travel = buildVacationTravelMeta();
+        const endDate = travel.giornoRitorno ?? travel.giornoPartenza;
+        const startAt = `${travel.giornoPartenza}T${travel.orarioPartenza}:00`;
+        const endAt = `${endDate}T${travel.orarioArrivoRitorno ?? travel.orarioArrivo}:00`;
+        const vacationColor = VACATION_COLOR;
+        const notificationForVacation: NotificationConfig = {
+          ...notification,
+          minutesBefore: null,
+          showAsTaskInOggi: false,
+        };
+
+        if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
+          Alert.alert('Intervallo non valido', 'La fine della vacanza deve essere dopo l’inizio.');
+          return;
+        }
+
+        if (notificationForVacation.enabled && (!notificationForVacation.customDate || !notificationForVacation.customTime)) {
+          Alert.alert('Notifica incompleta', 'Per una vacanza scegli sia il giorno sia l’orario della notifica.');
+          return;
+        }
+
+        if (type === 'new') {
+          const newHabitId = addHabit(vacationTitle, vacationColor, selectedFolder || undefined, tipo, { habitFreq: 'single' });
+          setHabits(prev => prev.map(h => (
+            h.id === newHabitId
+              ? {
+                  ...h,
+                  text: vacationTitle,
+                  color: vacationColor,
+                  folder: selectedFolder || undefined,
+                  label: undefined,
+                  tipo,
+                  notification: notificationForVacation,
+                  pauseDuringTravel: undefined,
+                  askReview: undefined,
+                  travel,
+                  schedule: { daysOfWeek: [] },
+                  timeOverrides: {},
+                  habitFreq: 'single',
+                  isAllDay: false,
+                }
+              : h
+          )));
+        } else if (existing) {
+          setHabits(prev => prev.map(h => (
+            h.id === existing.id
+              ? {
+                  ...h,
+                  text: vacationTitle,
+                  color: vacationColor,
+                  folder: selectedFolder || undefined,
+                  label: undefined,
+                  tipo,
+                  notification: notificationForVacation,
+                  pauseDuringTravel: undefined,
+                  askReview: undefined,
+                  travel,
+                  schedule: { daysOfWeek: [] },
+                  timeOverrides: {},
+                  habitFreq: 'single',
+                  isAllDay: false,
+                }
+              : h
+          )));
+        }
+
+        close();
+        return;
       }
       if (t.length <= 100) {
         const occNForVal = Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
@@ -1292,7 +1418,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           habitFreq: (supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq,
           ...(trimmedLabel && { label: trimmedLabel }),
         };
-        const newHabitId = type === 'new' ? addHabit(t, color, selectedFolder || undefined, tipo as any, initialForAdd) : existing!.id;
+        const newHabitId = type === 'new' ? addHabit(t, resolvedColor, selectedFolder || undefined, tipo as any, initialForAdd) : existing!.id;
         if (type === 'edit' && existing) {
           // Single update to avoid React batching overwriting tipo
           setHabits(prev => prev.map(h => {
@@ -1300,11 +1426,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             const base: Habit = {
               ...patchHabitOccurrences(h),
               text: t,
-              color,
+              color: resolvedColor,
               folder: selectedFolder || undefined,
               label: trimmedLabel || undefined,
               tipo,
+              health: resolvedHealth,
               locationRule: locationRule ?? undefined,
+              pauseDuringTravel: !isTravelLikeTipo(tipo) ? pauseDuringTravel : undefined,
             };
             if (tipo === 'viaggio') {
               const storedPartenzaNome =
@@ -1636,12 +1764,18 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           if (h.id !== newHabitId) return h;
           const base: Habit = {
             ...patchHabitOccurrences(h),
+            text: t,
+            color: resolvedColor,
+            folder: selectedFolder || undefined,
+            label: trimmedLabel || undefined,
             isAllDay: mode === 'allDay',
             habitFreq: (supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq,
             tipo,
+            health: resolvedHealth,
             locationRule: locationRule ?? undefined,
+            pauseDuringTravel: !isTravelLikeTipo(tipo) ? pauseDuringTravel : undefined,
             notification,
-            askReview: tipo !== 'viaggio' ? askReview : undefined,
+            askReview: !isTravelLikeTipo(tipo) ? askReview : undefined,
             schedule: {
               ...(h.schedule ?? { daysOfWeek: [] }),
               repeatEndDate: computedRepeatEndDateNew,
@@ -1960,7 +2094,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         tipo: existing.tipo ?? h.tipo,
         locationRule: locationRule ?? undefined,
         notification,
-        askReview: (existing.tipo ?? h.tipo) !== 'viaggio' ? askReview : undefined,
+        askReview: !isTravelLikeTipo(existing.tipo ?? h.tipo) ? askReview : undefined,
         schedule: {
           ...(h.schedule ?? { daysOfWeek: [] }),
           repeatEndDate: computedRepeatEndDate,
@@ -1990,6 +2124,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     availableFolders,
     tipo,
     setTipo,
+    healthMetric,
+    setHealthMetric,
+    healthGoalHours,
+    setHealthGoalHours,
     taskHasTime,
     setTaskHasTime,
     confirmationModal,
@@ -2019,6 +2157,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     currentStartMin,
     currentEndMin,
     locationRule,
+    pauseDuringTravel,
     notification,
     repeatEndType,
     setRepeatEndType,
@@ -2042,6 +2181,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     close,
     closeConfirmationModal,
     setLocationRule,
+    setPauseDuringTravel,
     setNotification,
     // Viaggio
     travelMezzo,

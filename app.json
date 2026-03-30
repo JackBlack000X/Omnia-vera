@@ -17,7 +17,13 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Omnia ha bisogno dell’accesso alla posizione anche in background per completare automaticamente alcune task quando entri o esci da luoghi salvati, anche con l’app chiusa."
       },
       "entitlements": {
-        "aps-environment": null
+        "aps-environment": null,
+        "com.apple.developer.icloud-container-identifiers": [
+          "iCloud.com.jackblack000x.habitchecknative"
+        ],
+        "com.apple.developer.icloud-services": [
+          "CloudKit"
+        ]
       }
     },
     "android": {
@@ -45,6 +51,14 @@
         "expo-calendar",
         {
           "calendarPermission": "Omnia vuole accedere al calendario per importare i tuoi eventi e mostrarli nell'app."
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Omnia legge i dati di Salute, come sonno, passi e calorie attive, per mostrarti i tuoi progressi nelle abitudini.",
+          "NSHealthUpdateUsageDescription": "Omnia aggiornera i dati di Salute solo se in futuro sceglierai esplicitamente di sincronizzare o registrare attivita dall'app.",
+          "background": false
         }
       ],
       "expo-router",

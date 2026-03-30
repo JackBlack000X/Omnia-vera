@@ -1,5 +1,5 @@
 import { useHabits } from '@/lib/habits/Provider';
-import { appearsOnDateRaw } from '@/lib/habits/habitsForDate';
+import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import {
@@ -137,7 +137,6 @@ export function useIndexLogic() {
   const [draggingSelectionCount, setDraggingSelectionCount] = useState(0);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
   const today = getDay(new Date());
-  const logicalTodayDate = useMemo(() => new Date(`${today}T12:00:00.000Z`), [today]);
   // Giorno di calendario in Zurich (può differire da today quando dayResetTime > 00:00 e siamo prima del reset)
   const calendarToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const tomorrow = useMemo(() => nextYmd(calendarToday), [calendarToday]);
@@ -172,6 +171,7 @@ export function useIndexLogic() {
       habit.isAllDay ? '1' : '0',
       String(habit.dailyOccurrences ?? 1),
       String(habit.occurrenceGapMinutes ?? 360),
+      habit.pauseDuringTravel ? 'travel-pause' : 'travel-live',
       habit.schedule?.time ?? '',
       habit.schedule?.endTime ?? '',
       (habit.schedule?.daysOfWeek ?? []).join('.'),
@@ -544,40 +544,9 @@ export function useIndexLogic() {
     });
   }, []);
 
-  const todayWeekday = useMemo(() => logicalTodayDate.getUTCDay(), [logicalTodayDate]);
-  const todayDayOfMonth = useMemo(() => logicalTodayDate.getUTCDate(), [logicalTodayDate]);
-  const todayMonthIndex = useMemo(() => logicalTodayDate.getUTCMonth() + 1, [logicalTodayDate]);
-
   const habitsAppearingToday = useMemo(() => {
-    return habits.filter((h) => {
-      const hasOverrideForToday =
-        !!h.timeOverrides?.[today] ||
-        (today !== calendarToday && !!h.timeOverrides?.[calendarToday]);
-      if (h.createdAt && today < h.createdAt && calendarToday < h.createdAt && !hasOverrideForToday) return false;
-      const repeatStartDate = h.schedule?.repeatStartDate;
-      if (repeatStartDate && today < repeatStartDate && calendarToday < repeatStartDate && !hasOverrideForToday) return false;
-      const repeatEndDate = h.schedule?.repeatEndDate;
-      if (repeatEndDate && today > repeatEndDate && calendarToday > repeatEndDate && !hasOverrideForToday) return false;
-      const isSingle =
-        h.habitFreq === 'single' ||
-        (!h.habitFreq &&
-          (Object.keys(h.timeOverrides ?? {}).length > 0) &&
-          (h.schedule?.daysOfWeek?.length ?? 0) === 0 &&
-          !h.schedule?.monthDays?.length &&
-          !h.schedule?.yearMonth);
-      if (isSingle && !hasOverrideForToday) return false;
-      const sched = h.schedule;
-      if (!sched || isSingle) return true;
-      const dow = sched.daysOfWeek ?? [];
-      const mdays = sched.monthDays ?? [];
-      const yrM = sched.yearMonth ?? null;
-      const yrD = sched.yearDay ?? null;
-      const weeklyApplies = dow.length === 0 || dow.includes(todayWeekday);
-      const monthlyApplies = mdays.length > 0 ? mdays.includes(todayDayOfMonth) : true;
-      const annualApplies = yrM && yrD ? yrM === todayMonthIndex && yrD === todayDayOfMonth : true;
-      return weeklyApplies && monthlyApplies && annualApplies;
-    });
-  }, [habits, today, calendarToday, todayWeekday, todayDayOfMonth, todayMonthIndex]);
+    return getHabitsAppearingOnDate(habits, today, dayResetTime);
+  }, [habits, today, dayResetTime]);
 
   const stats = useMemo(() => {
     const todayHabits = habitsAppearingToday;
@@ -713,10 +682,9 @@ export function useIndexLogic() {
   }, [history, habits, today]);
 
   const habitsAppearingTomorrow = useMemo(() => {
-    return habits.filter((h) => appearsOnDateRaw(h, tomorrow)).filter(
-      h => !singleHabitsHiddenAfterReset.has(h.id)
-    );
-  }, [habits, tomorrow, singleHabitsHiddenAfterReset]);
+    return getHabitsAppearingOnDate(habits, tomorrow, dayResetTime)
+      .filter((h) => !singleHabitsHiddenAfterReset.has(h.id));
+  }, [habits, tomorrow, singleHabitsHiddenAfterReset, dayResetTime]);
 
   const sortedHabits = useMemo(() => {
     let list: Habit[];

@@ -4,9 +4,14 @@ import TrackerModal from '@/components/oggi/TrackerModal';
 import { THEME } from '@/constants/theme';
 import { isToday, parseYmdSafe } from '@/lib/date';
 import { getLogicalDayKey, useHabits } from '@/lib/habits/Provider';
-import type { Habit } from '@/lib/habits/schema';
+import { isTravelLikeTipo, type Habit } from '@/lib/habits/schema';
 import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate } from '@/lib/habits/occurrences';
-import { getHabitsAppearingOnDate, appearsOnDateRaw } from '@/lib/habits/habitsForDate';
+import {
+  appearsOnDateRaw,
+  getHabitsAppearingOnDate,
+  getTravelActiveRangesForLogicalDate,
+  rangeOverlapsAny,
+} from '@/lib/habits/habitsForDate';
 import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
 import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
 import { calculateEventVerticalMetrics } from '@/lib/oggi/eventLayout';
@@ -101,6 +106,7 @@ const OGGI_DRAG_AUTOSCROLL_THRESHOLD_BOTTOM = 82;
 const OGGI_DRAG_AUTOSCROLL_BASE_SPEED = 4;
 const OGGI_DRAG_AUTOSCROLL_EXTRA_SPEED = 9;
 const RECURRING_DAY_NAMES = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
+const VACATION_ACCENT = '#facc15';
 
 // -- Helper Functions --
 
@@ -609,9 +615,10 @@ export default function OggiScreen() {
     };
   }, [selectedDayYmd, habits]);
 
-  const { timedEvents, allDayEvents } = useMemo(() => {
+  const { timedEvents, allDayEvents, vacationHighlightRanges } = useMemo(() => {
     const items: OggiEvent[] = [];
     const allDay: OggiEvent[] = [];
+    const vacationRanges: Array<{ start: number; end: number }> = [];
     const logicalYmd = selectedDayYmd;
     const resetMin = dayResetTime && dayResetTime !== '00:00' ? toMinutes(currentDayResetTime) : 0;
     const nextResetMin = dayResetTime && dayResetTime !== '00:00' ? toMinutes(nextDayResetTime) : 0;
@@ -619,6 +626,7 @@ export default function OggiScreen() {
     const usesPreviousCalendarDay = dayResetTime !== '00:00' && resetMin > 12 * 60;
     let logicalWindowEnd = nextResetMin;
     if (logicalWindowEnd <= resetMin) logicalWindowEnd += 1440;
+    const logicalWindowStart = resetMin;
 
     const daysToCheck = usesPreviousCalendarDay
       ? [
@@ -631,6 +639,7 @@ export default function OggiScreen() {
             ? [{ ymd: nextYmdStr, minStart: 0, minEnd: logicalWindowEnd - 1440, displayOffset: 1440 }]
             : []),
         ];
+    const travelActiveRanges = getTravelActiveRangesForLogicalDate(habits, logicalYmd, currentDayResetTime);
 
     const pushNotificationPreview = ({
       habit,
@@ -674,6 +683,9 @@ export default function OggiScreen() {
         previewStartAbsolute = Math.max(previewDay.displayOffset, previewEndAbsolute - 5);
       }
       if (previewEndAbsolute <= previewStartAbsolute) return;
+      if (habit.pauseDuringTravel && rangeOverlapsAny(previewStartAbsolute, previewEndAbsolute, travelActiveRanges)) {
+        return;
+      }
 
       if (selectedDayYmd === todayYmd && currentLogicalMinute !== null && currentLogicalMinute >= eventStartAbsolute) {
         return;
@@ -700,10 +712,9 @@ export default function OggiScreen() {
     };
 
     for (const h of habits) {
-      if (h.tipo === 'viaggio' && h.travel) {
+      if (isTravelLikeTipo(h.tipo) && h.travel) {
           const travel = h.travel;
           const color = h.color ?? '#3b82f6';
-          const logicalWindowStart = resetMin;
 
           const pushTravelEvent = (id: string, title: string, startAbs: number, endAbs: number) => {
             if (endAbs <= logicalWindowStart || startAbs >= logicalWindowEnd) return;
@@ -723,14 +734,30 @@ export default function OggiScreen() {
           };
 
           const departureOffset = diffDays(logicalYmd, travel.giornoPartenza) * 1440;
-          pushTravelEvent(
-            `${h.id}-out`,
-            `Partenza\n↓\nDestinazione`,
-            departureOffset + toMinutes(travel.orarioPartenza),
-            departureOffset + toMinutes(travel.orarioArrivo) + (travel.arrivoGiornoDopo ? 1440 : 0),
-          );
+          if (h.tipo === 'vacanza') {
+            const endYmd = travel.giornoRitorno ?? travel.giornoPartenza;
+            const endOffset = diffDays(logicalYmd, endYmd) * 1440;
+            const vacationEndTime = travel.orarioArrivoRitorno ?? travel.orarioArrivo;
+            if (vacationEndTime) {
+              const startAbs = departureOffset + toMinutes(travel.orarioPartenza);
+              const endAbs = endOffset + toMinutes(vacationEndTime);
+              if (endAbs > logicalWindowStart && startAbs < logicalWindowEnd) {
+                vacationRanges.push({
+                  start: Math.max(logicalWindowStart, startAbs),
+                  end: Math.min(logicalWindowEnd, endAbs),
+                });
+              }
+            }
+          } else {
+            pushTravelEvent(
+              `${h.id}-out`,
+              `Partenza\n↓\nDestinazione`,
+              departureOffset + toMinutes(travel.orarioPartenza),
+              departureOffset + toMinutes(travel.orarioArrivo) + (travel.arrivoGiornoDopo ? 1440 : 0),
+            );
+          }
 
-          if (travel.giornoRitorno && travel.orarioPartenzaRitorno && travel.orarioArrivoRitorno) {
+          if (h.tipo === 'viaggio' && travel.giornoRitorno && travel.orarioPartenzaRitorno && travel.orarioArrivoRitorno) {
             const returnOffset = diffDays(logicalYmd, travel.giornoRitorno) * 1440;
             pushTravelEvent(
               `${h.id}-return`,
@@ -754,6 +781,9 @@ export default function OggiScreen() {
                           !(h.schedule?.monthlyTimes?.[logicalDayOfMonth]?.start);
          
          if (isAllDayOverride || hasNoTime) {
+            if (h.pauseDuringTravel && rangeOverlapsAny(logicalWindowStart, logicalWindowEnd, travelActiveRanges)) {
+              continue;
+            }
             allDay.push({ id: h.id, title: h.text, startTime: '00:00', endTime: '24:00', isAllDay: true, color: h.color ?? '#3b82f6', createdAt: h.createdAt, tipo: h.tipo, habitFreq: h.habitFreq });
             continue;
          }
@@ -825,6 +855,9 @@ export default function OggiScreen() {
         if (nOcc <= 1) {
           const eventId = isNextDay ? `${h.id}-next` : h.id;
           const eventTitle = h.text;
+          if (h.pauseDuringTravel && rangeOverlapsAny(absoluteStart, absoluteEnd, travelActiveRanges)) {
+            continue;
+          }
           items.push({
             id: eventId,
             habitId: h.id,
@@ -867,6 +900,11 @@ export default function OggiScreen() {
             
             // Re-check if this specific occurrence falls into our logical day window
             if (sM < day.minStart || sM >= day.minEnd) continue;
+            const slotStartAbs = day.displayOffset + sM;
+            const slotEndAbs = day.displayOffset + eM;
+            if (h.pauseDuringTravel && rangeOverlapsAny(slotStartAbs, slotEndAbs, travelActiveRanges)) {
+              continue;
+            }
 
             const occurrenceId = makeOccurrenceEventId(isNextDay ? `${h.id}-next` : h.id, i);
             const occurrenceTitle = `${h.text} (${i + 1}/${nOcc})`;
@@ -879,8 +917,8 @@ export default function OggiScreen() {
               occurrenceSlotIndex: i,
               occurrenceTotal: nOcc,
               title: occurrenceTitle,
-              startTime: minutesToTime(day.displayOffset + sM),
-              endTime: minutesToTime(day.displayOffset + eM),
+              startTime: minutesToTime(slotStartAbs),
+              endTime: minutesToTime(slotEndAbs),
               isAllDay: false,
               ...baseMeta,
               dragDisabled: dragDisabledForThisEvent,
@@ -889,7 +927,7 @@ export default function OggiScreen() {
               habit: h,
               previewId: `${occurrenceId}::notif-preview`,
               previewTitle: occurrenceTitle,
-              eventStartAbsolute: day.displayOffset + sM,
+              eventStartAbsolute: slotStartAbs,
               eventCalendarYmd: day.ymd,
               eventStartMinute: sM,
             });
@@ -897,7 +935,7 @@ export default function OggiScreen() {
         }
       }
     }
-    return { timedEvents: items, allDayEvents: allDay };
+    return { timedEvents: items, allDayEvents: allDay, vacationHighlightRanges: vacationRanges };
   }, [habits, selectedDayYmd, prevDayYmd, dayResetTime, currentDayResetTime, nextDayResetTime, nextDayYmd, todayYmd, currentLogicalMinute]);
 
   const handleOccurrenceSlotDragEnd = useCallback(
@@ -964,7 +1002,7 @@ export default function OggiScreen() {
 
   // Eventi usati per layout/drag/colonne: escludiamo i viaggi, che hanno una colonna visiva a parte
   const layoutEvents = useMemo(
-    () => [...timedEvents.filter(ev => ev.tipo !== 'viaggio'), ...trackerEventsForDay],
+    () => [...timedEvents.filter(ev => !isTravelLikeTipo(ev.tipo as any)), ...trackerEventsForDay],
     [timedEvents, trackerEventsForDay]
   );
 
@@ -1107,7 +1145,7 @@ export default function OggiScreen() {
       const ymd = d.toISOString().slice(0, 10);
       if (reviewedDates.includes(ymd) || dismissedDatesThisSession.includes(ymd)) continue;
       const habitsOnDay = getHabitsAppearingOnDate(habits, ymd, dayResetTime).filter(
-        h => h.askReview && h.tipo !== 'viaggio'
+        h => h.askReview && !isTravelLikeTipo(h.tipo)
       );
       if (habitsOnDay.length > 0) {
         queue.push(ymd);
@@ -1648,10 +1686,15 @@ export default function OggiScreen() {
 
                 const resetHour = parseInt(currentDayResetTime.split(':')[0], 10);
                 const isResetLine = h === resetHour || (resetHour === 0 && h === 24);
+                const hourStart = h * 60;
+                const hourEnd = hourStart + 60;
+                const isVacationHour = vacationHighlightRanges.some(
+                  range => (range.end > hourStart && range.start < hourEnd) || range.end === hourStart
+                );
 
                 return (
                   <View key={h} style={[styles.hourRow, { top }]}>
-                      <Text style={[styles.hourLabel, isResetLine && { color: '#9C27B0' }]}>
+                      <Text style={[styles.hourLabel, isVacationHour && !isResetLine && { color: VACATION_ACCENT }, isResetLine && { color: '#9C27B0' }]}>
                         {`${String(((h % 24) + 24) % 24).padStart(2, '0')}:00`}
                       </Text>
                       {overflowTasks.length > 0 ? (
@@ -1756,7 +1799,7 @@ export default function OggiScreen() {
                        style={[styles.travelStripText, { color: iconColor }]}
                        numberOfLines={1}
                        ellipsizeMode="clip"
-                     >
+                   >
                        {line}
                      </Text>
                    ))}
@@ -1766,7 +1809,7 @@ export default function OggiScreen() {
              })}
 
              {/* Normal timed events (tasks/abitudini/eventi) + tracker entries */}
-             {layoutEvents.filter(e => e.tipo !== 'viaggio').map(e => {
+             {layoutEvents.filter(e => !isTravelLikeTipo(e.tipo as any)).map(e => {
                const isTracker = (e as any).tipo === 'tracker';
                if (isTracker) {
                  const style = getEventStyle(e);
@@ -1917,7 +1960,7 @@ export default function OggiScreen() {
       {reviewQueue.length > 0 && (() => {
         const reviewDate = reviewQueue[0];
         const habitsOnDay = getHabitsAppearingOnDate(habits, reviewDate, dayResetTime).filter(
-          h => h.askReview && h.tipo !== 'viaggio'
+          h => h.askReview && !isTravelLikeTipo(h.tipo)
         );
         const dayHistory = history[reviewDate];
         const reviewItems: ReviewHabitItem[] = habitsOnDay.map(h => ({
@@ -2214,6 +2257,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     lineHeight: 12,
+  },
+  travelStripTime: {
+    fontSize: 9,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 3,
   },
   
   // Events

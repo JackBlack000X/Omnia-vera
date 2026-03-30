@@ -1,5 +1,6 @@
 import { styles } from '@/components/index/indexStyles';
 import { FOLDER_COLORS, FOLDER_ICONS, FolderFilters, FolderItem } from '@/lib/index/indexTypes';
+import type { HabitTipo } from '@/lib/habits/schema';
 import { COLORS } from '@/components/modal/modalStyles';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
@@ -26,11 +27,13 @@ export type FolderModalsProps = {
   performDeleteFolder: (folderName: string) => void;
 };
 
-const TIPO_OPTIONS: { value: 'task' | 'abitudine' | 'evento' | 'viaggio'; label: string; icon: string }[] = [
+const TIPO_OPTIONS: { value: HabitTipo; label: string; icon: string }[] = [
   { value: 'task', label: 'Task', icon: 'checkbox-outline' },
   { value: 'evento', label: 'Eventi', icon: 'calendar-outline' },
   { value: 'abitudine', label: 'Abitudini', icon: 'repeat-outline' },
   { value: 'viaggio', label: 'Viaggi', icon: 'airplane-outline' },
+  { value: 'vacanza', label: 'Vacanze', icon: 'sunny-outline' },
+  { value: 'salute', label: 'Salute', icon: 'heart-outline' },
 ];
 
 const FREQ_OPTIONS: { value: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; label: string }[] = [
@@ -46,7 +49,7 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
     !!(filters.tipos?.length || filters.colors?.length || filters.frequencies?.length)
   );
 
-  const toggleTipo = (t: 'task' | 'abitudine' | 'evento' | 'viaggio') => {
+  const toggleTipo = (t: HabitTipo) => {
     const current = filters.tipos ?? [];
     const next = current.includes(t as any) ? current.filter(x => x !== t) : [...current, t];
     setFilters({ ...filters, tipos: next.length ? next : undefined });

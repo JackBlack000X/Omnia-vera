@@ -1,3 +1,5 @@
+import type { HabitTipo } from '@/lib/habits/schema';
+
 // -- Types --
 
 export type OggiEvent = {
@@ -13,7 +15,7 @@ export type OggiEvent = {
   color: string;
   createdAt?: string;
   createdAtMs?: number;
-  tipo?: 'task' | 'abitudine' | 'evento' | 'viaggio';
+  tipo?: HabitTipo;
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual';
   travelMezzo?: 'aereo' | 'treno' | 'auto' | 'nave' | 'bici' | 'bus' | 'altro';
   /** Id abitudine reale quando `id` è sintetico (`::occ::`) */
