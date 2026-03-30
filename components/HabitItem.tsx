@@ -1,5 +1,5 @@
 import { useHabits } from '@/lib/habits/Provider';
-import { canUseHealthKit, getHealthSnapshotAsync } from '@/lib/health';
+import { canUseHealthKit, getHealthSnapshotAsync, type HealthSnapshot } from '@/lib/health';
 import { getHealthHabitOption } from '@/lib/healthHabits';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import { isTravelLikeTipo, type Habit } from '@/lib/habits/schema';
@@ -190,7 +190,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const isVacation = habit.tipo === 'vacanza';
   const healthOption = useMemo(() => getHealthHabitOption(habit.health?.metric), [habit.health?.metric]);
   const isHealthHabit = habit.tipo === 'salute' && !!healthOption;
-  const [sleepMinutes, setSleepMinutes] = useState<number | null>(null);
+  const [healthSnapshot, setHealthSnapshot] = useState<HealthSnapshot | null>(null);
 
   // Close menu when shouldCloseMenu becomes true
   useEffect(() => {
@@ -202,8 +202,8 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   useEffect(() => {
     let cancelled = false;
 
-    if (!isHealthHabit || habit.health?.metric !== 'sleep' || !canUseHealthKit()) {
-      setSleepMinutes(null);
+    if (!isHealthHabit || !canUseHealthKit()) {
+      setHealthSnapshot(null);
       return () => {
         cancelled = true;
       };
@@ -212,9 +212,9 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     (async () => {
       try {
         const snapshot = await getHealthSnapshotAsync();
-        if (!cancelled) setSleepMinutes(snapshot.sleepMinutesLastNight);
+        if (!cancelled) setHealthSnapshot(snapshot);
       } catch {
-        if (!cancelled) setSleepMinutes(null);
+        if (!cancelled) setHealthSnapshot(null);
       }
     })();
 
@@ -399,19 +399,44 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const displayTitle = isVacation ? 'Vacanza' : (isHealthHabit ? (healthOption?.label ?? habit.text) : habit.text);
   const displaySubtext = isVacation ? vacationPeriod : timeText;
   const displayFrequency = isVacation ? null : frequencyText;
-  const sleepGoalHours = habit.health?.metric === 'sleep' ? Math.max(1, habit.health?.goalHours ?? 8) : null;
-  const sleepGoalMinutes = sleepGoalHours ? sleepGoalHours * 60 : null;
-  const sleepProgressRatio = sleepMinutes !== null && sleepGoalMinutes
-    ? Math.max(0, Math.min(1, sleepMinutes / sleepGoalMinutes))
+  const healthMetricValue = (() => {
+    if (!healthSnapshot || !habit.health?.metric) return null;
+    if (habit.health.metric === 'sleep') return healthSnapshot.sleepMinutesLastNight;
+    if (habit.health.metric === 'steps') return healthSnapshot.stepsToday;
+    if (habit.health.metric === 'distance') return healthSnapshot.walkingRunningDistanceKmToday;
+    if (habit.health.metric === 'activeEnergy') return healthSnapshot.activeEnergyBurnedKcalToday;
+    return null;
+  })();
+  const healthMetricGoal = (() => {
+    if (!habit.health?.metric) return null;
+    if (habit.health.metric === 'sleep') return Math.max(1, habit.health.goalHours ?? 8) * 60;
+    if (habit.health.metric === 'steps') return Math.max(1000, Math.round(habit.health.goalValue ?? 7000));
+    if (habit.health.metric === 'distance') return Math.max(0.5, habit.health.goalValue ?? 5);
+    if (habit.health.metric === 'activeEnergy') return Math.max(50, Math.round(habit.health.goalValue ?? 300));
+    return null;
+  })();
+  const healthProgressRatio = healthMetricValue !== null && healthMetricGoal
+    ? Math.max(0, Math.min(1, Number(healthMetricValue) / Number(healthMetricGoal)))
     : 0;
-  const sleepReachedGoal = sleepMinutes !== null && sleepGoalMinutes !== null && sleepMinutes >= sleepGoalMinutes;
-  const sleepHoursLabel = (() => {
-    if (sleepMinutes === null) return null;
-    const hours = Math.floor(Math.max(0, sleepMinutes) / 60);
-    const minutes = Math.max(0, sleepMinutes) % 60;
-    if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
-    if (hours > 0) return `${hours}h`;
-    return `${minutes}m`;
+  const healthReachedGoal = healthMetricValue !== null && healthMetricGoal !== null && Number(healthMetricValue) >= Number(healthMetricGoal);
+  const healthValueLabel = (() => {
+    if (healthMetricValue === null || !habit.health?.metric) return null;
+    if (habit.health.metric === 'sleep') {
+      const totalMinutes = Math.max(0, Math.round(healthMetricValue));
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+    }
+    if (habit.health.metric === 'steps') {
+      return Math.round(healthMetricValue).toLocaleString('it-IT');
+    }
+    if (habit.health.metric === 'distance') {
+      return `${Number(healthMetricValue).toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+    }
+    if (habit.health.metric === 'activeEnergy') {
+      return `${Math.round(healthMetricValue).toLocaleString('it-IT')} kcal`;
+    }
+    return null;
   })();
 
   const todayYmdForOcc = getDay(new Date());
@@ -651,15 +676,15 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
           >
             {displayTitle}
           </Text>
-          {habit.health?.metric === 'sleep' && sleepHoursLabel && (
-            <Text style={styles.sleepHoursInline}>{sleepHoursLabel}</Text>
+          {isHealthHabit && healthValueLabel && (
+            <Text style={styles.sleepHoursInline}>{healthValueLabel}</Text>
           )}
         </View>
-        {habit.health?.metric === 'sleep' && (
+        {isHealthHabit && (
           <View style={styles.sleepBarWrap}>
-            <View style={[styles.sleepBarTrack, sleepReachedGoal && styles.sleepBarTrackGold]}>
-              {!sleepReachedGoal && (
-                <View style={[styles.sleepBarFill, { width: `${sleepProgressRatio * 100}%` }]} />
+            <View style={[styles.sleepBarTrack, healthReachedGoal && styles.sleepBarTrackGold]}>
+              {!healthReachedGoal && (
+                <View style={[styles.sleepBarFill, { width: `${healthProgressRatio * 100}%` }]} />
               )}
             </View>
           </View>

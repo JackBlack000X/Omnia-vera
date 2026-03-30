@@ -6,6 +6,8 @@ export type HealthHabitOption = {
   solidColor: string;
   gradient: readonly [string, string];
   icon: 'moon-outline' | 'footsteps-outline' | 'walk-outline' | 'flame-outline';
+  defaultGoalHours?: number;
+  defaultGoalValue?: number;
 };
 
 export const HEALTH_HABIT_OPTIONS: readonly HealthHabitOption[] = [
@@ -15,6 +17,7 @@ export const HEALTH_HABIT_OPTIONS: readonly HealthHabitOption[] = [
     solidColor: '#8b5cf6',
     gradient: ['#8b5cf6', '#38bdf8'],
     icon: 'moon-outline',
+    defaultGoalHours: 8,
   },
   {
     metric: 'steps',
@@ -22,6 +25,7 @@ export const HEALTH_HABIT_OPTIONS: readonly HealthHabitOption[] = [
     solidColor: '#22c55e',
     gradient: ['#38bdf8', '#22c55e'],
     icon: 'footsteps-outline',
+    defaultGoalValue: 7000,
   },
   {
     metric: 'distance',
@@ -29,6 +33,7 @@ export const HEALTH_HABIT_OPTIONS: readonly HealthHabitOption[] = [
     solidColor: '#f97316',
     gradient: ['#ef4444', '#f97316'],
     icon: 'walk-outline',
+    defaultGoalValue: 5,
   },
   {
     metric: 'activeEnergy',
@@ -36,6 +41,7 @@ export const HEALTH_HABIT_OPTIONS: readonly HealthHabitOption[] = [
     solidColor: '#facc15',
     gradient: ['#ef4444', '#facc15'],
     icon: 'flame-outline',
+    defaultGoalValue: 300,
   },
 ] as const;
 

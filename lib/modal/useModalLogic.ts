@@ -1,6 +1,6 @@
 import { useHabits } from '@/lib/habits/Provider';
 import { formatYmd } from '@/lib/date';
-import { getHealthHabitOption } from '@/lib/healthHabits';
+import { getHealthHabitOption, HEALTH_HABIT_OPTIONS } from '@/lib/healthHabits';
 import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
 import { Habit, HabitTipo, HealthMetric, NotificationConfig, TravelMeta, isTravelLikeTipo } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
@@ -25,6 +25,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [tipo, setTipo] = useState<HabitTipo>(existing?.tipo ?? 'task');
   const [healthMetric, setHealthMetric] = useState<HealthMetric | null>(existing?.health?.metric ?? null);
   const [healthGoalHours, setHealthGoalHours] = useState<number>(existing?.health?.goalHours ?? 8);
+  const [healthGoalValue, setHealthGoalValue] = useState<number>(existing?.health?.goalValue ?? 0);
   useEffect(() => {
     if (existing?.tipo) setTipo(existing.tipo);
   }, [existing?.tipo]);
@@ -34,6 +35,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   useEffect(() => {
     setHealthGoalHours(existing?.health?.goalHours ?? 8);
   }, [existing?.health?.goalHours]);
+  useEffect(() => {
+    setHealthGoalValue(existing?.health?.goalValue ?? 0);
+  }, [existing?.health?.goalValue]);
 
   const inferredExistingTipo: HabitTipo = (existing?.tipo ?? 'task');
   const supportsOptionalTime = (currentTipo: HabitTipo) =>
@@ -123,6 +127,16 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setText(option.label);
     setColor(option.solidColor);
   }, [tipo, healthMetric, mode]);
+  const setHealthMetricWithDefaults = useCallback((nextMetric: HealthMetric) => {
+    const option = HEALTH_HABIT_OPTIONS.find((entry) => entry.metric === nextMetric);
+    setHealthMetric(nextMetric);
+    if (!option) return;
+    if (nextMetric === 'sleep') {
+      setHealthGoalHours(option.defaultGoalHours ?? 8);
+      return;
+    }
+    setHealthGoalValue(option.defaultGoalValue ?? 0);
+  }, []);
 
   // Fine ripetizione
   type RepeatEndType = 'mai' | 'durata' | 'personalizzata';
@@ -1273,6 +1287,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         ? {
             metric: healthMetric,
             ...(healthMetric === 'sleep' ? { goalHours: Math.max(1, Math.min(16, Math.round(healthGoalHours))) } : {}),
+            ...(healthMetric !== 'sleep'
+              ? { goalValue: Math.max(0, healthMetric === 'distance' ? Math.round(healthGoalValue * 10) / 10 : Math.round(healthGoalValue)) }
+              : {}),
           }
         : undefined;
       if (tipo === 'viaggio') {
@@ -2125,9 +2142,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     tipo,
     setTipo,
     healthMetric,
-    setHealthMetric,
+    setHealthMetric: setHealthMetricWithDefaults,
     healthGoalHours,
     setHealthGoalHours,
+    healthGoalValue,
+    setHealthGoalValue,
     taskHasTime,
     setTaskHasTime,
     confirmationModal,

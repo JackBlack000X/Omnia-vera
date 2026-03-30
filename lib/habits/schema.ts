@@ -96,6 +96,7 @@ export type Habit = {
   health?: {
     metric: HealthMetric;
     goalHours?: number;
+    goalValue?: number;
   };
   /** Quante volte al giorno (Tasks: una riga; completamento N/N). 1–30, default 1 se assente. */
   dailyOccurrences?: number;

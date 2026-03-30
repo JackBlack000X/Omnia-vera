@@ -762,6 +762,57 @@ export default function ModalScreen() {
             </View>
           )}
 
+          {(type === 'new' || type === 'edit') && m.tipo === 'salute' && m.healthMetric === 'steps' && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>Obiettivo passi</Text>
+              <Text style={styles.subtle}>Target giornaliero di passi.</Text>
+              <View style={[styles.timePicker, { marginTop: 8 }]}>
+                <View style={[styles.timeControls, { flex: 0, minWidth: 220 }]}>
+                  <Text style={styles.timeLabel}>Passi</Text>
+                  <View style={styles.timeStepperRow}>
+                    <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.max(1000, prev - 1000))}>−</HoldableStepperButton>
+                    <Text style={styles.timeValue}>{Math.round(m.healthGoalValue).toLocaleString('it-IT')}</Text>
+                    <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.min(50000, prev + 1000))}>+</HoldableStepperButton>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && m.tipo === 'salute' && m.healthMetric === 'distance' && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>Obiettivo km</Text>
+              <Text style={styles.subtle}>Target giornaliero di distanza camminata o corsa.</Text>
+              <View style={[styles.timePicker, { marginTop: 8 }]}>
+                <View style={[styles.timeControls, { flex: 0, minWidth: 200 }]}>
+                  <Text style={styles.timeLabel}>Km</Text>
+                  <View style={styles.timeStepperRow}>
+                    <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.max(0.5, Math.round((prev - 0.5) * 10) / 10))}>−</HoldableStepperButton>
+                    <Text style={styles.timeValue}>{m.healthGoalValue.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</Text>
+                    <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.min(100, Math.round((prev + 0.5) * 10) / 10))}>+</HoldableStepperButton>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && m.tipo === 'salute' && m.healthMetric === 'activeEnergy' && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>Obiettivo calorie</Text>
+              <Text style={styles.subtle}>Target giornaliero di calorie attive.</Text>
+              <View style={[styles.timePicker, { marginTop: 8 }]}>
+                <View style={[styles.timeControls, { flex: 0, minWidth: 220 }]}>
+                  <Text style={styles.timeLabel}>Kcal</Text>
+                  <View style={styles.timeStepperRow}>
+                    <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.max(50, prev - 50))}>−</HoldableStepperButton>
+                    <Text style={styles.timeValue}>{Math.round(m.healthGoalValue).toLocaleString('it-IT')}</Text>
+                    <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.min(5000, prev + 50))}>+</HoldableStepperButton>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>Cartella</Text>
