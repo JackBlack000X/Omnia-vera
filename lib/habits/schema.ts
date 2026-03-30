@@ -39,6 +39,7 @@ export type NotificationConfig = {
   minutesBefore: number | null; // null = custom time
   customTime?: string | null; // 'HH:MM' if minutesBefore is null
   customDate?: string | null; // 'YYYY-MM-DD' if set, overrides the event day
+  showAsTaskInOggi?: boolean; // mostra un avviso temporaneo nella timeline di Oggi
 };
 
 export type TrackerEntry = {
@@ -118,5 +119,4 @@ export type HabitsState = {
   dayResetTime?: string; // 'HH:MM' for when the day resets (default: '00:00')
   reviewedDates: string[]; // YYYY-MM-DD dates that have been reviewed
 };
-
 

@@ -5,6 +5,10 @@ export type OggiEvent = {
   title: string;
   startTime: string;
   endTime: string;
+  calendarYmd?: string;
+  displayOffsetMinutes?: number;
+  logicalStartMin?: number;
+  logicalEndMin?: number;
   isAllDay: boolean;
   color: string;
   createdAt?: string;
@@ -19,6 +23,8 @@ export type OggiEvent = {
   occurrenceSlotIndex?: number;
   occurrenceTotal?: number;
   dragDisabled?: boolean;
+  isNotificationPreview?: boolean;
+  notificationPreviewCompleted?: boolean;
 };
 
 const OCC_ID_MARKER = '::occ::';
@@ -63,9 +69,21 @@ export function toMinutes(hhmm: string) {
   return h * 60 + m;
 }
 
+export function isValidTimeString(hhmm: string | null | undefined): hhmm is string {
+  if (typeof hhmm !== 'string') return false;
+  const match = /^(\d{2}):(\d{2})$/.exec(hhmm);
+  if (!match) return false;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (minutes < 0 || minutes > 59) return false;
+  if (hours < 0 || hours > 24) return false;
+  if (hours === 24 && minutes !== 0) return false;
+  return true;
+}
+
 export function minutesToTime(minutes: number): string {
   const total = Math.round(minutes);
-  if (total >= 1440) return '24:00';
+  if (total === 1440) return '24:00';
   const h = Math.floor(total / 60);
   const m = total % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;

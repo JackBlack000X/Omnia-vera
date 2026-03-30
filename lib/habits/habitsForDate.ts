@@ -1,5 +1,17 @@
 import type { Habit } from './schema';
 
+function isValidTimeString(hhmm: string | null | undefined): hhmm is string {
+  if (typeof hhmm !== 'string') return false;
+  const match = /^(\d{2}):(\d{2})$/.exec(hhmm);
+  if (!match) return false;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (minutes < 0 || minutes > 59) return false;
+  if (hours < 0 || hours > 24) return false;
+  if (hours === 24 && minutes !== 0) return false;
+  return true;
+}
+
 /** Parse YYYY-MM-DD at noon UTC so the calendar day is unambiguous across timezones */
 function datePartsFromYmd(ymd: string): { weekday: number; dayOfMonth: number; monthIndex: number } {
   const d = new Date(ymd + 'T12:00:00.000Z');
@@ -22,6 +34,42 @@ function toMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
+function diffDays(fromYmd: string, toYmd: string): number {
+  const from = new Date(fromYmd + 'T12:00:00.000Z');
+  const to = new Date(toYmd + 'T12:00:00.000Z');
+  return Math.round((to.getTime() - from.getTime()) / 86400000);
+}
+
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
+  return startA < endB && endA > startB;
+}
+
+function travelAppearsOnLogicalDate(h: Habit, ymd: string, dayResetTime?: string): boolean {
+  if (h.tipo !== 'viaggio' || !h.travel) return false;
+
+  const resetMin = dayResetTime && dayResetTime !== '00:00' ? toMinutes(dayResetTime) : 0;
+  const windowStart = resetMin;
+  const windowEnd = resetMin + 1440;
+  const segments: Array<{ start: number; end: number }> = [];
+  const travel = h.travel;
+
+  const departureOffset = diffDays(ymd, travel.giornoPartenza) * 1440;
+  segments.push({
+    start: departureOffset + toMinutes(travel.orarioPartenza),
+    end: departureOffset + toMinutes(travel.orarioArrivo) + (travel.arrivoGiornoDopo ? 1440 : 0),
+  });
+
+  if (travel.giornoRitorno && travel.orarioPartenzaRitorno && travel.orarioArrivoRitorno) {
+    const returnOffset = diffDays(ymd, travel.giornoRitorno) * 1440;
+    segments.push({
+      start: returnOffset + toMinutes(travel.orarioPartenzaRitorno) + (travel.partenzaRitornoGiornoDopo ? 1440 : 0),
+      end: returnOffset + toMinutes(travel.orarioArrivoRitorno) + (travel.arrivoRitornoGiornoDopo ? 1440 : 0),
+    });
+  }
+
+  return segments.some(({ start, end }) => rangesOverlap(start, end, windowStart, windowEnd));
+}
+
 /** Get effective start/end minutes for a habit on a given date */
 function getTaskTimesForDate(
   h: Habit,
@@ -32,10 +80,12 @@ function getTaskTimesForDate(
   const isAllDayMarker = override === '00:00';
   if (isAllDayMarker) return { startMin: null, endMin: null };
 
-  const overrideStart =
+  const rawOverrideStart =
     typeof override === 'string' ? override : (override as any)?.start ?? null;
-  const overrideEnd =
+  const rawOverrideEnd =
     typeof override === 'object' && override !== null ? (override as any).end ?? null : null;
+  const overrideStart = isValidTimeString(rawOverrideStart) ? rawOverrideStart : null;
+  const overrideEnd = isValidTimeString(rawOverrideEnd) ? rawOverrideEnd : null;
 
   const weekly = h.schedule?.weeklyTimes?.[weekday] ?? null;
   const monthlyT = h.schedule?.monthlyTimes?.[dayOfMonth] ?? null;
@@ -58,6 +108,10 @@ function spansReset(h: Habit, ymd: string, resetMin: number): boolean {
 
 /** Returns true if the habit appears on ymd according to schedule/override rules only */
 export function appearsOnDateRaw(h: Habit, ymd: string): boolean {
+  if (h.tipo === 'viaggio' && h.travel) {
+    return travelAppearsOnLogicalDate(h, ymd, '00:00');
+  }
+
   const { weekday, dayOfMonth, monthIndex } = datePartsFromYmd(ymd);
   const hasOverrideForDay = !!h.timeOverrides?.[ymd];
   if (h.createdAt && ymd < h.createdAt && !hasOverrideForDay) return false;
@@ -108,15 +162,18 @@ export function appearsOnDateRaw(h: Habit, ymd: string): boolean {
  * 3. All-day tasks scheduled for YMD.
  */
 export function getHabitsAppearingOnDate(habits: Habit[], ymd: string, dayResetTime?: string): Habit[] {
+  const travelHabits = habits.filter((h) => travelAppearsOnLogicalDate(h, ymd, dayResetTime));
   const resetMin = dayResetTime && dayResetTime !== '00:00' ? toMinutes(dayResetTime) : 0;
   if (resetMin === 0) {
-    return habits.filter((h) => appearsOnDateRaw(h, ymd));
+    const nonTravelHabits = habits.filter((h) => h.tipo !== 'viaggio' && appearsOnDateRaw(h, ymd));
+    return [...nonTravelHabits, ...travelHabits];
   }
 
   const next = nextYmd(ymd);
-  const result: Habit[] = [];
+  const result: Habit[] = [...travelHabits];
 
   for (const h of habits) {
+    if (h.tipo === 'viaggio') continue;
     // Check if it's an all-day task for this logical day
     const isAllDayForYmd = appearsOnDateRaw(h, ymd) && (() => {
       const { startMin, endMin } = getTaskTimesForDate(h, ymd);

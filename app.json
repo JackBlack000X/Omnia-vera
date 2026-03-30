@@ -12,6 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.jackblack000x.habitchecknative",
       "infoPlist": {
+        "UIUserInterfaceStyle": "Dark",
         "NSLocationWhenInUseUsageDescription": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi (es. completare automaticamente la task \"Palestra\" quando esci dalla palestra).",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Omnia ha bisogno dell’accesso alla posizione anche in background per completare automaticamente alcune task quando entri o esci da luoghi salvati, anche con l’app chiusa."
       },
@@ -53,7 +54,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#000000",
           "dark": {
             "backgroundColor": "#000000"
           }

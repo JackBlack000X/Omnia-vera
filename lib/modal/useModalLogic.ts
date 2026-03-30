@@ -1,5 +1,6 @@
 import { useHabits } from '@/lib/habits/Provider';
-import { getDailyOccurrenceTotal, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
+import { formatYmd } from '@/lib/date';
+import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
 import { Habit, NotificationConfig, TravelMeta } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
 import { getFallbackCity } from '@/lib/weather';
@@ -27,10 +28,31 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const inferredExistingTipo: 'task' | 'abitudine' | 'evento' | 'viaggio' = (existing?.tipo ?? 'task');
   const supportsOptionalTime = (currentTipo: 'task' | 'abitudine' | 'evento' | 'viaggio') =>
     currentTipo === 'task' || currentTipo === 'abitudine';
-  const todayForInit = useMemo(() => (ymd ? new Date(ymd + 'T00:00:00') : new Date()), [ymd]);
-  const todayYmdForInit = useMemo(() => getDay(todayForInit), [getDay, todayForInit]);
+  const todayYmdForInit = useMemo(() => ymd ?? getDay(new Date()), [ymd, getDay]);
+  const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
+  const calendarTodayYmd = useMemo(() => formatYmd(new Date()), []);
+  const todayForInit = useMemo(() => new Date(`${todayYmdForInit}T12:00:00`), [todayYmdForInit]);
   const todayWeekdayForInit = useMemo(() => todayForInit.getDay(), [todayForInit]);
   const todayDayOfMonthForInit = useMemo(() => todayForInit.getDate(), [todayForInit]);
+  const initialTravelDepartureYmd = useMemo(() => {
+    if (existing?.travel?.giornoPartenza) return existing.travel.giornoPartenza;
+    if (type !== 'new') return todayYmdForInit;
+
+    // Tasks can follow the app's logical day, but trips must keep the real
+    // calendar day even when "today" is still anchored to the previous
+    // logical day before the reset hour.
+    if (todayYmdForInit === logicalTodayYmd && calendarTodayYmd !== logicalTodayYmd) {
+      return calendarTodayYmd;
+    }
+
+    return todayYmdForInit;
+  }, [
+    existing?.travel?.giornoPartenza,
+    type,
+    todayYmdForInit,
+    logicalTodayYmd,
+    calendarTodayYmd,
+  ]);
   const firstOccurrenceSlotForToday = useMemo(() => {
     const slot = existing?.occurrenceSlotOverrides?.[todayYmdForInit]?.[0];
     if (!slot?.start) return null;
@@ -56,9 +78,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   }, [existing, todayYmdForInit, todayWeekdayForInit, todayDayOfMonthForInit, firstOccurrenceSlotForToday]);
 
   // For tasks and habits: whether to show the schedule/time block.
-  // New from Oggi = true. Existing: true if item has any schedule/override (including all-day '00:00') so edit shows Frequenza/Giorno/Orario.
+  // New from Oggi/Domani = true. Existing: true if item has any schedule/override
+  // (including all-day '00:00') so edit shows Frequenza/Giorno/Orario.
   const [taskHasTime, setTaskHasTime] = useState<boolean>(() => {
-    if (!existing) return type === 'new' && folder === '__oggi__';
+    if (!existing) return type === 'new' && (folder === '__oggi__' || folder === '__domani__');
     if (!supportsOptionalTime(inferredExistingTipo)) return false;
     const hasOverrides = existing.timeOverrides && Object.keys(existing.timeOverrides).length > 0;
     if (hasOverrides) return true;
@@ -76,7 +99,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [askReview, setAskReview] = useState<boolean>(existing?.askReview ?? false);
 
   const [notification, setNotification] = useState<NotificationConfig>(
-    existing?.notification ?? { enabled: false, minutesBefore: 0, customTime: null, customDate: null }
+    existing?.notification ?? { enabled: false, minutesBefore: 0, customTime: null, customDate: null, showAsTaskInOggi: false }
   );
 
   // Fine ripetizione
@@ -96,7 +119,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [travelPartenzaTipo, setTravelPartenzaTipo] = useState<TravelMeta['partenzaTipo']>(existing?.travel?.partenzaTipo ?? 'attuale');
   const [travelPartenzaNome, setTravelPartenzaNome] = useState<string>(existing?.travel?.partenzaNome ?? '');
   const [travelDestinazioneNome, setTravelDestinazioneNome] = useState<string>(existing?.travel?.destinazioneNome ?? '');
-  const [travelGiornoPartenza, setTravelGiornoPartenza] = useState<string>(existing?.travel?.giornoPartenza ?? todayYmdForInit);
+  const [travelGiornoPartenza, setTravelGiornoPartenza] = useState<string>(initialTravelDepartureYmd);
   const [travelGiornoRitorno, setTravelGiornoRitorno] = useState<string | undefined>(existing?.travel?.giornoRitorno);
   const [travelOrarioPartenza, setTravelOrarioPartenza] = useState<string>(existing?.travel?.orarioPartenza ?? '09:00');
   const [travelOrarioArrivo, setTravelOrarioArrivo] = useState<string>(existing?.travel?.orarioArrivo ?? '10:00');
@@ -250,8 +273,16 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
     return base;
   });
-  const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(() => monthDays[0] ?? null);
+  const [selectedMonthDay, setSelectedMonthDay] = useState<number | null>(() => {
+    if (existing && ymd && monthDays.includes(todayDayOfMonthForInit)) return todayDayOfMonthForInit;
+    return monthDays[0] ?? null;
+  });
   const prevMonthDaysRef = useRef<number[]>(monthDays);
+  const recurringStartYmd = useMemo(() => {
+    if (type === 'new') return todayYmdForInit;
+    return existing?.schedule?.repeatStartDate ?? todayYmdForInit;
+  }, [type, existing?.schedule?.repeatStartDate, todayYmdForInit]);
+
   // For single tasks, get date from timeOverrides (YYYY-MM-DD keys); for recurring from repeatStartDate; for annual from schedule
   const initialSingleDate = useMemo(() => {
     const startYmd = existing?.schedule?.repeatStartDate;
@@ -264,9 +295,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       const [y, m, d] = keys[0].split('-').map(Number);
       return { year: y, month: m, day: d };
     }
-    const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
-  }, [existing?.timeOverrides, existing?.schedule?.repeatStartDate]);
+    const [y, m, d] = todayYmdForInit.split('-').map(Number);
+    return { year: y, month: m, day: d };
+  }, [existing?.timeOverrides, existing?.schedule?.repeatStartDate, todayYmdForInit]);
   const [annualMonth, setAnnualMonth] = useState<number>(() =>
     existing?.schedule?.yearMonth ?? initialSingleDate.month);
   const [annualDay, setAnnualDay] = useState<number>(() =>
@@ -317,10 +348,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
   // Check if selected date is today
   const isToday = useMemo(() => {
-    const today = new Date();
-    const currentDay = today.getDate();
-    const currentMonth = today.getMonth() + 1;
-    const currentYear = today.getFullYear();
+    const [currentYear, currentMonth, currentDay] = todayYmdForInit.split('-').map(Number);
 
     if (freq === 'annual') {
       return annualDay === currentDay && annualMonth === currentMonth;
@@ -328,7 +356,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       return annualDay === currentDay && annualMonth === currentMonth && annualYear === currentYear;
     }
     return false;
-  }, [freq, annualDay, annualMonth, annualYear]);
+  }, [freq, annualDay, annualMonth, annualYear, todayYmdForInit]);
 
   const [startMin, setStartMin] = useState<number>(hhmmToMinutes(initialStart ?? '08:00') ?? 8 * 60);
   const [endMin, setEndMin] = useState<number | null>(hhmmToMinutes(initialEnd) ?? null);
@@ -419,6 +447,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     return base;
   });
   const [selectedDow, setSelectedDow] = useState<number | null>(() => {
+    if (existing && ymd && initialDays.includes(todayWeekdayForInit)) return todayWeekdayForInit;
     const pick = mondayFirst.find(d => initialDays.includes(d));
     return pick !== undefined ? pick : (initialDays[0] ?? null);
   });
@@ -453,17 +482,17 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   });
 
   // Tracks which days have been manually customized (no longer mirror the first day)
-  const [, setCustomizedDows] = useState<Set<number>>(() => {
-    const days = existing?.schedule?.daysOfWeek ?? [];
+  const [customizedDows, setCustomizedDows] = useState<Set<number>>(() => {
+    const days = sortDow(existing?.schedule?.daysOfWeek ?? []);
     if (days.length <= 1) return new Set();
     const firstDay = days[0];
     const wt = existing?.schedule?.weeklyTimes;
-    const wo = existing?.schedule?.weeklyOccurrences;
+    const wg = existing?.schedule?.weeklyGaps;
     const customized = new Set<number>();
     for (const d of days.slice(1)) {
       const diffTime = wt && (wt[d]?.start !== wt[firstDay]?.start || wt[d]?.end !== wt[firstDay]?.end);
-      const diffOcc = wo && wo[d] !== undefined && wo[firstDay] !== undefined && wo[d] !== wo[firstDay];
-      if (diffTime || diffOcc) customized.add(d);
+      const diffGap = wg && wg[d] !== undefined && wg[firstDay] !== undefined && wg[d] !== wg[firstDay];
+      if (diffTime || diffGap) customized.add(d);
     }
     return customized;
   });
@@ -472,12 +501,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (days.length <= 1) return new Set();
     const firstDay = days[0];
     const mt = existing?.schedule?.monthlyTimes;
-    const mo = existing?.schedule?.monthlyOccurrences;
+    const mg = existing?.schedule?.monthlyGaps;
     const customized = new Set<number>();
     for (const d of days.slice(1)) {
       const diffTime = mt && (mt[d]?.start !== mt[firstDay]?.start || mt[d]?.end !== mt[firstDay]?.end);
-      const diffOcc = mo && mo[d] !== undefined && mo[firstDay] !== undefined && mo[d] !== mo[firstDay];
-      if (diffTime || diffOcc) customized.add(d);
+      const diffGap = mg && mg[d] !== undefined && mg[firstDay] !== undefined && mg[d] !== mg[firstDay];
+      if (diffTime || diffGap) customized.add(d);
     }
     return customized;
   });
@@ -494,19 +523,102 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const usePerDayTimeMonthly = mode === 'timed' && freq === 'monthly' && monthDays.length > 1 && selectedMonthDay !== null;
   const usePerDayOccWeekly = freq === 'weekly' && daysOfWeek.length > 1 && selectedDow !== null;
   const usePerDayOccMonthly = freq === 'monthly' && monthDays.length > 1 && selectedMonthDay !== null;
-  const currentStartMin = usePerDayTimeWeekly
-    ? (selectedDow !== null && perDayTimes[selectedDow]?.startMin !== undefined ? perDayTimes[selectedDow]!.startMin : startMin)
-    : usePerDayTimeMonthly
-      ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.startMin !== undefined ? perMonthTimes[selectedMonthDay]!.startMin : startMin)
-      : startMin;
-  const currentEndMin = usePerDayTimeWeekly
-    ? (selectedDow !== null && perDayTimes[selectedDow]?.endMin !== undefined ? perDayTimes[selectedDow]!.endMin : endMin)
-    : usePerDayTimeMonthly
-      ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.endMin !== undefined ? perMonthTimes[selectedMonthDay]!.endMin : endMin)
-      : endMin;
+  const isViewingSelectedDateContext = Boolean(
+    existing &&
+    ymd &&
+    (
+      freq === 'weekly'
+        ? selectedDow === todayWeekdayForInit
+        : freq === 'monthly'
+          ? selectedMonthDay === todayDayOfMonthForInit
+          : true
+    )
+  );
+  const hasSpecificTimeContextForSelectedDate = Boolean(
+    existing &&
+    ymd &&
+    (
+      firstOccurrenceSlotForToday ||
+      existing.timeOverrides?.[todayYmdForInit] !== undefined
+    )
+  );
+  const effectiveStartMinForSelectedDate = hhmmToMinutes(effectiveTimeForToday.start ?? null);
+  const effectiveEndMinForSelectedDate = hhmmToMinutes(effectiveTimeForToday.end ?? null);
+  const shouldUsePersistedSelectedDateTime = isViewingSelectedDateContext && hasSpecificTimeContextForSelectedDate;
+  const currentStartMin = shouldUsePersistedSelectedDateTime && effectiveStartMinForSelectedDate !== null
+    ? effectiveStartMinForSelectedDate
+    : usePerDayTimeWeekly
+      ? (selectedDow !== null && perDayTimes[selectedDow]?.startMin !== undefined ? perDayTimes[selectedDow]!.startMin : startMin)
+      : usePerDayTimeMonthly
+        ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.startMin !== undefined ? perMonthTimes[selectedMonthDay]!.startMin : startMin)
+        : startMin;
+  const currentEndMin = shouldUsePersistedSelectedDateTime
+    ? effectiveEndMinForSelectedDate
+    : usePerDayTimeWeekly
+      ? (selectedDow !== null && perDayTimes[selectedDow]?.endMin !== undefined ? perDayTimes[selectedDow]!.endMin : endMin)
+      : usePerDayTimeMonthly
+        ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.endMin !== undefined ? perMonthTimes[selectedMonthDay]!.endMin : endMin)
+        : endMin;
 
   const isFirstDow = selectedDow !== null && daysOfWeek.length > 0 && selectedDow === daysOfWeek[0];
   const isFirstMonthDay = selectedMonthDay !== null && monthDays.length > 0 && selectedMonthDay === monthDays[0];
+
+  useEffect(() => {
+    if (daysOfWeek.length <= 1) return;
+    const firstDow = daysOfWeek[0];
+    if (firstDow === undefined) return;
+
+    const sourceTime = perDayTimes[firstDow] ?? { startMin, endMin };
+    const sourceGap = perDayGaps[firstDow] ?? occurrenceGapMinutes;
+
+    setPerDayTimes(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const day of daysOfWeek.slice(1)) {
+        if (customizedDows.has(day)) continue;
+        const current = prev[day];
+        if (!current || current.startMin !== sourceTime.startMin || current.endMin !== sourceTime.endMin) {
+          next[day] = { startMin: sourceTime.startMin, endMin: sourceTime.endMin };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    setPerDayOccurrences(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const day of daysOfWeek) {
+        if (next[day] !== dailyOccurrences) {
+          next[day] = dailyOccurrences;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    setPerDayGaps(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const day of daysOfWeek.slice(1)) {
+        if (customizedDows.has(day)) continue;
+        if ((prev[day] ?? occurrenceGapMinutes) !== sourceGap) {
+          next[day] = sourceGap;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [
+    daysOfWeek,
+    customizedDows,
+    perDayTimes,
+    perDayGaps,
+    startMin,
+    endMin,
+    dailyOccurrences,
+    occurrenceGapMinutes,
+  ]);
 
   useEffect(() => {
     if (monthDays.length <= 1) return;
@@ -534,8 +646,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setPerMonthOccurrences(prev => {
       let changed = false;
       const next = { ...prev };
-      for (const day of monthDays.slice(1)) {
-        if (customizedMonthDays.has(day)) continue;
+      for (const day of monthDays) {
         if (prev[day] !== sourceOccurrences) {
           next[day] = sourceOccurrences;
           changed = true;
@@ -567,6 +678,27 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     dailyOccurrences,
     occurrenceGapMinutes,
   ]);
+
+  const didSyncSelectedDayRef = useRef(false);
+  useEffect(() => {
+    didSyncSelectedDayRef.current = false;
+  }, [existing?.id, ymd]);
+
+  useEffect(() => {
+    if (!existing || !ymd) return;
+    if (didSyncSelectedDayRef.current) return;
+
+    if (freq === 'weekly' && daysOfWeek.length > 1 && daysOfWeek.includes(todayWeekdayForInit)) {
+      setSelectedDow(todayWeekdayForInit);
+      didSyncSelectedDayRef.current = true;
+      return;
+    }
+
+    if (freq === 'monthly' && monthDays.length > 1 && monthDays.includes(todayDayOfMonthForInit)) {
+      setSelectedMonthDay(todayDayOfMonthForInit);
+      didSyncSelectedDayRef.current = true;
+    }
+  }, [freq, daysOfWeek, monthDays, todayWeekdayForInit, todayDayOfMonthForInit, existing?.id, ymd]);
 
   const updateCurrentStartMin = (next: number) => {
     if (usePerDayTimeWeekly && selectedDow !== null) {
@@ -650,7 +782,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
    */
   const slotGapInfo = useMemo(() => {
     if (!existing) return { kind: 'none' as const };
-    const n = getDailyOccurrenceTotal(existing);
+    const n = getDailyOccurrenceTotalForDate(existing, todayWeekdayForInit, todayDayOfMonthForInit);
     if (n < 2) return { kind: 'none' as const };
     const dayOv = existing.occurrenceSlotOverrides?.[todayYmdForInit];
     if (!dayOv || Object.keys(dayOv).length === 0) return { kind: 'none' as const };
@@ -669,7 +801,50 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     const allSame = gaps.every(g => g === firstGap);
     if (allSame) return { kind: 'uniform' as const, gap: Math.max(5, firstGap) };
     return { kind: 'custom' as const };
-  }, [existing, todayYmdForInit]);
+  }, [existing, todayYmdForInit, todayWeekdayForInit, todayDayOfMonthForInit]);
+
+  const occurrencePreviewSlots = useMemo(() => {
+    if (currentDailyOccurrences <= 1) return [] as string[];
+
+    const dayOv = existing?.occurrenceSlotOverrides?.[todayYmdForInit];
+    if (isViewingSelectedDateContext && dayOv && Object.keys(dayOv).length > 0) {
+      const exactSlots: string[] = [];
+      let hasAllSlots = true;
+      for (let i = 1; i < currentDailyOccurrences; i++) {
+        const slot = dayOv[i];
+        const start = slot?.start ?? null;
+        const end = slot?.end ?? null;
+        if (hhmmToMinutes(start) === null || hhmmToMinutes(end) === null) {
+          hasAllSlots = false;
+          break;
+        }
+        exactSlots.push(`${start}–${end}`);
+      }
+      if (hasAllSlots && exactSlots.length > 0) return exactSlots;
+    }
+
+    const sM = currentStartMin;
+    const eM = currentEndMin ?? (sM + 60);
+    const dur = Math.max(5, eM - sM);
+    const gap = Math.max(5, slotGapInfo.kind === 'uniform' ? slotGapInfo.gap : currentGapMinutes);
+    const generatedSlots: string[] = [];
+    for (let i = 1; i < currentDailyOccurrences; i++) {
+      const slotS = sM + i * gap;
+      if (slotS >= 24 * 60) break;
+      const slotE = Math.min(24 * 60, slotS + dur);
+      generatedSlots.push(`${minutesToHhmm(slotS)}–${minutesToHhmm(slotE)}`);
+    }
+    return generatedSlots;
+  }, [
+    currentDailyOccurrences,
+    currentStartMin,
+    currentEndMin,
+    currentGapMinutes,
+    existing,
+    isViewingSelectedDateContext,
+    slotGapInfo,
+    todayYmdForInit,
+  ]);
 
   const updateCurrentGapMinutes = useCallback((valOrUpdater: number | ((prev: number) => number)) => {
     const resolveGap = (prev: number) => {
@@ -1456,7 +1631,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           return repeatEndCustomDate ?? null;
         })();
         // Persist explicit flags so the modal restores them correctly on re-open
-        const repeatStartYmd = freq !== 'single' ? `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}` : null;
+        const repeatStartYmd = freq !== 'single' ? recurringStartYmd : null;
         setHabits(prev => prev.map(h => {
           if (h.id !== newHabitId) return h;
           const base: Habit = {
@@ -1510,13 +1685,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     } else if (type === 'color' && existing) {
       updateHabitColor(existing.id, color);
     } else if (type === 'schedule' && existing) {
+      const occNForVal = Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
       const time = mode === 'timed' ? minutesToHhmm(startMin) as string : null;
       // Se c'è orario di inizio ma nessuna fine impostata, salva fine = inizio + 1 ora (come in Oggi)
       const rawEndMin = mode === 'timed' && endMin !== null ? endMin : (mode === 'timed' && time ? startMin + 60 : null);
       const endTime = rawEndMin != null ? minutesToHhmm(Math.min(rawEndMin, 24 * 60)) as string : null;
       const shouldPersistEditedFirstOccurrence =
-        type === 'edit' &&
-        !!existing &&
         !!ymd &&
         mode === 'timed' &&
         occNForVal > 1 &&
@@ -1777,7 +1951,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         }
         return repeatEndCustomDate ?? null;
       })();
-      const repeatStartYmd = freq !== 'single' ? `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}` : null;
+      const repeatStartYmd = freq !== 'single' ? recurringStartYmd : null;
       // Persist explicit flags so the modal restores them correctly on re-open (preserve tipo)
       setHabits(prev => prev.map(h => h.id === existing.id ? {
         ...h,
@@ -1910,6 +2084,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     occurrenceGapMinutes,
     currentGapMinutes,
     slotGapInfo,
+    occurrencePreviewSlots,
     setOccurrenceGapMinutes,
     updateCurrentGapMinutes,
   };

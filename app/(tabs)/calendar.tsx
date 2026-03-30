@@ -1,4 +1,4 @@
-import { getCalendarDays, getMonthName, getMonthYear, isToday } from '@/lib/date';
+import { getCalendarDays, getMonthName, getMonthYear } from '@/lib/date';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
@@ -6,7 +6,7 @@ import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Animated, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -137,11 +137,6 @@ const MonthView = React.memo(function MonthView({
 }: MonthViewProps) {
   const { year, month } = item;
   const days = useMemo(() => getCalendarDays(year, month), [year, month]);
-  const todayRef = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
 
   const dayStats = useMemo(() => {
     const stats: Record<string, { completed: number; total: number; level: CompletionLevel }> = {};
@@ -160,7 +155,7 @@ const MonthView = React.memo(function MonthView({
       stats[day.ymd] = { completed, total, level };
     }
     return stats;
-  }, [days, habits, recentHistory, logicalTodayYmd]);
+  }, [days, habits, recentHistory, logicalTodayYmd, dayResetTime]);
 
   return (
     <View style={[styles.calendarMonth, isFirst && { marginTop: 4 }]}>
@@ -187,10 +182,8 @@ const MonthView = React.memo(function MonthView({
           {days.map((day, index) => {
             const stats = dayStats[day.ymd];
             const isCurrentMonth = day.isCurrentMonth;
-            const isTodayDate = isToday(day.date);
-            const dayDate = new Date(day.date);
-            dayDate.setHours(0, 0, 0, 0);
-            const isPast = dayDate < todayRef;
+            const isTodayDate = day.ymd === logicalTodayYmd;
+            const isPast = day.ymd < logicalTodayYmd;
             const completionStyle = stats ? getCompletionStyle(stats.level, isPast) : {};
             const hasBackground = completionStyle.backgroundColor !== undefined;
             const streakPosition = streakInfo.get(day.ymd);
@@ -298,8 +291,18 @@ export default function CalendarScreen() {
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
-  const today = new Date();
-  const { year: currentYear, month: currentMonth } = getMonthYear(today);
+  const logicalTodayYmd = useMemo(
+    () => getDay(new Date()),
+    [getDay]
+  );
+  const logicalTodayDate = useMemo(
+    () => new Date(`${logicalTodayYmd}T12:00:00.000Z`),
+    [logicalTodayYmd]
+  );
+  const { year: currentYear, month: currentMonth } = useMemo(
+    () => getMonthYear(logicalTodayDate),
+    [logicalTodayDate]
+  );
 
   const earliestMonthWithHistory = useMemo(() => {
     const dates = Object.keys(history);
@@ -321,11 +324,6 @@ export default function CalendarScreen() {
   }, [history, currentYear, currentMonth]);
 
   const [showLegend, setShowLegend] = useState(false);
-
-  const logicalTodayYmd = useMemo(
-    () => getDay(new Date()),
-    [getDay]
-  );
 
   const allMonths = useMemo((): MonthData[] => {
     const months: MonthData[] = [];
@@ -368,15 +366,15 @@ export default function CalendarScreen() {
 
   // Keep only last 90 days of history (include today so calendar shows today's real %)
   const recentHistory = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 90);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const cutoff = new Date(logicalTodayDate);
+    cutoff.setUTCDate(cutoff.getUTCDate() - 90);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
     const filtered: typeof history = {};
     for (const [date, completion] of Object.entries(history)) {
       if (date >= cutoffStr && date <= logicalTodayYmd) filtered[date] = completion;
     }
     return filtered;
-  }, [history, logicalTodayYmd]);
+  }, [history, logicalTodayDate, logicalTodayYmd]);
 
   const streakInfo = useMemo(() => {
     const streakMap = new Map<string, 'start' | 'middle' | 'end' | 'single'>();
@@ -429,7 +427,7 @@ export default function CalendarScreen() {
     }
     if (currentStreak.length >= 2) registerStreak(currentStreak);
     return streakMap;
-  }, [recentHistory, habits, logicalTodayYmd]);
+  }, [recentHistory, habits, logicalTodayYmd, dayResetTime]);
 
   const currentPerfectStreak = useMemo(() => {
     // Use real history + per-day habits so streak matches tasks tab
@@ -464,7 +462,7 @@ export default function CalendarScreen() {
     }
 
     return streak;
-  }, [recentHistory, habits, logicalTodayYmd]);
+  }, [recentHistory, habits, logicalTodayYmd, dayResetTime]);
 
   const handleDayPress = useCallback((day: { date: Date; isCurrentMonth: boolean; ymd: string }) => {
     // Vai alla tab OGGI mostrando la timeline di quel giorno specifico
@@ -819,5 +817,3 @@ const styles = StyleSheet.create({
   legendCircle: { width: 20, height: 20, borderRadius: 10 },
   legendText: { color: '#E5E7EB', fontSize: 15 },
 });
-
-

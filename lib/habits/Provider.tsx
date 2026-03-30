@@ -13,6 +13,8 @@ const STORAGE_TRACKER = 'habitcheck_tracker_v1';
 const STORAGE_HISTORY = 'habitcheck_history_v1';
 const STORAGE_LASTRESET = 'habitcheck_lastreset_v1';
 const STORAGE_DAYRESETTIME = 'habitcheck_dayresettime_v1';
+const STORAGE_DAYRESET_HISTORY = 'habitcheck_dayreset_history_v3';
+const STORAGE_DAYRESET_HISTORY_LEGACY_V2 = 'habitcheck_dayreset_history_v2';
 const STORAGE_REVIEWED_DATES = 'habitcheck_reviewed_dates_v1';
 const TZ = 'Europe/Zurich';
 
@@ -99,6 +101,95 @@ function generateUUID(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
+function prevYmd(ymd: string): string {
+  const d = parseYmdSafe(ymd);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return formatYmd(d);
+}
+
+function nextYmd(ymd: string): string {
+  const d = parseYmdSafe(ymd);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return formatYmd(d);
+}
+
+function resolveResetTimeForDay(
+  ymd: string,
+  history: Record<string, string>,
+  fallback: string,
+): string {
+  const keys = Object.keys(history).sort();
+  if (keys.length === 0) return fallback;
+  if (ymd < keys[0]) return history[keys[0]] ?? fallback;
+
+  let resolved = history[keys[0]] ?? fallback;
+  for (const key of keys) {
+    if (key > ymd) break;
+    const candidate = history[key];
+    if (typeof candidate === 'string' && /^\d{2}:\d{2}$/.test(candidate)) {
+      resolved = candidate;
+    }
+  }
+  return resolved;
+}
+
+function hhmmToMinutes(hhmm: string): number {
+  const [hour, minute] = hhmm.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function normalizeResetHistory(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object') return {};
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(key) && typeof value === 'string' && /^\d{2}:\d{2}$/.test(value)) {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
+function migrateLegacyResetHistoryV2(history: Record<string, string>): Record<string, string> {
+  const migrated: Record<string, string> = {};
+  for (const key of Object.keys(history).sort()) {
+    const value = history[key];
+    const targetKey = hhmmToMinutes(value) > 12 * 60 ? nextYmd(key) : key;
+    migrated[targetKey] = value;
+  }
+  return migrated;
+}
+
+function getLogicalDayKeyWithResolver(
+  date: Date | string,
+  resolveResetTime: (ymd: string) => string,
+): string {
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+
+  const d = typeof date === 'string' ? parseYmdSafe(date) : date;
+  const calendarYmd = formatYmd(d);
+  const todayReset = resolveResetTime(calendarYmd);
+  const tomorrowReset = resolveResetTime(nextYmd(calendarYmd));
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+  const currentMinutes = hour * 60 + minute;
+
+  const todayResetMinutes = hhmmToMinutes(todayReset);
+  const tomorrowResetMinutes = hhmmToMinutes(tomorrowReset);
+
+  if (todayResetMinutes <= 12 * 60 && currentMinutes < todayResetMinutes) {
+    return prevYmd(calendarYmd);
+  }
+  if (tomorrowResetMinutes > 12 * 60 && currentMinutes >= tomorrowResetMinutes) {
+    return nextYmd(calendarYmd);
+  }
+
+  return calendarYmd;
+}
+
 export function getLogicalDayKey(date: Date | string, dayResetTime: string): string {
   if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
 
@@ -156,6 +247,7 @@ export type HabitsContextType = {
   updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   updateSchedule: (id: string, daysOfWeek: number[], hhmm: string | null) => void;
   setDayResetTime: (timeOrFn: string | ((prev: string) => string)) => Promise<void>;
+  getResetTimeForDay: (ymd: string) => string;
   setHabits: React.Dispatch<React.SetStateAction<Habit[]>>;
   resetStorage: () => Promise<void>;
   /** Persist completion for a day (used by calendar). Uses same "habits for that day" as tasks tab. */
@@ -196,6 +288,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   habitsRef.current = habits;
   const historyRef = useRef<HabitsState['history']>({});
   historyRef.current = history;
+  const dayResetHistoryRef = useRef<Record<string, string>>({});
   const storageOutOfSpaceHandledRef = useRef(false);
   const habitsPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historyPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -208,11 +301,13 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [rawHabits, rawHistory, rawLast, rawDayResetTime, rawReviewedDates, rawTracker, rawTables] = await Promise.all([
+        const [rawHabits, rawHistory, rawLast, rawDayResetTime, rawDayResetHistory, rawLegacyDayResetHistoryV2, rawReviewedDates, rawTracker, rawTables] = await Promise.all([
           AsyncStorage.getItem(STORAGE_HABITS),
           AsyncStorage.getItem(STORAGE_HISTORY),
           AsyncStorage.getItem(STORAGE_LASTRESET),
           AsyncStorage.getItem(STORAGE_DAYRESETTIME),
+          AsyncStorage.getItem(STORAGE_DAYRESET_HISTORY),
+          AsyncStorage.getItem(STORAGE_DAYRESET_HISTORY_LEGACY_V2),
           AsyncStorage.getItem(STORAGE_REVIEWED_DATES),
           AsyncStorage.getItem(STORAGE_TRACKER),
           AsyncStorage.getItem(STORAGE_TABLES),
@@ -291,11 +386,32 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         }
 
         const effectiveResetTime = rawDayResetTime || '00:00';
+        const todayCalendar = formatYmd(new Date());
+        try {
+          const parsedResetHistory = rawDayResetHistory ? JSON.parse(rawDayResetHistory) : null;
+          const normalizedCurrent = normalizeResetHistory(parsedResetHistory);
+          if (Object.keys(normalizedCurrent).length > 0) {
+            dayResetHistoryRef.current = normalizedCurrent;
+          } else {
+            const parsedLegacyV2 = rawLegacyDayResetHistoryV2 ? JSON.parse(rawLegacyDayResetHistoryV2) : null;
+            const normalizedLegacyV2 = normalizeResetHistory(parsedLegacyV2);
+            dayResetHistoryRef.current = migrateLegacyResetHistoryV2(normalizedLegacyV2);
+          }
+        } catch {
+          dayResetHistoryRef.current = {};
+        }
+        if (Object.keys(dayResetHistoryRef.current).length === 0) {
+          dayResetHistoryRef.current = { [todayCalendar]: effectiveResetTime };
+        }
+        await AsyncStorage.setItem(STORAGE_DAYRESET_HISTORY, JSON.stringify(dayResetHistoryRef.current));
         // All'avvio, reset effettivo e configurato coincidono
         dayResetTimeRef.current = effectiveResetTime;
         dayResetConfiguredRef.current = effectiveResetTime;
         setDayResetTimeState(effectiveResetTime);
-        const today = getLogicalDayKey(new Date(), effectiveResetTime);
+        const today = getLogicalDayKeyWithResolver(
+          new Date(),
+          (ymd) => resolveResetTimeForDay(ymd, dayResetHistoryRef.current, effectiveResetTime),
+        );
         if (rawLast !== today) {
           setLastResetDate(today);
           await AsyncStorage.setItem(STORAGE_LASTRESET, today);
@@ -773,7 +889,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetToday = useCallback(async () => {
-    const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
+    const today = getLogicalDayKeyWithResolver(
+      new Date(),
+      (ymd) => resolveResetTimeForDay(ymd, dayResetHistoryRef.current, dayResetTimeRef.current),
+    );
     setHistory((prev) => {
       // Preserve completions for single habits — they don't recur, so they stay done permanently
       const preserved: Record<string, boolean> = {};
@@ -798,7 +917,14 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const getDay = useCallback((date: Date | string) => {
-    return getLogicalDayKey(date, dayResetTimeRef.current);
+    return getLogicalDayKeyWithResolver(
+      date,
+      (ymd) => resolveResetTimeForDay(ymd, dayResetHistoryRef.current, dayResetTimeRef.current),
+    );
+  }, []);
+
+  const getResetTimeForDay = useCallback((ymd: string) => {
+    return resolveResetTimeForDay(ymd, dayResetHistoryRef.current, dayResetTimeRef.current);
   }, []);
 
   const setDayCompletion = useCallback((ymd: string, completedCount: number) => {
@@ -982,14 +1108,32 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     }
 
     const now = new Date();
-    const oldLogicalDay = getLogicalDayKey(now, oldTime);
-    const newLogicalDay = getLogicalDayKey(now, newTime);
+    const todayCalendar = formatYmd(now);
+    const oldLogicalDay = getLogicalDayKeyWithResolver(
+      now,
+      (ymd) => resolveResetTimeForDay(
+        ymd,
+        dayResetHistoryRef.current,
+        oldTime,
+      ),
+    );
+    const effectiveDayYmd = hhmmToMinutes(newTime) > 12 * 60 ? nextYmd(todayCalendar) : todayCalendar;
+    const nextResetHistory = {
+      ...dayResetHistoryRef.current,
+      ...(dayResetHistoryRef.current[todayCalendar] ? {} : { [todayCalendar]: oldTime }),
+      [effectiveDayYmd]: newTime,
+    };
+    const newLogicalDay = getLogicalDayKeyWithResolver(
+      now,
+      (ymd) => resolveResetTimeForDay(ymd, nextResetHistory, newTime),
+    );
     const logicalDayChanged = oldLogicalDay !== newLogicalDay;
     const effectiveForToday = newTime;
 
     setDayResetTimeState(newTime);
     dayResetConfiguredRef.current = newTime;
     dayResetTimeRef.current = effectiveForToday;
+    dayResetHistoryRef.current = nextResetHistory;
     dateRef.current = newLogicalDay;
     setLastResetDate(newLogicalDay);
 
@@ -1010,6 +1154,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
     await Promise.all([
       AsyncStorage.setItem(STORAGE_DAYRESETTIME, newTime),
+      AsyncStorage.setItem(STORAGE_DAYRESET_HISTORY, JSON.stringify(nextResetHistory)),
       AsyncStorage.setItem(STORAGE_LASTRESET, newLogicalDay),
     ]);
   }, []);
@@ -1098,11 +1243,11 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded,
     addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
-    setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage,
+    setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, getResetTimeForDay, setHabits, resetStorage,
     markDateReviewed, saveDayReview, updateHabitAskReview,
     trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople,
     tables, addTable, updateTable, deleteTable,
-  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
+  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, getResetTimeForDay, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

@@ -209,6 +209,49 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const textSecondaryColor = isWhiteBg ? '#111111' : 'rgba(255, 255, 255, 0.9)';
   const textTertiaryColor = isWhiteBg ? '#222222' : 'rgba(255, 255, 255, 0.7)';
 
+  const formatDisplayTime = (value: string | null | undefined) => {
+    if (!value) return null;
+    return value === '23:59' ? '24:00' : value;
+  };
+
+  const getUniformScheduledRange = () => {
+    const schedule = habit.schedule;
+    if (!schedule) return null;
+
+    const buildRange = (start: string | null | undefined, end: string | null | undefined) => {
+      const startNorm = formatDisplayTime(start);
+      const endNorm = formatDisplayTime(end);
+      if (startNorm && endNorm) return `${startNorm} - ${endNorm}`;
+      if (startNorm) return startNorm;
+      if (endNorm) return `- ${endNorm}`;
+      return 'Tutto il giorno';
+    };
+
+    const getEffectiveWeeklyRange = (day: number) => {
+      const entry = schedule.weeklyTimes?.[day];
+      return buildRange(entry?.start ?? schedule.time, entry?.end ?? schedule.endTime);
+    };
+
+    const weeklyDays = schedule.daysOfWeek ?? [];
+    if (weeklyDays.length > 1) {
+      const ranges = weeklyDays.map(getEffectiveWeeklyRange);
+      if (ranges.every((range) => range === ranges[0])) return ranges[0];
+      return 'Diversi orari';
+    }
+
+    const monthDays = schedule.monthDays ?? [];
+    if (monthDays.length > 1) {
+      const ranges = monthDays.map((day) => {
+        const entry = schedule.monthlyTimes?.[day];
+        return buildRange(entry?.start ?? schedule.time, entry?.end ?? schedule.endTime);
+      });
+      if (ranges.every((range) => range === ranges[0])) return ranges[0];
+      return 'Diversi orari';
+    }
+
+    return null;
+  };
+
   // Determine time display text (preserve minutes; map 23:59 to 24:00)
   const getTimeText = () => {
     const todayYmd = getDay(new Date());
@@ -225,17 +268,17 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
         ? (override as any).end
         : null;
 
+    const uniformRange = !overrideStart && !overrideEnd ? getUniformScheduledRange() : null;
     const startRaw = overrideStart ?? habit.schedule?.time ?? null;
     const endRaw = overrideEnd ?? habit.schedule?.endTime ?? null;
-    const endNorm = endRaw === '23:59' ? '24:00' : endRaw ?? null;
-    const wt = habit.schedule?.weeklyTimes;
-    if (!overrideStart && !overrideEnd && wt && Object.keys(wt).length > 0) {
-      return 'Diversi orari';
-    }
+    const startNorm = formatDisplayTime(startRaw);
+    const endNorm = formatDisplayTime(endRaw);
+
     if (isAllDayMarker || habit.isAllDay) return 'Tutto il giorno';
+    if (uniformRange) return uniformRange;
     if (!startRaw && !endNorm) return 'Tutto il giorno';
-    if (startRaw && endNorm) return `${startRaw} - ${endNorm}`;
-    if (startRaw) return startRaw;
+    if (startNorm && endNorm) return `${startNorm} - ${endNorm}`;
+    if (startNorm) return startNorm;
     if (endNorm) return `- ${endNorm}`;
     return 'Tutto il giorno';
   };
@@ -409,7 +452,14 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
         <View style={styles.activeBadges} pointerEvents="none">
           {activeBadges.map((badge) => (
             <View key={badge.key} style={styles.activeBadge}>
-              <Ionicons name={badge.icon} size={17} color={badge.color} />
+              {badge.key === 'notification' ? (
+                <View style={styles.notificationBadgeWrap}>
+                  <Ionicons name={badge.icon} size={17} color={badge.color} />
+                  <Text style={styles.notificationBadgeOne}>1</Text>
+                </View>
+              ) : (
+                <Ionicons name={badge.icon} size={17} color={badge.color} />
+              )}
             </View>
           ))}
         </View>
@@ -582,6 +632,20 @@ const styles = StyleSheet.create({
   activeBadge: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  notificationBadgeWrap: {
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationBadgeOne: {
+    position: 'absolute',
+    top: 4,
+    fontSize: 10,
+    lineHeight: 10,
+    fontWeight: '800',
+    color: '#000000',
   },
   card: {
     borderRadius: 16,

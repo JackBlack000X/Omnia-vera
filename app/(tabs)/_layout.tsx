@@ -1,6 +1,6 @@
 import { useAppTheme } from '@/lib/theme-context';
 import { Tabs } from 'expo-router';
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import React from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,12 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
 
   const isFuturistic = activeTheme === 'futuristic';
+  const nativeTabContentStyle = { backgroundColor: '#000' } as const;
+  const nativeTabsHostProps = {
+    // Keep the iOS native tab controller canvas dark during tab swaps to avoid white flashes.
+    nativeContainerStyle: { backgroundColor: '#000' },
+  } as const;
+  const nativeTabBarBackgroundColor = '#000' as const;
 
   if (isFuturistic) {
     return (
@@ -75,24 +81,29 @@ export default function TabLayout() {
 
   return (
     <NativeTabs
+      {...nativeTabsHostProps}
+      backgroundColor={nativeTabBarBackgroundColor}
+      blurEffect="systemChromeMaterialDark"
+      disableTransparentOnScrollEdge
+      shadowColor="transparent"
       tintColor="#3b82f6"
       iconColor={{ default: '#e5e7eb', selected: '#3b82f6' }}
     >
-      <NativeTabs.Trigger name="index" options={{ title: 'Tasks' }}>
-        <Icon sf={{ default: 'list.bullet', selected: 'list.bullet' }} />
-        <Label>Tasks</Label>
+      <NativeTabs.Trigger name="index" contentStyle={nativeTabContentStyle}>
+        <NativeTabs.Trigger.Icon sf={{ default: 'list.bullet', selected: 'list.bullet' }} />
+        <NativeTabs.Trigger.Label>Tasks</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="oggi" options={{ title: 'Oggi' }}>
-        <Icon sf={{ default: 'sun.max', selected: 'sun.max.fill' }} />
-        <Label>Oggi</Label>
+      <NativeTabs.Trigger name="oggi" contentStyle={nativeTabContentStyle}>
+        <NativeTabs.Trigger.Icon sf={{ default: 'sun.max', selected: 'sun.max.fill' }} />
+        <NativeTabs.Trigger.Label>Oggi</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="calendar" options={{ title: 'Calendario' }}>
-        <Icon sf={{ default: 'calendar', selected: 'calendar' }} />
-        <Label>Calendario</Label>
+      <NativeTabs.Trigger name="calendar" contentStyle={nativeTabContentStyle}>
+        <NativeTabs.Trigger.Icon sf={{ default: 'calendar', selected: 'calendar' }} />
+        <NativeTabs.Trigger.Label>Calendario</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="shop" options={{ title: 'Shop' }}>
-        <Icon sf={{ default: 'bag', selected: 'bag.fill' }} />
-        <Label>Shop</Label>
+      <NativeTabs.Trigger name="shop" contentStyle={nativeTabContentStyle}>
+        <NativeTabs.Trigger.Icon sf={{ default: 'bag', selected: 'bag.fill' }} />
+        <NativeTabs.Trigger.Label>Shop</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

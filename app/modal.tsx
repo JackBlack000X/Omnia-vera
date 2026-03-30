@@ -693,12 +693,37 @@ export default function ModalScreen() {
           {(type === 'new' || type === 'edit') && (
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <TouchableOpacity onPress={() => { if (m.notification.enabled) setNotifOpen(v => !v); }} style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.sectionTitle}>Notifiche</Text>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => { if (m.notification.enabled) setNotifOpen(v => !v); }} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.sectionTitle}>Notifiche</Text>
+                    {m.notification.enabled && (
+                      <Ionicons name={notifOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" style={{ marginLeft: 6 }} />
+                    )}
+                  </TouchableOpacity>
                   {m.notification.enabled && (
-                    <Ionicons name={notifOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" style={{ marginLeft: 6 }} />
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        m.setNotification({ ...m.notification, showAsTaskInOggi: !m.notification.showAsTaskInOggi });
+                      }}
+                      style={{
+                        marginLeft: 10,
+                        width: 26,
+                        height: 26,
+                        borderRadius: 999,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderWidth: 1,
+                        borderColor: m.notification.showAsTaskInOggi ? '#f59e0b' : '#475569',
+                        backgroundColor: m.notification.showAsTaskInOggi ? '#f59e0b' : 'transparent',
+                      }}
+                    >
+                      <Text style={{ color: m.notification.showAsTaskInOggi ? '#111827' : '#cbd5e1', fontSize: 13, fontWeight: '800' }}>
+                        1
+                      </Text>
+                    </TouchableOpacity>
                   )}
-                </TouchableOpacity>
+                </View>
                 <Switch
                   value={m.notification.enabled}
                   onValueChange={v => { m.setNotification({ ...m.notification, enabled: v }); if (v) setNotifOpen(true); else setNotifOpen(false); }}
@@ -1885,24 +1910,9 @@ export default function ModalScreen() {
                                 Modifica per reimpostare un distacco uguale per tutte
                               </Text>
                             )}
-                            {(() => {
-                              const sM = m.currentStartMin;
-                              const eM = m.currentEndMin ?? (sM + 60);
-                              const dur = Math.max(5, eM - sM);
-                              const gap = Math.max(5, displayGap);
-                              const slots: string[] = [];
-                              for (let i = 1; i < m.currentDailyOccurrences; i++) {
-                                const slotS = sM + i * gap;
-                                if (slotS >= 24 * 60) break;
-                                const slotE = Math.min(24 * 60, slotS + dur);
-                                slots.push(`${minutesToHhmmSafe(slotS)}–${minutesToHhmmSafe(slotE)}`);
-                              }
-                              return (
-                                <Text style={[styles.subtle, { marginTop: 6, textAlign: 'center', fontSize: 11 }]}>
-                                  {slots.join('  ·  ')}
-                                </Text>
-                              );
-                            })()}
+                            <Text style={[styles.subtle, { marginTop: 6, textAlign: 'center', fontSize: 11 }]}>
+                              {m.occurrencePreviewSlots.join('  ·  ')}
+                            </Text>
                           </View>
                         );
                       })()}

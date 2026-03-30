@@ -20,6 +20,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 const TASKS_DRAG_AUTOSCROLL_THRESHOLD = 108;
 const TASKS_DRAG_AUTOSCROLL_SPEED = 72;
 const TASKS_DRAG_AUTOSCROLL_TOP_THRESHOLD = 28;
+const TASKS_MULTI_DRAG_ROW_HEIGHT = 83;
 const TASKS_DROP_COVER_DURATION_MS = 160;
 const IOS_TAB_BAR_BASE_HEIGHT = 49;
 const TASKS_TAB_BAR_EDGE_OVERLAP = 28;
@@ -176,6 +177,8 @@ export default function IndexScreen() {
     isPostDragRef,
     resetStorage,
     collapsedFolderIds,
+    menuToday,
+    menuTomorrow,
   } = useIndexLogic();
 
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
@@ -923,9 +926,17 @@ export default function IndexScreen() {
                 // may have a stale single-task measurement (83px). Override with
                 // the actual block size. The cell's offset from cellDataRef is
                 // still correct since the key didn't change.
+                // We also need to collapse the other selected cells to 0, otherwise
+                // the internal layout map keeps counting them as full-height rows and
+                // autoscroll stops early while dragging a multi-selection.
                 const item = listData[index];
-                if (item?.type === 'task' && item.habit.id === multiDragAnchorId && multiDragHabits.length > 1) {
-                  return { size: multiDragHabits.length * 83 };
+                if (item?.type === 'task' && multiDragHabits.length > 1) {
+                  if (item.habit.id === multiDragAnchorId) {
+                    return { size: multiDragHabits.length * TASKS_MULTI_DRAG_ROW_HEIGHT };
+                  }
+                  if (selectedIds.has(item.habit.id)) {
+                    return { size: 0 };
+                  }
                 }
                 return null;
               }}
@@ -1070,7 +1081,17 @@ export default function IndexScreen() {
           </TouchableOpacity>
         </View>
       ) : (
-        <Link href={{ pathname: '/modal', params: { type: 'new', folder: (activeFolder && activeFolder !== TUTTE_KEY) ? activeFolder : undefined } }} asChild>
+        <Link
+          href={{
+            pathname: '/modal',
+            params: {
+              type: 'new',
+              folder: (activeFolder && activeFolder !== TUTTE_KEY) ? activeFolder : undefined,
+              ymd: activeFolder === DOMANI_TOMORROW_KEY ? menuTomorrow : menuToday,
+            }
+          }}
+          asChild
+        >
           <TouchableOpacity accessibilityRole="button" style={styles.fab}>
             <Ionicons name="add" size={28} color="#fff" />
           </TouchableOpacity>

@@ -1,5 +1,5 @@
 import { useHabits } from '@/lib/habits/Provider';
-import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
+import { appearsOnDateRaw } from '@/lib/habits/habitsForDate';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import {
@@ -137,9 +137,12 @@ export function useIndexLogic() {
   const [draggingSelectionCount, setDraggingSelectionCount] = useState(0);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
   const today = getDay(new Date());
+  const logicalTodayDate = useMemo(() => new Date(`${today}T12:00:00.000Z`), [today]);
   // Giorno di calendario in Zurich (può differire da today quando dayResetTime > 00:00 e siamo prima del reset)
   const calendarToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const tomorrow = useMemo(() => nextYmd(calendarToday), [calendarToday]);
+  const menuToday = today;
+  const menuTomorrow = tomorrow;
 
   const prevSectionedListRef = useRef<SectionItem[]>([]);
 
@@ -541,9 +544,9 @@ export function useIndexLogic() {
     });
   }, []);
 
-  const todayWeekday = useMemo(() => new Date().getDay(), [today]);
-  const todayDayOfMonth = useMemo(() => new Date().getDate(), [today]);
-  const todayMonthIndex = useMemo(() => new Date().getMonth() + 1, [today]);
+  const todayWeekday = useMemo(() => logicalTodayDate.getUTCDay(), [logicalTodayDate]);
+  const todayDayOfMonth = useMemo(() => logicalTodayDate.getUTCDate(), [logicalTodayDate]);
+  const todayMonthIndex = useMemo(() => logicalTodayDate.getUTCMonth() + 1, [logicalTodayDate]);
 
   const habitsAppearingToday = useMemo(() => {
     return habits.filter((h) => {
@@ -710,10 +713,10 @@ export function useIndexLogic() {
   }, [history, habits, today]);
 
   const habitsAppearingTomorrow = useMemo(() => {
-    return getHabitsAppearingOnDate(habits, tomorrow, dayResetTime).filter(
+    return habits.filter((h) => appearsOnDateRaw(h, tomorrow)).filter(
       h => !singleHabitsHiddenAfterReset.has(h.id)
     );
-  }, [habits, tomorrow, dayResetTime, singleHabitsHiddenAfterReset]);
+  }, [habits, tomorrow, singleHabitsHiddenAfterReset]);
 
   const sortedHabits = useMemo(() => {
     let list: Habit[];
@@ -1618,6 +1621,9 @@ export function useIndexLogic() {
     selectionOrder,
     collapsedFolderIds,
     today,
+    tomorrow,
+    menuToday,
+    menuTomorrow,
     // computed
     stats,
     effectiveSortMode,

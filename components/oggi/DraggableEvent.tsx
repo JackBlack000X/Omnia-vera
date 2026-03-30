@@ -50,6 +50,7 @@ export type DraggableEventProps = {
   dragDisabled?: boolean;
   /** Multi-occorrenza: salva slot o apre flusso N=2 (senza Alert ricorrenza classico) */
   onOccurrenceSlotDragEnd?: (args: { event: OggiEvent; ymd: string; newStartTime: string; newEndTime: string }) => void;
+  getRecurringDragButtons?: (args: { event: OggiEvent; ymd: string; startTime: string; endTime: string }) => Array<{ text: string; onPress: () => void }>;
 };
 
 function getSnapStepMinutes(visibleHours: number, hourHeight: number): 5 | 10 | 15 {
@@ -97,11 +98,14 @@ function DraggableEvent({
   onDragAutoScroll,
   dragDisabled,
   onOccurrenceSlotDragEnd,
+  getRecurringDragButtons,
 }: DraggableEventProps) {
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
   const light = isLightColor(bg);
   const isTravel = event.tipo === 'viaggio';
+  const isNotificationPreview = Boolean(event.isNotificationPreview);
+  const isCompletedNotificationPreview = Boolean(event.notificationPreviewCompleted);
 
   const dragWidthValue = useSharedValue(layoutStyle.width);
   const dragLeftValue = useSharedValue(layoutStyle.left);
@@ -225,7 +229,8 @@ function DraggableEvent({
         const relativeTop = Math.max(0, clampedTop - DRAG_VISUAL_OFFSET);
         const minutesFromStart = (relativeTop / hourHeight) * 60;
         const newStartMinutes = windowStartMin + minutesFromStart;
-        const clampedMinutes = Math.max(0, Math.min(1440, newStartMinutes));
+        const maxStartMinutes = Math.max(windowStartMin, windowEndMin - durationMin);
+        const clampedMinutes = Math.max(windowStartMin, Math.min(maxStartMinutes, newStartMinutes));
 
         // Movimento fluido: la posizione segue il dito senza scatti,
         // lo snap avviene solo in onPanResponderRelease.
@@ -246,7 +251,7 @@ function DraggableEvent({
           const originalStartM = toMinutes(event.startTime);
           const originalEndM = toMinutes(event.endTime);
           const duration = originalEndM - originalStartM;
-          const draggedCurrentEnd = Math.min(1440, clampedMinutes + duration);
+          const draggedCurrentEnd = clampedMinutes + duration;
 
           const currentTimedEvents = timedEventsRef.current;
           let overlapsAny = false;
@@ -359,8 +364,8 @@ function DraggableEvent({
         const newStartMinutes = windowStartMin + minutesFromStart;
         const snapStep = getSnapStepMinutes(visibleHours, hourHeight);
         const snappedMinutes = Math.round(newStartMinutes / snapStep) * snapStep;
-        const maxStartMin = windowEndMin - durationMin;
-        const clampedMinutes = Math.max(0, Math.min(1440, Math.min(snappedMinutes, maxStartMin)));
+        const maxStartMin = Math.max(windowStartMin, windowEndMin - durationMin);
+        const clampedMinutes = Math.max(windowStartMin, Math.min(maxStartMin, snappedMinutes));
 
         const originalStartM = toMinutes(event.startTime);
         const originalEndM = toMinutes(event.endTime);
@@ -382,6 +387,17 @@ function DraggableEvent({
 
         const finalStartTime = minutesToTime(finalClampedStart);
         const finalEndTime = minutesToTime(finalClampedStart + duration);
+        const resolveDisplayTimeToCalendar = (displayTime: string) => {
+          const displayMinutes = toMinutes(displayTime);
+          const offset = event.displayOffsetMinutes ?? 0;
+          const calendarMinutes = Math.max(0, Math.min(1440, displayMinutes - offset));
+          return {
+            ymd: event.calendarYmd ?? getDay(currentDate),
+            time: minutesToTime(calendarMinutes),
+          };
+        };
+        const { ymd: targetYmdStart, time: persistedStartTime } = resolveDisplayTimeToCalendar(finalStartTime);
+        const { ymd: targetYmdEnd, time: persistedEndTime } = resolveDisplayTimeToCalendar(finalEndTime);
 
         setPendingEventPositions((prev) => ({ ...prev, [event.id]: finalClampedStart }));
 
@@ -390,15 +406,53 @@ function DraggableEvent({
            setLastMovedEventId(event.id);
         }
 
-        const selectedYmd = getDay(currentDate);
+        const selectedYmd = targetYmdStart;
         const isRepeating = event.habitFreq && event.habitFreq !== 'single';
+
+        if (hasMovedRef.current && targetYmdStart !== targetYmdEnd) {
+          setPendingEventPositions(prev => {
+            const next = { ...prev };
+            delete next[event.id];
+            return next;
+          });
+          Alert.alert(
+            'Spostamento non supportato',
+            'Questa modifica farebbe finire la task su due giorni diversi. Spostala meno o accorcia la durata.',
+          );
+          dragInitialTop.value = finalTop;
+          dragY.value = 0;
+          isDragActiveRef.current = false;
+          lastSnappedMinuteRef.current = null;
+          hasMovedRef.current = false;
+          initialStartMinutesRef.current = null;
+          setDragClearedOriginalOverlap(false);
+          overlapClearedRef.current = false;
+          originalOverlapIdsRef.current = new Set();
+          brokenOverlapPairsRef.current = new Set();
+          setDragSizingLocked(false);
+          setDraggingEventId(null);
+          setCurrentDragPosition(null);
+          onDragEnd();
+          onDragAutoScroll?.(null);
+          return;
+        }
 
         if (hasMovedRef.current && event.multiOccurrenceSlot && onOccurrenceSlotDragEnd) {
           onOccurrenceSlotDragEnd({ event, ymd: selectedYmd, newStartTime: finalStartTime, newEndTime: finalEndTime });
         } else if (hasMovedRef.current && isRepeating && (finalStartTime !== event.startTime || finalEndTime !== event.endTime)) {
+          const recurringButtons = getRecurringDragButtons
+            ? getRecurringDragButtons({ event, ymd: selectedYmd, startTime: persistedStartTime, endTime: persistedEndTime })
+            : [
+                { text: 'Solo oggi', onPress: () => {
+                  setTimeOverrideRange(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
+                }},
+                { text: 'Da oggi in poi', onPress: () => {
+                  updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
+                }},
+              ];
           Alert.alert(
             'Modifica attività ricorrente',
-            'Vuoi modificare solo questa occorrenza o anche tutte quelle successive?',
+            'Scegli come applicare questa modifica.',
             [
               { text: 'Annulla', style: 'cancel', onPress: () => {
                 // Revert visual position if possible, but for now we just don't save.
@@ -408,17 +462,12 @@ function DraggableEvent({
                   return next;
                 });
               }},
-              { text: 'Solo oggi', onPress: () => {
-                setTimeOverrideRange(resolveOggiHabitId(event), selectedYmd, finalStartTime, finalEndTime);
-              }},
-              { text: 'Da oggi in poi', onPress: () => {
-                updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, finalStartTime, finalEndTime);
-              }}
+              ...recurringButtons
             ]
           );
         } else if (hasMovedRef.current) {
           // Single task or no time change (just reorder)
-          updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, finalStartTime, finalEndTime);
+          updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
         }
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -489,6 +538,7 @@ function DraggableEvent({
     getDay,
     dragDisabled,
     onOccurrenceSlotDragEnd,
+    getRecurringDragButtons,
     event.multiOccurrenceSlot,
     event.habitFreq,
   ]);
@@ -509,7 +559,12 @@ function DraggableEvent({
       height: layoutStyle.height,
       backgroundColor: bg,
     },
+    isNotificationPreview && {
+      borderWidth: 1,
+      borderColor: light ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.2)',
+    },
     animatedStyle,
+    !isDragging && isCompletedNotificationPreview && { opacity: 0.58 },
     !isDragging && isTravel && { opacity: 0.7 },
   ];
 
