@@ -1,6 +1,6 @@
 ## Background location & geofenced tasks – Design
 
-**Goal:** Allow Omnia to know the user location (with permission) and offer extra features:
+**Goal:** Allow Tothemoon to know the user location (with permission) and offer extra features:
 - background-capable geofenced tasks (e.g. "Palestra" auto-completes when user exits a 200m radius)
 - clear separation: app fully usable without location, but extras are disabled without permission
 
@@ -41,7 +41,7 @@ We introduce two concepts: **Place** and **auto-complete rules** attached to a H
   - `radiusMeters: number` – default 200
 
 Storage strategy:
-- Stored alongside other Omnia persisted state (AsyncStorage), likely in a `lib/places` module.
+- Stored alongside other Tothemoon persisted state (AsyncStorage), likely in a `lib/places` module.
 - Small list (dozens), so simple JSON blob is fine.
 
 - **Habit auto-complete (location-based):**
@@ -186,4 +186,3 @@ The current iteration will not flip completion yet; the main user-facing part is
     - Update status to "Disattivato".
     - Keep Places and `locationRule` configs persisted (so they come back if permission is re-enabled).
     - Stop any active geofencing (once we implement it).
-

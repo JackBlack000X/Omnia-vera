@@ -1,5 +1,6 @@
 import { canAskLocationPermission, getLocationPermissionStatusAsync, startGeofencingForRegions, stopGeofencingAsync } from '@/lib/location';
 import { loadPlaces } from '@/lib/places';
+import { getItemWithLegacy, LEGACY_STORAGE_KEYS, STORAGE_KEYS } from '@/lib/storageKeys';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
@@ -7,15 +8,15 @@ import { getDailyOccurrenceTotal, getOccurrenceDoneForDay, migrateOccurrenceComp
 import { getHabitsAppearingOnDate } from './habitsForDate';
 import { Habit, HabitTipo, HabitsState, TrackerEntry, UserTable } from './schema';
 
-const STORAGE_HABITS = 'habitcheck_habits_v1';
-const STORAGE_TABLES = 'habitcheck_tables_v1';
-const STORAGE_TRACKER = 'habitcheck_tracker_v1';
-const STORAGE_HISTORY = 'habitcheck_history_v1';
-const STORAGE_LASTRESET = 'habitcheck_lastreset_v1';
-const STORAGE_DAYRESETTIME = 'habitcheck_dayresettime_v1';
-const STORAGE_DAYRESET_HISTORY = 'habitcheck_dayreset_history_v3';
-const STORAGE_DAYRESET_HISTORY_LEGACY_V2 = 'habitcheck_dayreset_history_v2';
-const STORAGE_REVIEWED_DATES = 'habitcheck_reviewed_dates_v1';
+const STORAGE_HABITS = STORAGE_KEYS.habits;
+const STORAGE_TABLES = STORAGE_KEYS.tables;
+const STORAGE_TRACKER = STORAGE_KEYS.tracker;
+const STORAGE_HISTORY = STORAGE_KEYS.history;
+const STORAGE_LASTRESET = STORAGE_KEYS.lastReset;
+const STORAGE_DAYRESETTIME = STORAGE_KEYS.dayResetTime;
+const STORAGE_DAYRESET_HISTORY = STORAGE_KEYS.dayResetHistory;
+const STORAGE_DAYRESET_HISTORY_LEGACY_V2 = LEGACY_STORAGE_KEYS.dayResetHistoryV2;
+const STORAGE_REVIEWED_DATES = STORAGE_KEYS.reviewedDates;
 const TZ = 'Europe/Zurich';
 
 const MAX_HISTORY_DAYS = 180;
@@ -231,6 +232,8 @@ export type HabitsContextType = {
   updateHabitTipo: (id: string, tipo: HabitTipo) => void;
   removeHabit: (id: string) => void;
   toggleDone: (id: string) => void;
+  toggleDoneForDate: (id: string, ymd: string) => void;
+  toggleAggregateDone: (id: string) => void;
   reorder: (id: string, direction: 'up' | 'down') => void;
   updateHabitsOrder: (orderedHabits: Habit[]) => void;
   resetToday: () => Promise<void>;
@@ -302,15 +305,15 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const [rawHabits, rawHistory, rawLast, rawDayResetTime, rawDayResetHistory, rawLegacyDayResetHistoryV2, rawReviewedDates, rawTracker, rawTables] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_HABITS),
-          AsyncStorage.getItem(STORAGE_HISTORY),
-          AsyncStorage.getItem(STORAGE_LASTRESET),
-          AsyncStorage.getItem(STORAGE_DAYRESETTIME),
-          AsyncStorage.getItem(STORAGE_DAYRESET_HISTORY),
+          getItemWithLegacy(STORAGE_HABITS, LEGACY_STORAGE_KEYS.habits),
+          getItemWithLegacy(STORAGE_HISTORY, LEGACY_STORAGE_KEYS.history),
+          getItemWithLegacy(STORAGE_LASTRESET, LEGACY_STORAGE_KEYS.lastReset),
+          getItemWithLegacy(STORAGE_DAYRESETTIME, LEGACY_STORAGE_KEYS.dayResetTime),
+          getItemWithLegacy(STORAGE_DAYRESET_HISTORY, LEGACY_STORAGE_KEYS.dayResetHistory),
           AsyncStorage.getItem(STORAGE_DAYRESET_HISTORY_LEGACY_V2),
-          AsyncStorage.getItem(STORAGE_REVIEWED_DATES),
-          AsyncStorage.getItem(STORAGE_TRACKER),
-          AsyncStorage.getItem(STORAGE_TABLES),
+          getItemWithLegacy(STORAGE_REVIEWED_DATES, LEGACY_STORAGE_KEYS.reviewedDates),
+          getItemWithLegacy(STORAGE_TRACKER, LEGACY_STORAGE_KEYS.tracker),
+          getItemWithLegacy(STORAGE_TABLES, LEGACY_STORAGE_KEYS.tables),
         ]);
 
         if (rawHabits) {
@@ -723,6 +726,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         id: newId,
         createdAt: formatYmd(),
         order: prev.length,
+        aggregateCompleted: false,
         timeOverrides: {},
       };
       return [...prev, copy];
@@ -804,10 +808,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const toggleDone = useCallback((id: string) => {
+  const toggleDoneForDate = useCallback((id: string, ymd: string) => {
     setHistory((prev) => {
-      const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
-      const dayCompletion = prev[today] || { date: today, completedByHabitId: {} };
+      const dayCompletion = prev[ymd] || { date: ymd, completedByHabitId: {} };
       const habit = habitsRef.current.find((h) => h.id === id);
       const n = habit ? getDailyOccurrenceTotal(habit) : 1;
 
@@ -817,7 +820,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         delete nextOccCounts[id];
         return {
           ...prev,
-          [today]: {
+          [ymd]: {
             ...dayCompletion,
             completedByHabitId: {
               ...dayCompletion.completedByHabitId,
@@ -836,7 +839,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
       return {
         ...prev,
-        [today]: {
+        [ymd]: {
           ...dayCompletion,
           completedByHabitId: {
             ...dayCompletion.completedByHabitId,
@@ -846,6 +849,19 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         },
       };
     });
+  }, []);
+
+  const toggleDone = useCallback((id: string) => {
+    const today = getLogicalDayKey(new Date(), dayResetTimeRef.current);
+    toggleDoneForDate(id, today);
+  }, [toggleDoneForDate]);
+
+  const toggleAggregateDone = useCallback((id: string) => {
+    setHabits((prev) => prev.map((habit) => (
+      habit.id === id
+        ? { ...habit, aggregateCompleted: !habit.aggregateCompleted }
+        : habit
+    )));
   }, []);
 
   const reorder = useCallback((id: string, direction: 'up' | 'down') => {
@@ -894,13 +910,13 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       (ymd) => resolveResetTimeForDay(ymd, dayResetHistoryRef.current, dayResetTimeRef.current),
     );
     setHistory((prev) => {
-      // Preserve completions for single habits — they don't recur, so they stay done permanently
+      // Preserve completions for plain single habits — smart tasks still recur.
       const preserved: Record<string, boolean> = {};
       for (const dayEntry of Object.values(prev)) {
         for (const [habitId, done] of Object.entries(dayEntry.completedByHabitId)) {
           if (!done) continue;
           const habit = habitsRef.current.find(h => h.id === habitId);
-          if (habit?.habitFreq === 'single') {
+          if (habit?.habitFreq === 'single' && !habit.smartTask) {
             preserved[habitId] = true;
           }
         }
@@ -1242,12 +1258,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<HabitsContextType>(() => ({
     habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded,
-    addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
+    addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, toggleDoneForDate, toggleAggregateDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
     setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, getResetTimeForDay, setHabits, resetStorage,
     markDateReviewed, saveDayReview, updateHabitAskReview,
     trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople,
     tables, addTable, updateTable, deleteTable,
-  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, getResetTimeForDay, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
+  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, toggleDoneForDate, toggleAggregateDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, getResetTimeForDay, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

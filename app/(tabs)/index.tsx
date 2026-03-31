@@ -1,3 +1,4 @@
+import SmartTaskFeedbackModal from '@/components/SmartTaskFeedbackModal';
 import { HabitItem } from '@/components/HabitItem';
 import { FolderModals } from '@/components/index/FolderModals';
 import { styles } from '@/components/index/indexStyles';
@@ -6,7 +7,9 @@ import { THEME } from '@/constants/theme';
 import { DOMANI_TOMORROW_KEY, OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { useIndexLogic } from '@/lib/index/useIndexLogic';
 import { useHabits } from '@/lib/habits/Provider';
+import { isHabitFullyDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
+import { resolveSmartTaskFeedback, type SmartTaskFeedback } from '@/lib/smartTask';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -30,6 +33,12 @@ const TASKS_DRAG_ANIMATION_CONFIG = {
   damping: 26,
   stiffness: 165,
 } as const;
+
+type SmartTaskPromptState = {
+  habitId: string;
+  mode: 'completed' | 'overdue';
+  resolvedOnYmd: string;
+};
 
 const MergeIcon = ({ isActive, isMergeHoverSV, debugAboveCount, debugBelowCount }: { isActive: boolean; isMergeHoverSV: SharedValue<boolean>, debugAboveCount?: number | string | null, debugBelowCount?: number | string | null }) => {
   const animatedStyle = useAnimatedStyle(() => {
@@ -80,8 +89,92 @@ export default function IndexScreen() {
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { duplicateHabit } = useHabits();
+  const { duplicateHabit, habits: allHabits, history, setHabits, getDay } = useHabits();
   const [activeSection, setActiveSection] = useState<'tasks' | 'tabelle'>('tasks');
+  const [smartTaskPrompt, setSmartTaskPrompt] = useState<SmartTaskPromptState | null>(null);
+  const [dismissedSmartTaskIds, setDismissedSmartTaskIds] = useState<string[]>([]);
+  const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
+  const logicalTodayHistory = history[logicalTodayYmd];
+
+  React.useEffect(() => {
+    setDismissedSmartTaskIds([]);
+  }, [logicalTodayYmd]);
+
+  const smartTaskPromptHabit = useMemo(() => {
+    if (!smartTaskPrompt) return null;
+    return allHabits.find((habit) => habit.id === smartTaskPrompt.habitId) ?? null;
+  }, [allHabits, smartTaskPrompt]);
+
+  React.useEffect(() => {
+    if (smartTaskPrompt && !smartTaskPromptHabit) {
+      setSmartTaskPrompt(null);
+    }
+  }, [smartTaskPrompt, smartTaskPromptHabit]);
+
+  const overdueSmartTask = useMemo(() => {
+    return allHabits
+      .filter((habit) => {
+        if ((habit.tipo !== 'task' && habit.tipo !== 'abitudine') || !habit.smartTask?.enabled) {
+          return false;
+        }
+        if (dismissedSmartTaskIds.includes(habit.id)) return false;
+        if (habit.smartTask.nextDueDate >= logicalTodayYmd) return false;
+        return !isHabitFullyDoneForDay(logicalTodayHistory, habit);
+      })
+      .sort((a, b) => {
+        const byDueDate = (a.smartTask?.nextDueDate ?? '').localeCompare(b.smartTask?.nextDueDate ?? '');
+        if (byDueDate !== 0) return byDueDate;
+        return (a.order ?? 0) - (b.order ?? 0);
+      })[0] ?? null;
+  }, [allHabits, dismissedSmartTaskIds, logicalTodayHistory, logicalTodayYmd]);
+
+  React.useEffect(() => {
+    if (activeSection !== 'tasks' || smartTaskPrompt || !overdueSmartTask) return;
+    setSmartTaskPrompt({
+      habitId: overdueSmartTask.id,
+      mode: 'overdue',
+      resolvedOnYmd: logicalTodayYmd,
+    });
+  }, [activeSection, logicalTodayYmd, overdueSmartTask, smartTaskPrompt]);
+
+  const handleSmartTaskCompleted = useCallback((habit: Habit, completedOnYmd: string) => {
+    if (!habit.smartTask?.enabled) return;
+    setDismissedSmartTaskIds((prev) => prev.filter((id) => id !== habit.id));
+    setSmartTaskPrompt({
+      habitId: habit.id,
+      mode: 'completed',
+      resolvedOnYmd: completedOnYmd,
+    });
+  }, []);
+
+  const handleSmartTaskPromptClose = useCallback(() => {
+    if (smartTaskPrompt?.mode === 'overdue') {
+      setDismissedSmartTaskIds((prev) => (
+        prev.includes(smartTaskPrompt.habitId) ? prev : [...prev, smartTaskPrompt.habitId]
+      ));
+    }
+    setSmartTaskPrompt(null);
+  }, [smartTaskPrompt]);
+
+  const handleSmartTaskFeedback = useCallback((feedback: SmartTaskFeedback) => {
+    if (!smartTaskPrompt) return;
+    const { habitId, resolvedOnYmd } = smartTaskPrompt;
+
+    setHabits((prev) => prev.map((habit) => {
+      if (habit.id !== habitId || !habit.smartTask) return habit;
+      return {
+        ...habit,
+        smartTask: resolveSmartTaskFeedback({
+          current: habit.smartTask,
+          feedback,
+          resolvedOnYmd,
+        }),
+      };
+    }));
+
+    setDismissedSmartTaskIds((prev) => prev.filter((id) => id !== habitId));
+    setSmartTaskPrompt(null);
+  }, [setHabits, smartTaskPrompt]);
 
   const handleDuplicate = useCallback((habit: Habit) => {
     Alert.alert(
@@ -153,7 +246,7 @@ export default function IndexScreen() {
     setSelectedIds,
     draggingSelectionCount,
     stats,
-    completedByHabitId,
+    getHabitCompletionState,
     isFolderModeWithSections,
     folderTabsOrder,
     sectionedList,
@@ -166,6 +259,7 @@ export default function IndexScreen() {
     handleMoveToFolder,
     handleMenuOpen,
     handleMenuClose,
+    toggleHabitDone,
     toggleSelect,
     recordDragStartSelection,
     buildCollapsedListIfMultiSelect,
@@ -265,13 +359,26 @@ export default function IndexScreen() {
     return result;
   }, [multiDragAnchorId, selectedIds, selectionOrder, listData]);
 
+  const getHabitCompletionProps = useCallback((habit: Habit) => {
+    const completion = getHabitCompletionState(habit);
+    return {
+      isDone: completion.isDone,
+      completionMode: completion.mode,
+      completionDate: completion.mode === 'day' ? completion.date : undefined,
+    } as const;
+  }, [getHabitCompletionState]);
+
   const renderDropCoverTaskCard = useCallback((habit: Habit, key: string, inFolder = false) => {
+    const completion = getHabitCompletionProps(habit);
     return (
       <View key={key} style={inFolder ? styles.taskInFolder : undefined}>
         <HabitItem
           habit={habit}
           index={0}
-          isDone={Boolean(completedByHabitId[habit.id])}
+          isDone={completion.isDone}
+          completionMode={completion.completionMode}
+          completionDate={completion.completionDate}
+          onToggleDone={toggleHabitDone}
           onRename={handleSchedule}
           onSchedule={handleSchedule}
           onColor={handleSchedule}
@@ -282,19 +389,22 @@ export default function IndexScreen() {
           onToggleSelect={toggleSelect}
           onMenuOpen={handleMenuOpen}
           onMenuClose={handleMenuClose}
+          onSmartTaskCompleted={handleSmartTaskCompleted}
         />
       </View>
     );
   }, [
     activeFolder,
     closingMenuId,
-    completedByHabitId,
+    getHabitCompletionProps,
     handleMenuClose,
     handleMenuOpen,
     handleMoveToFolder,
     handleSchedule,
+    handleSmartTaskCompleted,
     selectedIds,
     selectionMode,
+    toggleHabitDone,
     toggleSelect,
   ]);
 
@@ -493,28 +603,35 @@ export default function IndexScreen() {
             ) : (
               <View style={styles.folderDebugBoxWrap}>
                 <View style={styles.folderTaskGroup}>
-                  {item.tasks.map((h) => (
-                    <View
-                      key={h.id}
-                      style={styles.taskInFolder}
-                    >
-                      <HabitItem
-                        habit={h}
-                        index={0}
-                        isDone={Boolean(completedByHabitId[h.id])}
-                        onRename={handleSchedule}
-                        onSchedule={handleSchedule}
-                        onColor={handleSchedule}
-                        shouldCloseMenu={closingMenuId === h.id || closingMenuId === 'all'}
-                        onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                        selectionMode={selectionMode}
-                        isSelected={selectedIds.has(h.id)}
-                        onToggleSelect={toggleSelect}
-                        onMenuOpen={handleMenuOpen}
-                        onMenuClose={handleMenuClose}
-                      />
-                    </View>
-                  ))}
+                  {item.tasks.map((h) => {
+                    const completion = getHabitCompletionProps(h);
+                    return (
+                      <View
+                        key={h.id}
+                        style={styles.taskInFolder}
+                      >
+                        <HabitItem
+                          habit={h}
+                          index={0}
+                          isDone={completion.isDone}
+                          completionMode={completion.completionMode}
+                          completionDate={completion.completionDate}
+                          onToggleDone={toggleHabitDone}
+                          onRename={handleSchedule}
+                          onSchedule={handleSchedule}
+                          onColor={handleSchedule}
+                          shouldCloseMenu={closingMenuId === h.id || closingMenuId === 'all'}
+                          onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                          selectionMode={selectionMode}
+                          isSelected={selectedIds.has(h.id)}
+                          onToggleSelect={toggleSelect}
+                          onMenuOpen={handleMenuOpen}
+                          onMenuClose={handleMenuClose}
+                          onSmartTaskCompleted={handleSmartTaskCompleted}
+                        />
+                      </View>
+                    );
+                  })}
                 </View>
               </View>
             )}
@@ -534,25 +651,32 @@ export default function IndexScreen() {
           <View>
             <ScaleDecorator>
               <View style={styles.multiDragBlockRow}>
-                {multiDragHabits.map((habit) => (
-                  <HabitItem
-                    key={habit.id}
-                    habit={habit}
-                    index={0}
-                    isDone={Boolean(completedByHabitId[habit.id])}
-                    onRename={handleSchedule}
-                    onSchedule={handleSchedule}
-                    onColor={handleSchedule}
-                    shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
-                    onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                    selectionMode={selectionMode}
-                    isSelected={selectedIds.has(habit.id)}
-                    onToggleSelect={toggleSelect}
-                    onLongPress={drag}
-                    onMenuOpen={handleMenuOpen}
-                    onMenuClose={handleMenuClose}
-                  />
-                ))}
+                {multiDragHabits.map((habit) => {
+                  const completion = getHabitCompletionProps(habit);
+                  return (
+                    <HabitItem
+                      key={habit.id}
+                      habit={habit}
+                      index={0}
+                      isDone={completion.isDone}
+                      completionMode={completion.completionMode}
+                      completionDate={completion.completionDate}
+                      onToggleDone={toggleHabitDone}
+                      onRename={handleSchedule}
+                      onSchedule={handleSchedule}
+                      onColor={handleSchedule}
+                      shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
+                      onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                      selectionMode={selectionMode}
+                      isSelected={selectedIds.has(habit.id)}
+                      onToggleSelect={toggleSelect}
+                      onLongPress={drag}
+                      onMenuOpen={handleMenuOpen}
+                      onMenuClose={handleMenuClose}
+                      onSmartTaskCompleted={handleSmartTaskCompleted}
+                    />
+                  );
+                })}
               </View>
             </ScaleDecorator>
           </View>
@@ -573,6 +697,7 @@ export default function IndexScreen() {
         (!selectionMode || selectedIds.size === 0 || selectedIds.has(item.habit.id));
       const taskRowLayout = isPostDragRef.current ? undefined : Layout;
       const shouldUseStaticTaskWrapper = selectionMode && selectedIds.size > 0;
+      const completion = getHabitCompletionProps(item.habit);
       const taskCard = (
         <ScaleDecorator>
           <Pressable
@@ -594,7 +719,10 @@ export default function IndexScreen() {
             <HabitItem
               habit={item.habit}
               index={0}
-              isDone={Boolean(completedByHabitId[item.habit.id])}
+              isDone={completion.isDone}
+              completionMode={completion.completionMode}
+              completionDate={completion.completionDate}
+              onToggleDone={toggleHabitDone}
               onRename={handleSchedule}
               onSchedule={handleSchedule}
               onColor={handleSchedule}
@@ -607,6 +735,7 @@ export default function IndexScreen() {
               dragBadgeCount={isActive && draggingSelectionCount > 1 ? draggingSelectionCount : undefined}
               onMenuOpen={handleMenuOpen}
               onMenuClose={handleMenuClose}
+              onSmartTaskCompleted={handleSmartTaskCompleted}
             />
           </Pressable>
         </ScaleDecorator>
@@ -622,7 +751,7 @@ export default function IndexScreen() {
     }
     return null;
   }, [
-    completedByHabitId,
+    getHabitCompletionProps,
     handleSchedule,
     closingMenuId,
     activeFolder,
@@ -645,7 +774,9 @@ export default function IndexScreen() {
     listData,
     overlapHoverState,
     handleDuplicate,
+    handleSmartTaskCompleted,
     isPostDragRef,
+    toggleHabitDone,
   ]);
 
   return (
@@ -1117,6 +1248,13 @@ export default function IndexScreen() {
         handleCreateFolder={handleCreateFolder}
         handleSaveEditFolder={handleSaveEditFolder}
         performDeleteFolder={performDeleteFolder}
+      />
+      <SmartTaskFeedbackModal
+        visible={Boolean(smartTaskPrompt && smartTaskPromptHabit)}
+        habitTitle={smartTaskPromptHabit?.text ?? ''}
+        mode={smartTaskPrompt?.mode ?? 'completed'}
+        onSelect={handleSmartTaskFeedback}
+        onClose={handleSmartTaskPromptClose}
       />
     </SafeAreaView>
   );

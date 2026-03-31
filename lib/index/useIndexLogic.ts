@@ -27,6 +27,10 @@ type OverlapHoverState = {
   direction: number;
 };
 
+type HabitCompletionTarget =
+  | { mode: 'day'; date: string }
+  | { mode: 'aggregate' };
+
 const DEFAULT_OVERLAP_HOVER_STATE: OverlapHoverState = {
   isOverlapping: false,
   activeIndex: -1,
@@ -81,9 +85,24 @@ function nextYmd(ymd: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+function isSingleOccurrenceHabit(habit: Habit): boolean {
+  return habit.habitFreq === 'single' || (
+    !habit.habitFreq &&
+    (habit.schedule?.daysOfWeek?.length ?? 0) === 0 &&
+    !habit.schedule?.monthDays?.length &&
+    !habit.schedule?.yearMonth
+  );
+}
+
+function getSingleOccurrenceDate(habit: Habit): string | null {
+  const overrideDates = Object.keys(habit.timeOverrides ?? {}).sort();
+  if (overrideDates.length > 0) return overrideDates[overrideDates.length - 1] ?? null;
+  return habit.createdAt ?? null;
+}
+
 export function useIndexLogic() {
   const router = useRouter();
-  const { habits, history, getDay, toggleDone, removeHabit, updateHabit, addHabit, reorder, updateHabitsOrder, updateHabitFolder, setHabits, resetToday, dayResetTime, setDayResetTime, resetStorage: providerResetStorage } = useHabits();
+  const { habits, history, getDay, toggleDoneForDate, toggleAggregateDone, removeHabit, updateHabit, addHabit, reorder, updateHabitsOrder, updateHabitFolder, setHabits, resetToday, dayResetTime, setDayResetTime, resetStorage: providerResetStorage } = useHabits();
   const [input, setInput] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -171,6 +190,9 @@ export function useIndexLogic() {
       habit.isAllDay ? '1' : '0',
       String(habit.dailyOccurrences ?? 1),
       String(habit.occurrenceGapMinutes ?? 360),
+      habit.smartTask?.enabled ? 'smart-on' : 'smart-off',
+      String(habit.smartTask?.intervalDays ?? 0),
+      habit.smartTask?.nextDueDate ?? '',
       habit.pauseDuringTravel ? 'travel-pause' : 'travel-live',
       habit.schedule?.time ?? '',
       habit.schedule?.endTime ?? '',
@@ -669,8 +691,9 @@ export function useIndexLogic() {
         const habit = habits.find(h => h.id === id);
         if (!habit) continue;
         const isSingle =
-          habit.habitFreq === 'single' ||
+          (!habit.smartTask && habit.habitFreq === 'single') ||
           (!habit.habitFreq &&
+            !habit.smartTask &&
             (Object.keys(habit.timeOverrides ?? {}).length > 0) &&
             (habit.schedule?.daysOfWeek?.length ?? 0) === 0 &&
             !habit.schedule?.monthDays?.length &&
@@ -881,10 +904,41 @@ export function useIndexLogic() {
     }
   }, [sectionedList, displayList, sectionedListVisualKey, collapsedFolderIds]);
 
-  const completedByHabitId = useMemo(
-    () => history[today]?.completedByHabitId ?? {},
-    [history, today]
-  );
+  const resolveHabitCompletionTarget = useCallback((habit: Habit): HabitCompletionTarget => {
+    if (activeFolder === OGGI_TODAY_KEY) {
+      return { mode: 'day', date: today };
+    }
+    if (activeFolder === DOMANI_TOMORROW_KEY) {
+      return { mode: 'day', date: tomorrow };
+    }
+    if (isSingleOccurrenceHabit(habit)) {
+      return { mode: 'day', date: getSingleOccurrenceDate(habit) ?? today };
+    }
+    return { mode: 'aggregate' };
+  }, [activeFolder, today, tomorrow]);
+
+  const getHabitCompletionState = useCallback((habit: Habit) => {
+    const target = resolveHabitCompletionTarget(habit);
+    if (target.mode === 'day') {
+      return {
+        ...target,
+        isDone: Boolean(history[target.date]?.completedByHabitId[habit.id]),
+      };
+    }
+    return {
+      ...target,
+      isDone: Boolean(habit.aggregateCompleted),
+    };
+  }, [history, resolveHabitCompletionTarget]);
+
+  const toggleHabitDone = useCallback((habit: Habit) => {
+    const target = resolveHabitCompletionTarget(habit);
+    if (target.mode === 'day') {
+      toggleDoneForDate(habit.id, target.date);
+      return;
+    }
+    toggleAggregateDone(habit.id);
+  }, [resolveHabitCompletionTarget, toggleAggregateDone, toggleDoneForDate]);
 
   const isFolderModeWithSections =
     (activeFolder === null || activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY) && effectiveSortMode === 'folder';
@@ -1595,7 +1649,7 @@ export function useIndexLogic() {
     // computed
     stats,
     effectiveSortMode,
-    completedByHabitId,
+    getHabitCompletionState,
     isFolderModeWithSections,
     folderTabsOrder,
     sectionedList,
@@ -1613,6 +1667,7 @@ export function useIndexLogic() {
     handleMoveToFolder,
     handleMenuOpen,
     handleMenuClose,
+    toggleHabitDone,
     toggleSelect,
     recordDragStartSelection,
     buildCollapsedListIfMultiSelect,

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export type ReviewHabitItem = {
   id: string;
@@ -19,6 +19,41 @@ type Props = {
   onConfirm: (reviews: Record<string, { rating: number | null; comment: string | null }>) => void;
   onClose: () => void;
 };
+
+const MISSED_HABIT_REASONS = [
+  'Non ho avuto tempo',
+  'Me ne sono dimenticato/a',
+  'Non avevo energie',
+  "C'è stato un imprevisto",
+  'Non mi sentivo bene',
+  'Avevo altre priorità',
+  'Non ero nel posto giusto',
+  'Non ne avevo voglia',
+] as const;
+
+const CUSTOM_REASON_OPTION = 'Altro';
+
+type ReviewDraft = {
+  rating: number | null;
+  comment: string | null;
+  selectedReason: string | null;
+  customReason: string;
+};
+
+function isPresetReason(comment: string | null | undefined): comment is (typeof MISSED_HABIT_REASONS)[number] {
+  return Boolean(comment) && MISSED_HABIT_REASONS.some(reason => reason === comment);
+}
+
+function createReviewDraft(item: Pick<ReviewHabitItem, 'completed' | 'rating' | 'comment'>): ReviewDraft {
+  const comment = item.completed ? null : (item.comment ?? null);
+  const customReason = comment && !isPresetReason(comment) ? comment : '';
+  return {
+    rating: item.rating ?? null,
+    comment,
+    selectedReason: isPresetReason(comment) ? comment : customReason.trim() ? CUSTOM_REASON_OPTION : null,
+    customReason,
+  };
+}
 
 function StarRating({ value, onChange }: { value: number | null; onChange: (v: number) => void }) {
   return (
@@ -50,33 +85,92 @@ function isLightColor(hex: string): boolean {
 }
 
 export default function DayReviewModal({ visible, date, dateLabel, items, onConfirm, onClose }: Props) {
-  const [reviews, setReviews] = useState<Record<string, { rating: number | null; comment: string | null }>>(() => {
-    const init: Record<string, { rating: number | null; comment: string | null }> = {};
+  const [reviews, setReviews] = useState<Record<string, ReviewDraft>>(() => {
+    const init: Record<string, ReviewDraft> = {};
     for (const item of items) {
-      init[item.id] = { rating: item.rating ?? null, comment: item.comment ?? null };
+      init[item.id] = createReviewDraft(item);
     }
     return init;
   });
 
   useEffect(() => {
     if (!visible) return;
-    const init: Record<string, { rating: number | null; comment: string | null }> = {};
+    const init: Record<string, ReviewDraft> = {};
     for (const item of items) {
-      init[item.id] = { rating: item.rating ?? null, comment: item.comment ?? null };
+      init[item.id] = createReviewDraft(item);
     }
     setReviews(init);
-  }, [visible, date]);
+  }, [visible, date, items]);
 
   const setRating = (id: string, rating: number) => {
     setReviews(prev => ({ ...prev, [id]: { ...prev[id], rating } }));
   };
 
-  const setComment = (id: string, comment: string) => {
-    setReviews(prev => ({ ...prev, [id]: { ...prev[id], comment } }));
+  const selectReason = (id: string, reason: string) => {
+    setReviews(prev => {
+      const current = prev[id];
+      if (!current) return prev;
+
+      if (current.selectedReason === reason) {
+        return {
+          ...prev,
+          [id]: {
+            ...current,
+            selectedReason: null,
+            comment: null,
+          },
+        };
+      }
+
+      if (reason === CUSTOM_REASON_OPTION) {
+        return {
+          ...prev,
+          [id]: {
+            ...current,
+            selectedReason: CUSTOM_REASON_OPTION,
+            comment: current.customReason,
+          },
+        };
+      }
+
+      return {
+        ...prev,
+        [id]: {
+          ...current,
+          selectedReason: reason,
+          comment: reason,
+        },
+      };
+    });
+  };
+
+  const setCustomReason = (id: string, text: string) => {
+    setReviews(prev => {
+      const current = prev[id];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [id]: {
+          ...current,
+          selectedReason: CUSTOM_REASON_OPTION,
+          customReason: text,
+          comment: text,
+        },
+      };
+    });
   };
 
   const handleConfirm = () => {
-    onConfirm(reviews);
+    const payload = Object.fromEntries(
+      items.map(item => {
+        const review = reviews[item.id] ?? createReviewDraft(item);
+        return [
+          item.id,
+          { rating: review.rating, comment: item.completed ? null : review.comment },
+        ];
+      })
+    );
+    onConfirm(payload);
   };
 
   return (
@@ -90,7 +184,7 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
             {items.map(item => {
               const light = isLightColor(item.color);
               const textColor = light ? '#000' : '#FFF';
-              const rev = reviews[item.id] ?? { rating: null, comment: null };
+              const rev = reviews[item.id] ?? createReviewDraft(item);
               return (
                 <View key={item.id} style={styles.itemContainer}>
                   <View style={[styles.itemHeader, { backgroundColor: item.color }]}>
@@ -109,24 +203,35 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
                   <View style={styles.itemBody}>
                     <StarRating value={rev.rating} onChange={v => setRating(item.id, v)} />
                     {!item.completed && (
-                      <TextInput
-                        style={styles.commentInput}
-                        placeholder="Perché non l'hai fatta?"
-                        placeholderTextColor="#666"
-                        value={rev.comment ?? ''}
-                        onChangeText={t => setComment(item.id, t)}
-                        multiline
-                      />
-                    )}
-                    {item.completed && (
-                      <TextInput
-                        style={styles.commentInput}
-                        placeholder="Commento (opzionale)"
-                        placeholderTextColor="#666"
-                        value={rev.comment ?? ''}
-                        onChangeText={t => setComment(item.id, t)}
-                        multiline
-                      />
+                      <View style={styles.reasonSection}>
+                        <Text style={styles.reasonLabel}>Perché non l&apos;hai fatta?</Text>
+                        <View style={styles.reasonChips}>
+                          {[...MISSED_HABIT_REASONS, CUSTOM_REASON_OPTION].map(reason => {
+                            const selected = rev.selectedReason === reason;
+                            return (
+                              <TouchableOpacity
+                                key={reason}
+                                style={[styles.reasonChip, selected && styles.reasonChipSelected]}
+                                onPress={() => selectReason(item.id, reason)}
+                              >
+                                <Text style={[styles.reasonChipText, selected && styles.reasonChipTextSelected]}>
+                                  {reason}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        {rev.selectedReason === CUSTOM_REASON_OPTION && (
+                          <TextInput
+                            style={styles.commentInput}
+                            placeholder="Scrivi tu..."
+                            placeholderTextColor="#666"
+                            value={rev.customReason}
+                            onChangeText={text => setCustomReason(item.id, text)}
+                            multiline
+                          />
+                        )}
+                      </View>
                     )}
                   </View>
                 </View>
@@ -205,6 +310,39 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 13,
     minHeight: 40,
+  },
+  reasonSection: {
+    gap: 8,
+  },
+  reasonLabel: {
+    color: '#D1D5DB',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  reasonChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reasonChip: {
+    backgroundColor: '#3A3A3C',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#4B5563',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  reasonChipSelected: {
+    backgroundColor: '#FF3B30',
+    borderColor: '#FF3B30',
+  },
+  reasonChipText: {
+    color: '#F3F4F6',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  reasonChipTextSelected: {
+    color: '#FFF',
   },
   confirmBtn: {
     marginTop: 16,

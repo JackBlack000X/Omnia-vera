@@ -1,4 +1,5 @@
 import { useHabits } from '@/lib/habits/Provider';
+import { getItemWithLegacy, LEGACY_STORAGE_KEYS, STORAGE_KEYS } from '@/lib/storageKeys';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,8 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const COINS_PER_STREAK_DAY = 100;
 const FUTURISTIC_THEME_COST = 700;
-const STORAGE_COINS_SPENT = 'habitcheck_shop_coins_spent_v1';
-const STORAGE_FUTURISTIC_UNLOCKED = 'habitcheck_shop_futuristic_unlocked_v1';
+const STORAGE_COINS_SPENT = STORAGE_KEYS.shopCoinsSpent;
+const STORAGE_FUTURISTIC_UNLOCKED = STORAGE_KEYS.shopFuturisticUnlocked;
 
 export default function ShopScreen() {
   const router = useRouter();
@@ -24,8 +25,8 @@ export default function ShopScreen() {
     (async () => {
       try {
         const [rawSpent, rawUnlocked] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_COINS_SPENT),
-          AsyncStorage.getItem(STORAGE_FUTURISTIC_UNLOCKED),
+          getItemWithLegacy(STORAGE_COINS_SPENT, LEGACY_STORAGE_KEYS.shopCoinsSpent),
+          getItemWithLegacy(STORAGE_FUTURISTIC_UNLOCKED, LEGACY_STORAGE_KEYS.shopFuturisticUnlocked),
         ]);
         if (rawSpent && !Number.isNaN(Number(rawSpent))) {
           setCoinsSpent(Number(rawSpent));

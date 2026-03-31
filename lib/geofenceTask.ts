@@ -2,12 +2,13 @@ import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GEOFENCE_TASK_NAME } from '@/lib/location';
+import { getItemWithLegacy, LEGACY_STORAGE_KEYS, STORAGE_KEYS } from '@/lib/storageKeys';
 import { getDailyOccurrenceTotal } from '@/lib/habits/occurrences';
 import { Habit, DayCompletion } from '@/lib/habits/schema';
 
-const STORAGE_HABITS = 'habitcheck_habits_v1';
-const STORAGE_HISTORY = 'habitcheck_history_v1';
-const STORAGE_DAYRESETTIME = 'habitcheck_dayresettime_v1';
+const STORAGE_HABITS = STORAGE_KEYS.habits;
+const STORAGE_HISTORY = STORAGE_KEYS.history;
+const STORAGE_DAYRESETTIME = STORAGE_KEYS.dayResetTime;
 const TZ = 'Europe/Zurich';
 
 function parseYmdSafe(ymd: string): Date {
@@ -57,9 +58,9 @@ function getLogicalDayKey(date: Date, dayResetTime: string): string {
 async function completeHabitsForPlace(placeId: string) {
   try {
     const [rawHabits, rawHistory, rawResetTime] = await Promise.all([
-      AsyncStorage.getItem(STORAGE_HABITS),
-      AsyncStorage.getItem(STORAGE_HISTORY),
-      AsyncStorage.getItem(STORAGE_DAYRESETTIME),
+      getItemWithLegacy(STORAGE_HABITS, LEGACY_STORAGE_KEYS.habits),
+      getItemWithLegacy(STORAGE_HISTORY, LEGACY_STORAGE_KEYS.history),
+      getItemWithLegacy(STORAGE_DAYRESETTIME, LEGACY_STORAGE_KEYS.dayResetTime),
     ]);
 
     if (!rawHabits) return;
@@ -127,4 +128,3 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     await completeHabitsForPlace(placeId);
   }
 });
-

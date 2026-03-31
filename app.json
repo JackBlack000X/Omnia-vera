@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "habit-check-native",
+    "name": "Tothemoon",
     "slug": "habit-check-native",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,18 +13,10 @@
       "bundleIdentifier": "com.jackblack000x.habitchecknative",
       "infoPlist": {
         "UIUserInterfaceStyle": "Dark",
-        "NSLocationWhenInUseUsageDescription": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi (es. completare automaticamente la task \"Palestra\" quando esci dalla palestra).",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Omnia ha bisogno dell’accesso alla posizione anche in background per completare automaticamente alcune task quando entri o esci da luoghi salvati, anche con l’app chiusa."
+        "NSLocationWhenInUseUsageDescription": "Tothemoon usa la tua posizione per mostrarti funzioni extra legate ai luoghi (es. completare automaticamente la task \"Palestra\" quando esci dalla palestra).",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Tothemoon ha bisogno dell’accesso alla posizione anche in background per completare automaticamente alcune task quando entri o esci da luoghi salvati, anche con l’app chiusa."
       },
-      "entitlements": {
-        "aps-environment": null,
-        "com.apple.developer.icloud-container-identifiers": [
-          "iCloud.com.jackblack000x.habitchecknative"
-        ],
-        "com.apple.developer.icloud-services": [
-          "CloudKit"
-        ]
-      }
+      "entitlements": {}
     },
     "android": {
       "adaptiveIcon": {
@@ -50,15 +42,7 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "Omnia vuole accedere al calendario per importare i tuoi eventi e mostrarli nell'app."
-        }
-      ],
-      [
-        "@kingstinct/react-native-healthkit",
-        {
-          "NSHealthShareUsageDescription": "Omnia legge i dati di Salute, come sonno, passi e calorie attive, per mostrarti i tuoi progressi nelle abitudini.",
-          "NSHealthUpdateUsageDescription": "Omnia aggiornera i dati di Salute solo se in futuro sceglierai esplicitamente di sincronizzare o registrare attivita dall'app.",
-          "background": false
+          "calendarPermission": "Tothemoon vuole accedere al calendario per importare i tuoi eventi e mostrarli nell'app."
         }
       ],
       "expo-router",
@@ -78,12 +62,13 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Omnia usa la tua posizione per attivare funzioni extra come il completamento automatico di alcune task quando esci da luoghi salvati, anche con l’app in background.",
-          "locationWhenInUsePermission": "Omnia usa la tua posizione per mostrarti funzioni extra legate ai luoghi mentre utilizzi l’app."
+          "locationAlwaysAndWhenInUsePermission": "Tothemoon usa la tua posizione per attivare funzioni extra come il completamento automatico di alcune task quando esci da luoghi salvati, anche con l’app in background.",
+          "locationWhenInUsePermission": "Tothemoon usa la tua posizione per mostrarti funzioni extra legate ai luoghi mentre utilizzi l’app."
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/with-tothemoon-action-button"
     ],
     "experiments": {
       "typedRoutes": true,

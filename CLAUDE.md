@@ -19,7 +19,7 @@ npx expo lint
 
 ## Architecture
 
-**Omnia Vera** is a React Native habit tracking app (Expo SDK 55, React 19, New Architecture enabled). UI strings are in Italian.
+**Tothemoon** is a React Native habit tracking app (Expo SDK 55, React 19, New Architecture enabled). UI strings are in Italian.
 
 ### Routing
 
@@ -31,7 +31,7 @@ Expo Router with file-based routing under `/app`. Main tabs at `/app/(tabs)/`: `
 - `habits`: array of `Habit` objects
 - `history`: dictionary keyed by date (`YYYY-MM-DD`) tracking completions
 
-Persisted to AsyncStorage with keys `habitcheck_habits_v1` and `habitcheck_history_v1`. Timezone: Europe/Zurich.
+Persisted to AsyncStorage with `tothemoon_*` keys, with fallback migration from legacy `habitcheck_*` keys. Timezone: Europe/Zurich.
 
 Types are defined in `/lib/habits/schema.ts`.
 

@@ -427,11 +427,14 @@ export default function ModalScreen() {
   const toSelectedRef = React.useRef(false);
   const toInputRef = React.useRef<TextInput>(null);
   const [toConfirmed, setToConfirmed] = React.useState(false);
+  const healthFeatureEnabled = canUseHealthKit();
   const selectedHealthOption = getHealthHabitOption(m.healthMetric);
   const healthOptionsToShow = healthConnection.state === 'ready'
     ? HEALTH_HABIT_OPTIONS
     : (selectedHealthOption ? [selectedHealthOption] : []);
   const shouldShowSaluteDetails = m.tipo !== 'salute' || Boolean(m.healthMetric);
+  const extraTypeOptions: ('vacanza' | 'salute')[] =
+    healthFeatureEnabled || m.tipo === 'salute' ? ['vacanza', 'salute'] : ['vacanza'];
 
   const refreshHealthConnection = React.useCallback(async () => {
     try {
@@ -651,11 +654,19 @@ export default function ModalScreen() {
                 ))}
               </View>
               <View style={[styles.row, { marginTop: 8 }]}>
-                {(['vacanza', 'salute'] as const).map(t => (
+                {extraTypeOptions.map(t => (
                   <TouchableOpacity
                     key={t}
-                    onPress={() => m.setTipo(t)}
-                    style={[styles.chip, m.tipo === t ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                    onPress={() => {
+                      if (!healthFeatureEnabled && t === 'salute' && m.tipo !== 'salute') return;
+                      m.setTipo(t);
+                    }}
+                    style={[
+                      styles.chip,
+                      m.tipo === t ? styles.chipActive : styles.chipGhost,
+                      { paddingHorizontal: 16, paddingVertical: 8 },
+                      !healthFeatureEnabled && t === 'salute' && m.tipo !== 'salute' ? { opacity: 0.45 } : null,
+                    ]}
                   >
                     <Text style={m.tipo === t ? styles.chipActiveText : styles.chipGhostText}>
                       {t === 'vacanza' ? 'Vacanza' : 'Salute'}
@@ -663,6 +674,11 @@ export default function ModalScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+              {!healthFeatureEnabled && (
+                <Text style={[styles.subtle, { marginTop: 10 }]}>
+                  Apple Salute e temporaneamente disattivato in questa build.
+                </Text>
+              )}
             </View>
           )}
 
@@ -673,7 +689,7 @@ export default function ModalScreen() {
                 <View style={{ marginTop: 10, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: '#334155', backgroundColor: '#0f172a', gap: 10 }}>
                   <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>Collega Apple Salute per scegliere una metrica</Text>
                   <Text style={{ color: '#94a3b8', fontSize: 13, lineHeight: 18 }}>
-                    Omnia può usare Passi, Km, Calorie e Sonno. Appena dai il permesso, qui sopra compaiono le opzioni.
+                    Tothemoon può usare Passi, Km, Calorie e Sonno. Appena dai il permesso, qui sopra compaiono le opzioni.
                   </Text>
                   <TouchableOpacity
                     onPress={async () => {
@@ -997,6 +1013,44 @@ export default function ModalScreen() {
                   )}
                 </View>
               )}
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (m.tipo === 'task' || m.tipo === 'abitudine') && (
+            <View style={{ marginTop: 20 }}>
+              <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                <View style={{ flex: 1, paddingRight: 12, flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.sectionTitle}>Smart task</Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      Alert.alert(
+                        'Smart task',
+                        'Quando la attivi, dopo che la task viene fatta oppure passa senza essere fatta ti chiedo se era troppo presto, giusta cosi o troppo tardi. Se alla prossima occorrenza e giusta, la calibrazione si spegne da sola.',
+                        [{ text: 'OK', style: 'default', isPreferred: true }],
+                      )
+                    }
+                    style={{
+                      marginLeft: 8,
+                      width: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#64748b',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700' }}>i</Text>
+                  </TouchableOpacity>
+                </View>
+                <Switch
+                  value={m.smartTaskEnabled}
+                  onValueChange={m.setSmartTaskEnabled}
+                  trackColor={{ false: '#334155', true: '#ec4899' }}
+                  thumbColor="white"
+                />
+              </View>
             </View>
           )}
 
@@ -2443,7 +2497,7 @@ export default function ModalScreen() {
               </View>
               {(!canAskLocationPermission() || locationStatus === 'denied' || locationStatus === 'none') && (
                 <Text style={styles.subtle}>
-                  Per usare le automazioni posizione devi abilitare la posizione per Omnia nelle impostazioni. Puoi continuare a usare la task normalmente.
+                  Per usare le automazioni posizione devi abilitare la posizione per Tothemoon nelle impostazioni. Puoi continuare a usare la task normalmente.
                 </Text>
               )}
               {canAskLocationPermission() && locationStatus !== 'denied' && (

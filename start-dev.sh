@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Setup rapido per Replit - Omnia Vera
+# Setup rapido per Replit - Tothemoon
 # Avvia expo tunnel + auto-pull su una branch specifica
 #
 # Uso:
@@ -9,7 +9,7 @@
 
 BRANCH="${1:-$(git rev-parse --abbrev-ref HEAD)}"
 
-echo "🚀 Omnia Vera - Dev Setup"
+echo "🚀 Tothemoon - Dev Setup"
 echo "📱 Branch: $BRANCH"
 echo ""
 

@@ -4,6 +4,7 @@ import { getHealthHabitOption, HEALTH_HABIT_OPTIONS } from '@/lib/healthHabits';
 import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
 import { Habit, HabitTipo, HealthMetric, NotificationConfig, TravelMeta, isTravelLikeTipo } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
+import { inferSmartTaskSeed } from '@/lib/smartTask';
 import { getFallbackCity } from '@/lib/weather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -112,21 +113,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [locationRule, setLocationRule] = useState<Habit['locationRule'] | null>(existing?.locationRule ?? null);
   const [pauseDuringTravel, setPauseDuringTravel] = useState<boolean>(existing?.pauseDuringTravel ?? false);
   const [askReview, setAskReview] = useState<boolean>(existing?.askReview ?? false);
+  const [smartTaskEnabled, setSmartTaskEnabled] = useState<boolean>(existing?.smartTask?.enabled ?? false);
 
   const [notification, setNotification] = useState<NotificationConfig>(
     existing?.notification ?? { enabled: false, minutesBefore: 0, customTime: null, customDate: null, showAsTaskInOggi: false }
   );
 
-  useEffect(() => {
-    if (tipo !== 'salute') return;
-    if (mode !== 'allDay') setMode('allDay');
-
-    const option = getHealthHabitOption(healthMetric);
-    if (!option) return;
-
-    setText(option.label);
-    setColor(option.solidColor);
-  }, [tipo, healthMetric, mode]);
   const setHealthMetricWithDefaults = useCallback((nextMetric: HealthMetric) => {
     const option = HEALTH_HABIT_OPTIONS.find((entry) => entry.metric === nextMetric);
     setHealthMetric(nextMetric);
@@ -279,6 +271,16 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     : (!hasAnyTimeConfigured && !scheduleObj?.weeklyTimes && !scheduleObj?.monthlyTimes && !hasSpecificTimeOverrides);
   const initialMode: 'allDay' | 'timed' = isAllDay ? 'allDay' : 'timed';
   const [mode, setMode] = useState<'allDay' | 'timed'>(initialMode);
+  useEffect(() => {
+    if (tipo !== 'salute') return;
+    if (mode !== 'allDay') setMode('allDay');
+
+    const option = getHealthHabitOption(healthMetric);
+    if (!option) return;
+
+    setText(option.label);
+    setColor(option.solidColor);
+  }, [tipo, healthMetric, mode]);
   const [freq, setFreq] = useState<'single' | 'daily' | 'weekly' | 'monthly' | 'annual'>(() => {
     if (existing) {
       // Use explicit saved frequency if present
@@ -1763,7 +1765,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           }));
         }
         // Compute repeatEndDate from repeatEndType (data inizio = annualYear/annualMonth/annualDay)
-        const computedRepeatEndDateNew = (() => {
+      const computedRepeatEndDateNew = (() => {
           if (repeatEndType === 'mai') return null;
           if (repeatEndType === 'durata') {
             const d = new Date(annualYear, annualMonth - 1, annualDay);
@@ -1776,10 +1778,27 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           return repeatEndCustomDate ?? null;
         })();
         // Persist explicit flags so the modal restores them correctly on re-open
-        const repeatStartYmd = freq !== 'single' ? recurringStartYmd : null;
-        setHabits(prev => prev.map(h => {
-          if (h.id !== newHabitId) return h;
-          const base: Habit = {
+      const repeatStartYmd = freq !== 'single' ? recurringStartYmd : null;
+      const smartTaskTargetYmd = (() => {
+        if (freq === 'single') {
+          return `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+        }
+        return repeatStartYmd ?? todayYmdForInit;
+      })();
+      const resolvedSmartTask =
+        !isTravelLikeTipo(tipo) && supportsOptionalTime(tipo)
+          ? (smartTaskEnabled || existing?.smartTask
+              ? inferSmartTaskSeed({
+                  habitFreq: ((supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq),
+                  targetYmd: smartTaskTargetYmd,
+                  todayYmd: todayYmdForInit,
+                  existing: existing?.smartTask,
+                })
+              : null)
+          : null;
+      setHabits(prev => prev.map(h => {
+        if (h.id !== newHabitId) return h;
+        const base: Habit = {
             ...patchHabitOccurrences(h),
             text: t,
             color: resolvedColor,
@@ -1793,6 +1812,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             pauseDuringTravel: !isTravelLikeTipo(tipo) ? pauseDuringTravel : undefined,
             notification,
             askReview: !isTravelLikeTipo(tipo) ? askReview : undefined,
+            smartTask: resolvedSmartTask
+              ? {
+                  enabled: smartTaskEnabled,
+                  intervalDays: resolvedSmartTask.intervalDays,
+                  nextDueDate: resolvedSmartTask.nextDueDate,
+                }
+              : undefined,
             schedule: {
               ...(h.schedule ?? { daysOfWeek: [] }),
               repeatEndDate: computedRepeatEndDateNew,
@@ -2103,15 +2129,40 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         return repeatEndCustomDate ?? null;
       })();
       const repeatStartYmd = freq !== 'single' ? recurringStartYmd : null;
+      const smartTaskTargetYmd = (() => {
+        if (freq === 'single') {
+          return `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+        }
+        return repeatStartYmd ?? todayYmdForInit;
+      })();
+      const existingTipo = existing.tipo ?? tipo;
+      const preservedSmartTask =
+        !isTravelLikeTipo(existingTipo) && supportsOptionalTime(existingTipo)
+          ? ((smartTaskEnabled || existing.smartTask)
+              ? inferSmartTaskSeed({
+                  habitFreq: ((supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq),
+                  targetYmd: smartTaskTargetYmd,
+                  todayYmd: todayYmdForInit,
+                  existing: existing.smartTask,
+                })
+              : null)
+          : null;
       // Persist explicit flags so the modal restores them correctly on re-open (preserve tipo)
       setHabits(prev => prev.map(h => h.id === existing.id ? {
         ...h,
         isAllDay: mode === 'allDay',
         habitFreq: (supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq,
-        tipo: existing.tipo ?? h.tipo,
+        tipo: existingTipo,
         locationRule: locationRule ?? undefined,
         notification,
-        askReview: !isTravelLikeTipo(existing.tipo ?? h.tipo) ? askReview : undefined,
+        askReview: !isTravelLikeTipo(existingTipo) ? askReview : undefined,
+        smartTask: preservedSmartTask
+          ? {
+              enabled: smartTaskEnabled,
+              intervalDays: preservedSmartTask.intervalDays,
+              nextDueDate: preservedSmartTask.nextDueDate,
+            }
+          : undefined,
         schedule: {
           ...(h.schedule ?? { daysOfWeek: [] }),
           repeatEndDate: computedRepeatEndDate,
@@ -2232,6 +2283,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     currentCityName,
     askReview,
     setAskReview,
+    smartTaskEnabled,
+    setSmartTaskEnabled,
     labelInput,
     setLabelInput,
     labelSuggestions,

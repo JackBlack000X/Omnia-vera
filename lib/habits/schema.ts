@@ -59,6 +59,12 @@ export type HabitTipo = 'task' | 'abitudine' | 'evento' | 'viaggio' | 'vacanza' 
 
 export type HealthMetric = 'sleep' | 'steps' | 'distance' | 'activeEnergy';
 
+export type SmartTaskConfig = {
+  enabled: boolean;
+  intervalDays: number;
+  nextDueDate: string; // YYYY-MM-DD
+};
+
 export function isTravelLikeTipo(tipo?: HabitTipo): boolean {
   return tipo === 'viaggio' || tipo === 'vacanza';
 }
@@ -98,6 +104,10 @@ export type Habit = {
     goalHours?: number;
     goalValue?: number;
   };
+  /** Adaptive recurrence that can self-adjust after a few occurrences */
+  smartTask?: SmartTaskConfig;
+  /** Manual completion state used by aggregate task views like Tutte/cartelle */
+  aggregateCompleted?: boolean;
   /** Quante volte al giorno (Tasks: una riga; completamento N/N). 1–30, default 1 se assente. */
   dailyOccurrences?: number;
   /** Minuti tra un’occorrenza e la successiva (ancora = orario inizio in schedule / modale). */

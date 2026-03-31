@@ -167,7 +167,7 @@ export default function ProfileScreen() {
       Alert.alert('Feedback', 'Scrivi un messaggio prima di inviare.');
       return;
     }
-    const subject = encodeURIComponent('Feedback Omnia App');
+    const subject = encodeURIComponent('Feedback Tothemoon App');
     const body = encodeURIComponent(trimmed);
     const mailto = `mailto:${APP_CONFIG.feedbackEmail}?subject=${subject}&body=${body}`;
     const canOpen = await Linking.canOpenURL(mailto);
@@ -186,7 +186,7 @@ export default function ProfileScreen() {
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'habit-check.csv'; a.click();
+      a.href = url; a.download = 'tothemoon.csv'; a.click();
       URL.revokeObjectURL(url);
     } else {
       await Clipboard.setStringAsync(csv);
@@ -247,7 +247,7 @@ export default function ProfileScreen() {
     if (locationStatus === 'denied') {
       Alert.alert(
         'Abilita posizione',
-        'Hai già rifiutato la posizione per Omnia. Vuoi aprire le impostazioni del dispositivo per abilitarla?',
+        'Hai già rifiutato la posizione per Tothemoon. Vuoi aprire le impostazioni del dispositivo per abilitarla?',
         [
           { text: 'Annulla', style: 'cancel' },
           {
@@ -271,7 +271,7 @@ export default function ProfileScreen() {
       if (result === 'denied') {
         Alert.alert(
           'Posizione disattivata',
-          'Per usare le automazioni posizione devi abilitare la posizione per Omnia nelle impostazioni del dispositivo.',
+          'Per usare le automazioni posizione devi abilitare la posizione per Tothemoon nelle impostazioni del dispositivo.',
           [
             { text: 'Annulla', style: 'cancel' },
             {
@@ -362,7 +362,7 @@ export default function ProfileScreen() {
             {canAskCalendarPermission() && (
               <View style={styles.feedbackBox}>
                 <Text style={styles.feedbackLabel}>Calendario Apple</Text>
-                <Text style={styles.feedbackSublabel}>Importa eventi dal Calendario del dispositivo in Omnia</Text>
+                <Text style={styles.feedbackSublabel}>Importa eventi dal Calendario del dispositivo in Tothemoon</Text>
                 <TouchableOpacity
                   style={[styles.sendFeedbackBtn, styles.calendarImportBtn]}
                   onPress={importFromAppleCalendar}

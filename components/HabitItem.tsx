@@ -16,6 +16,9 @@ type Props = {
   habit: Habit;
   index: number;
   isDone: boolean;
+  completionMode?: 'day' | 'aggregate';
+  completionDate?: string;
+  onToggleDone?: (habit: Habit) => void;
   onRename: (habit: Habit) => void;
   onSchedule: (habit: Habit) => void;
   onColor: (habit: Habit) => void;
@@ -29,6 +32,7 @@ type Props = {
   dragBadgeCount?: number;
   onMenuOpen?: (habit: Habit) => void;
   onMenuClose?: (habit: Habit) => void;
+  onSmartTaskCompleted?: (habit: Habit, completedOnYmd: string) => void;
 };
 
 // Colori delle card come nella foto
@@ -180,7 +184,7 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
   );
 }
 
-export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onLongPress, dragBadgeCount, onMenuOpen, onMenuClose }: Props) {
+export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, completionMode = 'day', completionDate, onToggleDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onLongPress, dragBadgeCount, onMenuOpen, onMenuClose, onSmartTaskCompleted }: Props) {
   const { activeTheme } = useAppTheme();
   const { toggleDone, removeHabit, getDay, history } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
@@ -275,6 +279,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const healthPrimaryTextColor = 'white';
   const healthSecondaryTextColor = 'rgba(255, 255, 255, 0.9)';
   const healthTertiaryTextColor = 'rgba(255, 255, 255, 0.78)';
+  const resolvedCompletionDate = completionMode === 'day' ? (completionDate ?? getDay(new Date())) : null;
 
   const formatDisplayTime = (value: string | null | undefined) => {
     if (!value) return null;
@@ -321,10 +326,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
 
   // Determine time display text (preserve minutes; map 23:59 to 24:00)
   const getTimeText = () => {
-    const todayYmd = getDay(new Date());
-
-    // If today has an explicit override, show it (this is what drag&drop in Oggi writes).
-    const override = habit.timeOverrides?.[todayYmd];
+    const override = resolvedCompletionDate ? habit.timeOverrides?.[resolvedCompletionDate] : undefined;
     const isAllDayMarker = override === '00:00';
     const overrideStart =
       !isAllDayMarker && typeof override === 'string'
@@ -360,6 +362,11 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
 
   // Determine frequency text
   const getFrequencyText = () => {
+    if (habit.smartTask) {
+      const intervalDays = Math.max(1, Math.round(habit.smartTask.intervalDays || 1));
+      return intervalDays === 1 ? 'Smart ogni giorno' : `Smart ogni ${intervalDays} giorni`;
+    }
+
     if (isSingle) return 'Singola';
 
     if (!habit.schedule) return 'Ogni giorno';
@@ -439,11 +446,11 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
     return null;
   })();
 
-  const todayYmdForOcc = getDay(new Date());
-  const dayEntryForOcc = history[todayYmdForOcc];
-  const occN = getDailyOccurrenceTotal(habit);
-  const occK = getOccurrenceDoneForDay(dayEntryForOcc, habit);
-  const multiOccSegments = occN > 1;
+  const rawOccN = getDailyOccurrenceTotal(habit);
+  const dayEntryForOcc = resolvedCompletionDate ? history[resolvedCompletionDate] : undefined;
+  const occN = completionMode === 'day' ? rawOccN : 1;
+  const occK = completionMode === 'day' ? getOccurrenceDoneForDay(dayEntryForOcc, habit) : (isDone ? 1 : 0);
+  const multiOccSegments = completionMode === 'day' && rawOccN > 1;
 
   /** Feedback immediato al tap sul checkbox (prima che il context aggiorni history). */
   const [optOccK, setOptOccK] = useState<number | null>(null);
@@ -452,7 +459,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   useEffect(() => {
     setOptOccK(null);
     setOptDone(null);
-  }, [habit.id, occN]);
+  }, [habit.id, completionMode, completionDate, occN]);
 
   useEffect(() => {
     if (optOccK !== null && occK === optOccK) setOptOccK(null);
@@ -465,11 +472,11 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   const displayOccK = selectionMode || !multiOccSegments ? occK : (optOccK !== null ? optOccK : occK);
   const lineStrikeDone = selectionMode
     ? isDone
-    : occN <= 1
+    : !multiOccSegments
       ? (optDone !== null ? optDone : isDone)
       : displayOccK >= occN;
   const checkVisualDone = selectionMode ? isSelected : lineStrikeDone;
-  const isFullyCompletedToday = occN > 1 ? displayOccK >= occN : (optDone !== null ? optDone : isDone);
+  const isFullyCompletedInView = multiOccSegments ? displayOccK >= occN : (optDone !== null ? optDone : isDone);
 
   // White circle ONLY if truly "every day":
   // no monthly-specific days, no annual date, and daysOfWeek is empty or all 7
@@ -486,8 +493,8 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
   // Don't show frequency text for daily tasks since white circle already indicates this
   const shouldShowFrequency = !isDaily;
   const useDarkContrastOnSolidCard = normalizedCardColor != null && (
-    (!multiOccSegments && !isFullyCompletedToday) ||
-    (multiOccSegments && isFullyCompletedToday)
+    (!multiOccSegments && !isFullyCompletedInView) ||
+    (multiOccSegments && isFullyCompletedInView)
   );
   const shouldCenterContent = timeText === 'Tutto il giorno' && !shouldShowFrequency;
   const activeBadges = [
@@ -605,7 +612,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
               onToggleSelect(habit);
             } else if (!isTravel) {
               let willFullyComplete = false;
-              if (occN <= 1) {
+              if (!multiOccSegments) {
                 const base = optDone !== null ? optDone : isDone;
                 willFullyComplete = !base;
                 setOptDone(!base);
@@ -618,7 +625,12 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, o
               if (willFullyComplete) {
                 void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
-              toggleDone(habit.id);
+              const completedOnYmd = resolvedCompletionDate ?? getDay(new Date());
+              if (onToggleDone) onToggleDone(habit);
+              else toggleDone(habit.id);
+              if (willFullyComplete && habit.smartTask?.enabled && completionMode === 'day') {
+                onSmartTaskCompleted?.(habit, completedOnYmd);
+              }
             }
           }}
           style={({ pressed }) => [

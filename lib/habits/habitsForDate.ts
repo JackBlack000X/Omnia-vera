@@ -327,6 +327,10 @@ export function appearsOnDateRaw(h: Habit, ymd: string): boolean {
     return travelAppearsOnLogicalDate(h, ymd, '00:00');
   }
 
+  if (h.smartTask?.nextDueDate) {
+    return ymd >= h.smartTask.nextDueDate;
+  }
+
   const { weekday, dayOfMonth, monthIndex } = datePartsFromYmd(ymd);
   const hasOverrideForDay = !!h.timeOverrides?.[ymd];
   if (h.createdAt && ymd < h.createdAt && !hasOverrideForDay) return false;
