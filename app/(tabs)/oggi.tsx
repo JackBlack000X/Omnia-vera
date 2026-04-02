@@ -226,6 +226,27 @@ export default function OggiScreen() {
   const columnRankRef = useRef<Record<string, number>>({});
   let rankCounterRef = useRef(0);
 
+  const applyColumnRankOrder = useCallback((orderedIds: string[]) => {
+    if (orderedIds.length === 0) return;
+    for (let i = 0; i < orderedIds.length; i++) {
+      columnRankRef.current[orderedIds[i]] = i + 1;
+    }
+    rankCounterRef.current = orderedIds.length;
+    setRankVersion(v => v + 1);
+  }, []);
+
+  const snapshotColumnRankState = useCallback(() => ({
+    ranks: { ...columnRankRef.current },
+    counter: rankCounterRef.current,
+  }), []);
+
+  const restoreColumnRankState = useCallback((snapshot: { ranks: Record<string, number>; counter: number } | null | undefined) => {
+    if (!snapshot) return;
+    columnRankRef.current = { ...snapshot.ranks };
+    rankCounterRef.current = snapshot.counter;
+    setRankVersion(v => v + 1);
+  }, []);
+
   // Load persisted column ranks and check if we need to adjust currentDate for reset
   useEffect(() => {
     AsyncStorage.getItem(COLUMN_RANKS_KEY).then(raw => {
@@ -556,6 +577,29 @@ export default function OggiScreen() {
     return buttons;
   }, [habits, detectHabitFreq, setTimeOverrideRange, updateScheduleFromDate, applyRecurringScopedTimeChange, isUniformRecurringTime, hasAnyDaySpecificRecurringCustomization]);
 
+  const shouldOpenRecurringDragMenu = useCallback(({
+    event,
+    ymd,
+  }: {
+    event: OggiEvent;
+    ymd: string;
+    startTime: string;
+    endTime: string;
+  }) => {
+    const habitId = resolveOggiHabitId(event);
+    const habit = habits.find((h) => h.id === habitId);
+    if (!habit) return true;
+
+    const rememberedSlot = habit.occurrenceSlotMenuSource?.[ymd];
+    if (rememberedSlot == null) {
+      return true;
+    }
+
+    // Solo lo slot che ha originato la scelta continua a riaprire il menu.
+    // Gli altri slot della stessa task/day non devono ereditarlo.
+    return rememberedSlot === (event.occurrenceSlotIndex ?? 0);
+  }, [habits]);
+
   const weekday = useMemo(() => currentDate.getDay(), [currentDate]);
   const dayOfMonth = useMemo(() => currentDate.getDate(), [currentDate]);
   const monthIndex1 = useMemo(() => currentDate.getMonth() + 1, [currentDate]);
@@ -815,6 +859,35 @@ export default function OggiScreen() {
             dayOv[0] && isValidTimeString(dayOv[0].start)
               ? toMinutes(dayOv[0].start)
               : startM;
+          const slotTimes: Array<{ slotIndex: number; start: number; end: number }> = [];
+          for (let i = 0; i < nOcc; i++) {
+            const slotOv = dayOv[i];
+            let sM: number;
+            let eM: number;
+            if (slotOv && isValidTimeString(slotOv.start) && isValidTimeString(slotOv.end)) {
+              sM = toMinutes(slotOv.start);
+              eM = toMinutes(slotOv.end);
+            } else {
+              sM = anchorMin + i * gapMin;
+              if (sM >= 1440) continue;
+              eM = Math.min(1440, sM + durationMin);
+            }
+            if (sM >= 1440) continue;
+            slotTimes.push({ slotIndex: i, start: sM, end: eM });
+          }
+
+          const displayOrderBySlot = slotTimes
+            .slice()
+            .sort((left, right) => {
+              if (left.start !== right.start) return left.start - right.start;
+              if (left.end !== right.end) return left.end - right.end;
+              return left.slotIndex - right.slotIndex;
+            })
+            .reduce<Record<number, number>>((acc, slotInfo, displayIndex) => {
+              acc[slotInfo.slotIndex] = displayIndex;
+              return acc;
+            }, {});
+
           for (let i = 0; i < nOcc; i++) {
             const slotOv = dayOv[i];
             let sM: number;
@@ -838,7 +911,8 @@ export default function OggiScreen() {
             }
 
             const occurrenceId = makeOccurrenceEventId(isNextDay ? `${h.id}-next` : h.id, i);
-            const occurrenceTitle = `${h.text} (${i + 1}/${nOcc})`;
+            const displayIndex = displayOrderBySlot[i] ?? i;
+            const occurrenceTitle = `${h.text} (${displayIndex + 1}/${nOcc})`;
             items.push({
               id: occurrenceId,
               habitId: h.id,
@@ -862,13 +936,26 @@ export default function OggiScreen() {
   }, [habits, selectedDayYmd, prevDayYmd, dayResetTime, currentDayResetTime, nextDayResetTime, nextDayYmd, todayYmd]);
 
   const handleOccurrenceSlotDragEnd = useCallback(
-    ({ event, ymd, newStartTime, newEndTime }: { event: OggiEvent; ymd: string; newStartTime: string; newEndTime: string }) => {
+    ({
+      event,
+      ymd,
+      newStartTime,
+      newEndTime,
+      previousRankSnapshot,
+    }: {
+      event: OggiEvent;
+      ymd: string;
+      newStartTime: string;
+      newEndTime: string;
+      previousRankSnapshot?: { ranks: Record<string, number>; counter: number };
+    }) => {
       const habitId = resolveOggiHabitId(event);
       const habit = habits.find((h) => h.id === habitId);
       if (!habit) return;
       const n = getDailyOccurrenceTotalForDate(habit, weekday, dayOfMonth);
       const slot = event.occurrenceSlotIndex ?? 0;
       const targetYmd = event.calendarYmd ?? ymd;
+      const previousMenuSource = habit.occurrenceSlotMenuSource?.[targetYmd];
 
       // Save the dragged slot AND freeze all other slots at their current
       // rendered positions, so no other occurrence shifts when this one moves.
@@ -905,44 +992,48 @@ export default function OggiScreen() {
         });
       };
 
+      const cancelPendingMove = () => {
+        restoreColumnRankState(previousRankSnapshot);
+        setRecentlyMovedEventId(null);
+        setLastMovedEventId(null);
+        setHabits(prev => prev.map(h => {
+          if (h.id !== habitId) return h;
+          const nextMenuSource = { ...(h.occurrenceSlotMenuSource ?? {}) };
+          if (previousMenuSource == null) delete nextMenuSource[targetYmd];
+          else nextMenuSource[targetYmd] = previousMenuSource;
+          return {
+            ...h,
+            occurrenceSlotMenuSource: Object.keys(nextMenuSource).length ? nextMenuSource : undefined,
+          };
+        }));
+        clearPendingPosition();
+      };
+
       const applyOnlyToday = () => {
         setMultipleOccurrenceSlotOverrides(habitId, targetYmd, allSlots);
+        setHabits(prev => prev.map(h => {
+          if (h.id !== habitId) return h;
+          const existingMenuSource = h.occurrenceSlotMenuSource?.[targetYmd];
+          return {
+            ...h,
+            occurrenceSlotMenuSource: {
+              ...(h.occurrenceSlotMenuSource ?? {}),
+              [targetYmd]: existingMenuSource ?? slot,
+            },
+          };
+        }));
         clearPendingPosition();
       };
 
       const freq = detectHabitFreq(habit);
       const targetDate = parseYmdSafe(targetYmd);
-      const daySlotOverrides = habit.occurrenceSlotOverrides?.[targetYmd] ?? {};
-      const currentSlotAlreadyCustomized = daySlotOverrides[slot] != null;
-      const otherSlotsAlreadyCustomized = Object.keys(daySlotOverrides).some(
-        (index) => Number(index) !== slot
-      );
-      const hasExistingDaySpecificTimeOverride = (() => {
-        const candidateYmds = new Set<string>([
-          targetYmd,
-          ymd,
-          event.calendarYmd ?? '',
-          selectedDayYmd,
-        ].filter(Boolean));
-
-        for (const candidateYmd of candidateYmds) {
-          const timeOverride = habit.timeOverrides?.[candidateYmd];
-          if (timeOverride && timeOverride !== '00:00') {
-            return true;
-          }
-        }
-
-        return false;
-      })();
       if (freq === 'single') {
         applyOnlyToday();
         return;
       }
-      // If another occurrence of the same task/day is already saved as
-      // "solo oggi", the rest of that day can save directly too. But when
-      // the user drags the very same customized occurrence again, we should
-      // reopen the menu so they can choose the scope once more.
-      if (!currentSlotAlreadyCustomized && (otherSlotsAlreadyCustomized || hasExistingDaySpecificTimeOverride)) {
+
+      const rememberedSlot = habit.occurrenceSlotMenuSource?.[targetYmd];
+      if (rememberedSlot != null && rememberedSlot !== slot) {
         applyOnlyToday();
         return;
       }
@@ -1012,6 +1103,10 @@ export default function OggiScreen() {
               schedule,
               occurrenceGapMinutes: pattern.gapMinutes,
               occurrenceSlotOverrides: nextSlotOverrides,
+              occurrenceSlotMenuSource: {
+                ...(h.occurrenceSlotMenuSource ?? {}),
+                [targetYmd]: slot,
+              },
             };
           }
 
@@ -1031,6 +1126,10 @@ export default function OggiScreen() {
               ...h,
               schedule,
               occurrenceSlotOverrides: nextSlotOverrides,
+              occurrenceSlotMenuSource: {
+                ...(h.occurrenceSlotMenuSource ?? {}),
+                [targetYmd]: slot,
+              },
             };
           }
 
@@ -1050,6 +1149,10 @@ export default function OggiScreen() {
               ...h,
               schedule,
               occurrenceSlotOverrides: nextSlotOverrides,
+              occurrenceSlotMenuSource: {
+                ...(h.occurrenceSlotMenuSource ?? {}),
+                [targetYmd]: slot,
+              },
             };
           }
 
@@ -1060,6 +1163,10 @@ export default function OggiScreen() {
             schedule,
             occurrenceGapMinutes: pattern.gapMinutes,
             occurrenceSlotOverrides: nextSlotOverrides,
+            occurrenceSlotMenuSource: {
+              ...(h.occurrenceSlotMenuSource ?? {}),
+              [targetYmd]: slot,
+            },
           };
         }));
 
@@ -1075,34 +1182,42 @@ export default function OggiScreen() {
               ? 'Annuale'
               : null;
 
-      const buttons: { text: string; onPress: () => void }[] = [
-        { text: 'Solo oggi', onPress: applyOnlyToday },
-      ];
+      const openRecurringScopeMenu = () => {
+        const buttons: { text: string; onPress: () => void }[] = [
+          { text: 'Solo oggi', onPress: applyOnlyToday },
+        ];
 
-      if (periodButtonLabel) {
-        buttons.push({
-          text: periodButtonLabel,
-          onPress: () => applyScopedRecurringChange('period'),
-        });
-      }
+        if (periodButtonLabel) {
+          buttons.push({
+            text: periodButtonLabel,
+            onPress: () => applyScopedRecurringChange('period'),
+          });
+        }
 
-      if (!hasAnyDaySpecificRecurringCustomization(habit)) {
-        buttons.push({
-          text: 'Da oggi in poi',
-          onPress: () => applyScopedRecurringChange('future'),
-        });
-      }
+        if (!hasAnyDaySpecificRecurringCustomization(habit)) {
+          buttons.push({
+            text: 'Da oggi in poi',
+            onPress: () => applyScopedRecurringChange('future'),
+          });
+        }
 
-      Alert.alert(
-        'Modifica attività ricorrente',
-        'Scegli come applicare questa modifica.',
-        [
-          { text: 'Annulla', style: 'cancel', onPress: clearPendingPosition },
-          ...buttons,
-        ]
-      );
+        Alert.alert(
+          'Modifica attività ricorrente',
+          'Scegli come applicare questa modifica.',
+          [
+            ...buttons,
+            {
+              text: 'Annulla',
+              style: 'destructive',
+              onPress: cancelPendingMove,
+            },
+          ]
+        );
+      };
+
+      openRecurringScopeMenu();
     },
-    [habits, timedEvents, weekday, dayOfMonth, resolveDisplayTimeForEvent, setMultipleOccurrenceSlotOverrides, setPendingEventPositions, detectHabitFreq, setHabits, hasAnyDaySpecificRecurringCustomization],
+    [habits, timedEvents, weekday, dayOfMonth, resolveDisplayTimeForEvent, setMultipleOccurrenceSlotOverrides, setPendingEventPositions, detectHabitFreq, setHabits, hasAnyDaySpecificRecurringCustomization, restoreColumnRankState, setRecentlyMovedEventId],
   );
 
 
@@ -1228,7 +1343,7 @@ export default function OggiScreen() {
     }
     rankCounterRef.current = next - 1;
     setRankVersion(v => v + 1);
-  }, [layoutEvents]);
+  }, [layoutEvents, recentlyMovedEventId]);
 
   // Reset all-day section height when there are no all-day events so hourHeight is unaffected
   useEffect(() => {
@@ -1416,7 +1531,7 @@ export default function OggiScreen() {
       return changed ? next : prev;
     });
   }, [timedEvents, pendingEventPositions]);
-  
+
   const [lastMovedEventId, setLastMovedEventId] = useState<string | null>(null);
   const [rankVersion, setRankVersion] = useState(0);
   const allDayLastTapRef = useRef<Record<string, number>>({});
@@ -1501,8 +1616,8 @@ export default function OggiScreen() {
             }
         }
         return calculateLayoutCallback(events, draggingEventId, stableLayoutRef.current);
-    } 
-    
+    }
+
     return calculateLayoutCallback(events, null);
   }, [layoutEvents, pendingEventPositions, lastMovedEventId, draggingEventId, currentDragPosition, calculateLayoutCallback, rankVersion]);
 
@@ -1635,8 +1750,8 @@ export default function OggiScreen() {
       visibleHours,
     });
     if (!verticalMetrics) return null;
-    
-    let lay = layoutById[event.id] || { col: 0, columns: 1, span: 1 };
+
+    const lay = layoutById[event.id] || { col: 0, columns: 1, span: 1 };
     
     const screenWidth = Dimensions.get('window').width;
     const availableWidth = screenWidth - LEFT_MARGIN;
@@ -2032,9 +2147,12 @@ export default function OggiScreen() {
                       // Bridges are complex. If it starts on YMD and ends on YMD+1, we store it as an override on YMD.
                       // IMPORTANT: We always store the override on the STARTING calendar day.
                       setTimeOverrideRange(habitId, startYmd, startTime, endTime);
-                    }}
+                   }}
                    updateScheduleFromDate={updateScheduleFromDate}
                    setPendingEventPositions={setPendingEventPositions}
+                   applyColumnRankOrder={applyColumnRankOrder}
+                   snapshotColumnRankState={snapshotColumnRankState}
+                   restoreColumnRankState={restoreColumnRankState}
                    setRecentlyMovedEventId={setRecentlyMovedEventId}
                    setLastMovedEventId={setLastMovedEventId}
                    setCurrentDragPosition={setCurrentDragPosition}
@@ -2044,7 +2162,6 @@ export default function OggiScreen() {
                    calculateDragLayout={calculateDragLayout}
                    brokenOverlapPairsRef={brokenOverlapPairsRef}
                    columnRankRef={columnRankRef}
-                   rankCounterRef={rankCounterRef}
                    onDragAutoScroll={handleDragAutoScroll}
                    onDoubleTap={() => {
                  const selectedDay = selectedDayYmd;
@@ -2058,6 +2175,7 @@ export default function OggiScreen() {
                }}
                    onOccurrenceSlotDragEnd={handleOccurrenceSlotDragEnd}
                    getRecurringDragButtons={getRecurringDragButtons}
+                   shouldOpenRecurringDragMenu={shouldOpenRecurringDragMenu}
                dragDisabled={
                  selectedDayYmd < todayYmd ||
                  (selectedDayYmd === todayYmd && isPastReset && toMinutes(e.endTime) <= toMinutes(currentDayResetTime))

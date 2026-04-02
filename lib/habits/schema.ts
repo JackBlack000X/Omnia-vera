@@ -117,6 +117,11 @@ export type Habit = {
    * Con più di 2 occorrenze, uno slot spostato in Oggi salva qui (distacco custom per quel momento).
    */
   occurrenceSlotOverrides?: Record<string, Record<number, { start: string; end: string }>>;
+  /**
+   * Per ricordare quale slot ha originato l'ultima richiesta di scope
+   * ("Solo oggi" / "Da oggi in poi") per quella data.
+   */
+  occurrenceSlotMenuSource?: Record<string, number>;
 };
 
 export type DayCompletion = {

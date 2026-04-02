@@ -1032,7 +1032,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         if (h.id !== existing.id) return h;
         const rest = { ...(h.occurrenceSlotOverrides ?? {}) };
         delete rest[todayYmdForInit];
-        return { ...h, occurrenceSlotOverrides: Object.keys(rest).length ? rest : undefined };
+        const nextMenuSource = { ...(h.occurrenceSlotMenuSource ?? {}) };
+        delete nextMenuSource[todayYmdForInit];
+        return {
+          ...h,
+          occurrenceSlotOverrides: Object.keys(rest).length ? rest : undefined,
+          occurrenceSlotMenuSource: Object.keys(nextMenuSource).length ? nextMenuSource : undefined,
+        };
       }));
     }
 
@@ -1546,6 +1552,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             delete (next as { dailyOccurrences?: number }).dailyOccurrences;
             delete (next as { occurrenceGapMinutes?: number }).occurrenceGapMinutes;
             delete (next as { occurrenceSlotOverrides?: Habit['occurrenceSlotOverrides'] }).occurrenceSlotOverrides;
+            delete (next as { occurrenceSlotMenuSource?: Habit['occurrenceSlotMenuSource'] }).occurrenceSlotMenuSource;
           }
           return next;
         };

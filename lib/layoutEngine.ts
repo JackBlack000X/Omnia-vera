@@ -17,7 +17,8 @@ export function calculateLayout<T extends BaseEvent>(
   stableLayout: Record<string, LayoutInfo> | undefined,
   ranks: Record<string, number>,
   initialOverlaps: Set<string>,
-  brokenOverlapPairs: Set<string>
+  brokenOverlapPairs: Set<string>,
+  lockDraggedEventToStableColumn = false
 ): Record<string, LayoutInfo> {
   const layout: Record<string, LayoutInfo> = {};
   const ov = (a: { s: number; e: number }, b: { s: number; e: number }) =>
@@ -94,7 +95,7 @@ export function calculateLayout<T extends BaseEvent>(
     // Cascade ensures the whole overlapping chain redistributes when a gap opens,
     // preventing holes where a locked task is stuck at a stableCol no longer valid.
     const unlockedNonMovers = new Set<string>();
-    if (mover && !hasNewcomerNonMover && stableLayout) {
+    if (mover && !hasNewcomerNonMover && stableLayout && !lockDraggedEventToStableColumn) {
       const nonMoversInOrder = cluster
         .filter(e => e.id !== mover.id)
         .sort((a, b) => (stableLayout[a.id]?.col ?? 0) - (stableLayout[b.id]?.col ?? 0));
@@ -153,6 +154,14 @@ export function calculateLayout<T extends BaseEvent>(
       // For the mover task, determine if it should be forced to the right of any task it overlaps.
       if (isMover && draggedEventId) {
         const currentOverlaps = cluster.filter(o => o.id !== ev.id && ov(ev, o));
+
+        if (lockDraggedEventToStableColumn && stableLayout?.[ev.id] && currentOverlaps.length > 0 && !hasNewcomerNonMover) {
+          const stableCol = stableLayout[ev.id].col;
+          while (columns.length <= stableCol) columns.push([]);
+          columns[stableCol].push(ev);
+          layout[ev.id] = { col: stableCol, columns: 1, span: 1 };
+          continue;
+        }
         
         const isNewcomer = currentOverlaps.length > 0 && currentOverlaps.every(o => {
           const pk1 = `${ev.id}-${o.id}`;

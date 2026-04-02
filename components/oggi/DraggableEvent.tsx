@@ -34,6 +34,9 @@ export type DraggableEventProps = {
   setTimeOverrideRange: (habitId: string, ymd: string, start: string, end: string) => void;
   updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   setPendingEventPositions: Dispatch<SetStateAction<Record<string, number>>>;
+  applyColumnRankOrder?: (orderedIds: string[]) => void;
+  snapshotColumnRankState?: () => { ranks: Record<string, number>; counter: number };
+  restoreColumnRankState?: (snapshot: { ranks: Record<string, number>; counter: number } | null | undefined) => void;
   setRecentlyMovedEventId: (id: string | null) => void;
   setLastMovedEventId: (id: string) => void;
   setCurrentDragPosition: (minutes: number | null) => void;
@@ -43,15 +46,21 @@ export type DraggableEventProps = {
   calculateDragLayout: (draggedEventId: string, newStartMinutes: number, hasClearedOverlap: boolean) => { width: number; left: number };
   brokenOverlapPairsRef: React.MutableRefObject<Set<string>>;
   columnRankRef: React.MutableRefObject<Record<string, number>>;
-  rankCounterRef: React.MutableRefObject<number>;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
   onDoubleTap?: () => void;
   onDragAutoScroll?: (dragBounds: { top: number; bottom: number } | null) => void;
   dragDisabled?: boolean;
   /** Multi-occorrenza: salva slot o apre flusso N=2 (senza Alert ricorrenza classico) */
-  onOccurrenceSlotDragEnd?: (args: { event: OggiEvent; ymd: string; newStartTime: string; newEndTime: string }) => void;
+  onOccurrenceSlotDragEnd?: (args: {
+    event: OggiEvent;
+    ymd: string;
+    newStartTime: string;
+    newEndTime: string;
+    previousRankSnapshot?: { ranks: Record<string, number>; counter: number };
+  }) => void;
   getRecurringDragButtons?: (args: { event: OggiEvent; ymd: string; startTime: string; endTime: string }) => Array<{ text: string; onPress: () => void }>;
+  shouldOpenRecurringDragMenu?: (args: { event: OggiEvent; ymd: string; startTime: string; endTime: string }) => boolean;
 };
 
 function getSnapStepMinutes(visibleHours: number, hourHeight: number): 5 | 10 | 15 {
@@ -83,6 +92,9 @@ function DraggableEvent({
   setTimeOverrideRange,
   updateScheduleFromDate,
   setPendingEventPositions,
+  applyColumnRankOrder,
+  snapshotColumnRankState,
+  restoreColumnRankState,
   setRecentlyMovedEventId,
   setLastMovedEventId,
   setCurrentDragPosition,
@@ -92,7 +104,6 @@ function DraggableEvent({
   calculateDragLayout,
   brokenOverlapPairsRef,
   columnRankRef,
-  rankCounterRef,
   onDragStart,
   onDragEnd,
   onDoubleTap,
@@ -100,6 +111,7 @@ function DraggableEvent({
   dragDisabled,
   onOccurrenceSlotDragEnd,
   getRecurringDragButtons,
+  shouldOpenRecurringDragMenu,
 }: DraggableEventProps) {
   const isDragging = draggingEventId === event.id;
   const bg = event.color;
@@ -398,15 +410,17 @@ function DraggableEvent({
         const { ymd: targetYmdStart, time: persistedStartTime } = resolveDisplayTimeToCalendar(finalStartTime);
         const { ymd: targetYmdEnd, time: persistedEndTime } = resolveDisplayTimeToCalendar(finalEndTime);
 
-        setPendingEventPositions((prev) => ({ ...prev, [event.id]: finalClampedStart }));
-
-        if (hasMovedRef.current) {
-           setRecentlyMovedEventId(event.id);
-           setLastMovedEventId(event.id);
-        }
-
         const selectedYmd = targetYmdStart;
         const isRepeating = event.habitFreq && event.habitFreq !== 'single';
+        const shouldUsePendingVisual = !!hasMovedRef.current;
+        const currentLayout = layoutByIdRef.current;
+        const previousRankSnapshot = snapshotColumnRankState?.();
+        const releasedColumnRankOrder = Object.keys(currentLayout).sort((a, b) => {
+          const ca = currentLayout[a]?.col ?? 0;
+          const cb = currentLayout[b]?.col ?? 0;
+          if (ca !== cb) return ca - cb;
+          return (columnRankRef.current[a] ?? 0) - (columnRankRef.current[b] ?? 0);
+        });
 
         if (hasMovedRef.current && targetYmdStart !== targetYmdEnd) {
           setPendingEventPositions(prev => {
@@ -436,10 +450,26 @@ function DraggableEvent({
           return;
         }
 
+        if (shouldUsePendingVisual) {
+          setPendingEventPositions((prev) => ({ ...prev, [event.id]: finalClampedStart }));
+          setRecentlyMovedEventId(event.id);
+          setLastMovedEventId(event.id);
+        }
+
+        if (hasMovedRef.current) {
+          applyColumnRankOrder?.(releasedColumnRankOrder);
+        }
+
         if (hasMovedRef.current && event.multiOccurrenceSlot && onOccurrenceSlotDragEnd) {
-          onOccurrenceSlotDragEnd({ event, ymd: selectedYmd, newStartTime: finalStartTime, newEndTime: finalEndTime });
+          onOccurrenceSlotDragEnd({
+            event,
+            ymd: selectedYmd,
+            newStartTime: finalStartTime,
+            newEndTime: finalEndTime,
+            previousRankSnapshot,
+          });
         } else if (hasMovedRef.current && isRepeating) {
-          const recurringButtons = getRecurringDragButtons
+          const recurringButtonsRaw = getRecurringDragButtons
             ? getRecurringDragButtons({ event, ymd: selectedYmd, startTime: persistedStartTime, endTime: persistedEndTime })
             : [
                 { text: 'Solo oggi', onPress: () => {
@@ -449,48 +479,47 @@ function DraggableEvent({
                   updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
                 }},
               ];
-          Alert.alert(
-            'Modifica attività ricorrente',
-            'Scegli come applicare questa modifica.',
-            [
-              { text: 'Annulla', style: 'cancel', onPress: () => {
-                // Revert visual position if possible, but for now we just don't save.
-                setPendingEventPositions(prev => {
-                  const next = { ...prev };
-                  delete next[event.id];
-                  return next;
-                });
-              }},
-              ...recurringButtons
-            ]
-          );
+          const recurringButtons = recurringButtonsRaw.map((button) => ({
+            ...button,
+            onPress: button.onPress,
+          }));
+          const openRecurringMenu = shouldOpenRecurringDragMenu?.({
+            event,
+            ymd: selectedYmd,
+            startTime: persistedStartTime,
+            endTime: persistedEndTime,
+          }) ?? true;
+
+          if (!openRecurringMenu) {
+            recurringButtons[0]?.onPress?.();
+          } else {
+            Alert.alert(
+              'Modifica attività ricorrente',
+              'Scegli come applicare questa modifica.',
+              [
+                {
+                  text: 'Annulla',
+                  style: 'cancel',
+                  onPress: () => {
+                    restoreColumnRankState?.(previousRankSnapshot);
+                    setRecentlyMovedEventId(null);
+                    setPendingEventPositions(prev => {
+                      const next = { ...prev };
+                      delete next[event.id];
+                      return next;
+                    });
+                  },
+                },
+                ...recurringButtons,
+              ]
+            );
+          }
         } else if (hasMovedRef.current) {
           // Single task or no time change (just reorder)
           updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
         }
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-        if (hasMovedRef.current) {
-          // Snapshot every task's current column position as its new rank.
-          // After the first drag, visual column order (left=lowest rank) becomes
-          // the authoritative priority for future left/right placement — createdAt
-          // is no longer relevant once any task has been moved.
-          const currentLayout = layoutByIdRef.current;
-          const allIds = Object.keys(currentLayout);
-          // Sort by current column; break ties with existing rank so the order
-          // within each column (non-overlapping tasks sharing a slot) stays stable.
-          allIds.sort((a, b) => {
-            const ca = currentLayout[a]?.col ?? 0;
-            const cb = currentLayout[b]?.col ?? 0;
-            if (ca !== cb) return ca - cb;
-            return (columnRankRef.current[a] ?? 0) - (columnRankRef.current[b] ?? 0);
-          });
-          for (let i = 0; i < allIds.length; i++) {
-            columnRankRef.current[allIds[i]] = i + 1;
-          }
-          rankCounterRef.current = allIds.length;
-        }
 
         dragInitialTop.value = finalTop;
         dragY.value = 0;
@@ -538,6 +567,10 @@ function DraggableEvent({
     dragDisabled,
     onOccurrenceSlotDragEnd,
     getRecurringDragButtons,
+    shouldOpenRecurringDragMenu,
+    applyColumnRankOrder,
+    snapshotColumnRankState,
+    restoreColumnRankState,
     event.multiOccurrenceSlot,
     event.habitFreq,
   ]);

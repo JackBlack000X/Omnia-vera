@@ -197,6 +197,7 @@ function cloneHabitForDuplicate(source: Habit): Habit {
     schedule,
     timeOverrides,
     occurrenceSlotOverrides,
+    occurrenceSlotMenuSource,
     travel,
     notification,
     locationRule,
@@ -231,6 +232,7 @@ function cloneHabitForDuplicate(source: Habit): Habit {
           ]),
         )
       : undefined,
+    occurrenceSlotMenuSource: occurrenceSlotMenuSource ? { ...occurrenceSlotMenuSource } : undefined,
     travel: travel ? { ...travel } : undefined,
     notification: notification ? { ...notification } : undefined,
     locationRule: locationRule ? { ...locationRule } : undefined,
@@ -1088,10 +1090,13 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       if (h.id !== habitId) return h;
       const rest = { ...(h.occurrenceSlotOverrides ?? {}) };
       delete rest[ymd];
+      const nextMenuSource = { ...(h.occurrenceSlotMenuSource ?? {}) };
+      delete nextMenuSource[ymd];
       return {
         ...h,
         occurrenceGapMinutes: Math.max(5, Math.floor(gapMinutes)),
         occurrenceSlotOverrides: Object.keys(rest).length ? rest : undefined,
+        occurrenceSlotMenuSource: Object.keys(nextMenuSource).length ? nextMenuSource : undefined,
       };
     }));
   }, []);
