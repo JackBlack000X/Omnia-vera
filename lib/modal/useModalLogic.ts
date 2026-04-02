@@ -312,6 +312,16 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const mondayFirst = [1, 2, 3, 4, 5, 6, 0];
   const sortDow = (arr: number[]) => [...arr].sort((a, b) => mondayFirst.indexOf(a) - mondayFirst.indexOf(b));
   const sortMonthDays = (arr: number[]) => [...arr].sort((a, b) => a - b);
+  const MIN_TIMED_DURATION_MIN = 5;
+  const clampTimedRange = useCallback((start: number, end: number | null) => {
+    const safeStart = Math.max(0, Math.min(24 * 60 - MIN_TIMED_DURATION_MIN, Math.floor(start)));
+    const fallbackEnd = safeStart + 60;
+    const safeEnd = Math.max(safeStart + MIN_TIMED_DURATION_MIN, Math.floor(end ?? fallbackEnd));
+    return {
+      start: safeStart,
+      end: Math.min(safeEnd, 24 * 60),
+    };
+  }, []);
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(() => sortDow(initialDays));
   const [monthDays, setMonthDays] = useState<number[]>(() => sortMonthDays(existing?.schedule?.monthDays ?? []));
   // Per-day-of-month times (minutes)
@@ -599,21 +609,16 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   );
   const effectiveStartMinForSelectedDate = hhmmToMinutes(effectiveTimeForToday.start ?? null);
   const effectiveEndMinForSelectedDate = hhmmToMinutes(effectiveTimeForToday.end ?? null);
-  const shouldUsePersistedSelectedDateTime = isViewingSelectedDateContext && hasSpecificTimeContextForSelectedDate;
-  const currentStartMin = shouldUsePersistedSelectedDateTime && effectiveStartMinForSelectedDate !== null
-    ? effectiveStartMinForSelectedDate
-    : usePerDayTimeWeekly
-      ? (selectedDow !== null && perDayTimes[selectedDow]?.startMin !== undefined ? perDayTimes[selectedDow]!.startMin : startMin)
-      : usePerDayTimeMonthly
-        ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.startMin !== undefined ? perMonthTimes[selectedMonthDay]!.startMin : startMin)
-        : startMin;
-  const currentEndMin = shouldUsePersistedSelectedDateTime
-    ? effectiveEndMinForSelectedDate
-    : usePerDayTimeWeekly
-      ? (selectedDow !== null && perDayTimes[selectedDow]?.endMin !== undefined ? perDayTimes[selectedDow]!.endMin : endMin)
-      : usePerDayTimeMonthly
-        ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.endMin !== undefined ? perMonthTimes[selectedMonthDay]!.endMin : endMin)
-        : endMin;
+  const currentStartMin = usePerDayTimeWeekly
+    ? (selectedDow !== null && perDayTimes[selectedDow]?.startMin !== undefined ? perDayTimes[selectedDow]!.startMin : startMin)
+    : usePerDayTimeMonthly
+      ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.startMin !== undefined ? perMonthTimes[selectedMonthDay]!.startMin : startMin)
+      : startMin;
+  const currentEndMin = usePerDayTimeWeekly
+    ? (selectedDow !== null && perDayTimes[selectedDow]?.endMin !== undefined ? perDayTimes[selectedDow]!.endMin : endMin)
+    : usePerDayTimeMonthly
+      ? (selectedMonthDay !== null && perMonthTimes[selectedMonthDay]?.endMin !== undefined ? perMonthTimes[selectedMonthDay]!.endMin : endMin)
+      : endMin;
 
   const isFirstDow = selectedDow !== null && daysOfWeek.length > 0 && selectedDow === daysOfWeek[0];
   const isFirstMonthDay = selectedMonthDay !== null && monthDays.length > 0 && selectedMonthDay === monthDays[0];
@@ -756,13 +761,14 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   }, [freq, daysOfWeek, monthDays, todayWeekdayForInit, todayDayOfMonthForInit, existing?.id, ymd]);
 
   const updateCurrentStartMin = (next: number) => {
+    const clamped = clampTimedRange(next, currentEndMin);
     if (usePerDayTimeWeekly && selectedDow !== null) {
       if (!isFirstDow) {
         setCustomizedDows(prev => new Set([...prev, selectedDow]));
       }
       setPerDayTimes(prev => ({
         ...prev,
-        [selectedDow]: { startMin: next, endMin: prev[selectedDow]?.endMin ?? null }
+        [selectedDow]: { startMin: clamped.start, endMin: clampTimedRange(clamped.start, prev[selectedDow]?.endMin ?? null).end }
       }));
     } else if (usePerDayTimeMonthly && selectedMonthDay !== null) {
       if (!isFirstMonthDay) {
@@ -770,10 +776,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       }
       setPerMonthTimes(prev => ({
         ...prev,
-        [selectedMonthDay]: { startMin: next, endMin: prev[selectedMonthDay]?.endMin ?? null }
+        [selectedMonthDay]: { startMin: clamped.start, endMin: clampTimedRange(clamped.start, prev[selectedMonthDay]?.endMin ?? null).end }
       }));
     } else {
-      setStartMin(next);
+      setStartMin(clamped.start);
+      setEndMin(clamped.end);
     }
   };
   const updateCurrentEndMin = (next: number | null) => {
@@ -781,9 +788,37 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       if (!isFirstDow) {
         setCustomizedDows(prev => new Set([...prev, selectedDow]));
       }
+      const currentStart = perDayTimes[selectedDow]?.startMin ?? startMin;
+      const clamped = clampTimedRange(currentStart, next);
       setPerDayTimes(prev => ({
         ...prev,
-        [selectedDow]: { startMin: prev[selectedDow]?.startMin ?? startMin, endMin: next }
+        [selectedDow]: { startMin: prev[selectedDow]?.startMin ?? startMin, endMin: clamped.end }
+      }));
+    } else if (usePerDayTimeMonthly && selectedMonthDay !== null) {
+      if (!isFirstMonthDay) {
+        setCustomizedMonthDays(prev => new Set([...prev, selectedMonthDay]));
+      }
+      const currentStart = perMonthTimes[selectedMonthDay]?.startMin ?? startMin;
+      const clamped = clampTimedRange(currentStart, next);
+      setPerMonthTimes(prev => ({
+        ...prev,
+        [selectedMonthDay]: { startMin: prev[selectedMonthDay]?.startMin ?? startMin, endMin: clamped.end }
+      }));
+    } else {
+      const clamped = clampTimedRange(startMin, next);
+      setEndMin(clamped.end);
+    }
+  };
+
+  const updateCurrentTimeRange = (nextStart: number, nextEnd: number | null) => {
+    const clamped = clampTimedRange(nextStart, nextEnd);
+    if (usePerDayTimeWeekly && selectedDow !== null) {
+      if (!isFirstDow) {
+        setCustomizedDows(prev => new Set([...prev, selectedDow]));
+      }
+      setPerDayTimes(prev => ({
+        ...prev,
+        [selectedDow]: { startMin: clamped.start, endMin: clamped.end }
       }));
     } else if (usePerDayTimeMonthly && selectedMonthDay !== null) {
       if (!isFirstMonthDay) {
@@ -791,10 +826,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       }
       setPerMonthTimes(prev => ({
         ...prev,
-        [selectedMonthDay]: { startMin: prev[selectedMonthDay]?.startMin ?? startMin, endMin: next }
+        [selectedMonthDay]: { startMin: clamped.start, endMin: clamped.end }
       }));
     } else {
-      setEndMin(next);
+      setStartMin(clamped.start);
+      setEndMin(clamped.end);
     }
   };
 
@@ -973,7 +1009,26 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       setMode('timed');
       if (effectiveTimeForToday.start) {
         const s = hhmmToMinutes(effectiveTimeForToday.start);
-        if (s != null) setStartMin(s);
+        if (s != null) {
+          setStartMin(s);
+          if (freq === 'weekly' && selectedDow !== null) {
+            setPerDayTimes(prev => ({
+              ...prev,
+              [selectedDow]: {
+                startMin: s,
+                endMin: effectiveTimeForToday.end ? hhmmToMinutes(effectiveTimeForToday.end) : null,
+              },
+            }));
+          } else if (freq === 'monthly' && selectedMonthDay !== null) {
+            setPerMonthTimes(prev => ({
+              ...prev,
+              [selectedMonthDay]: {
+                startMin: s,
+                endMin: effectiveTimeForToday.end ? hhmmToMinutes(effectiveTimeForToday.end) : null,
+              },
+            }));
+          }
+        }
       }
       if (effectiveTimeForToday.end) {
         const e = hhmmToMinutes(effectiveTimeForToday.end);
@@ -987,6 +1042,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       setMode('allDay');
     }
   }, [existing?.id, effectiveTimeForToday]);
+
+  useEffect(() => {
+    const normalized = clampTimedRange(startMin, endMin);
+    if (normalized.start !== startMin) setStartMin(normalized.start);
+    if (normalized.end !== endMin) setEndMin(normalized.end);
+  }, [startMin, endMin, clampTimedRange]);
 
   useEffect(() => {
     const prev = prevMonthDaysRef.current;
@@ -1254,8 +1315,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (shouldCheckDuplicate) {
       const baseTitle = type === 'schedule' ? (existing?.text ?? '') : text;
       const trimmedTitle = baseTitle.trim();
-      const start = minutesToHhmm(startMin) as string;
-      const end = endMin !== null ? (minutesToHhmm(endMin) as string) : null;
+      const normalizedRange = clampTimedRange(startMin, endMin);
+      const start = minutesToHhmm(normalizedRange.start) as string;
+      const end = minutesToHhmm(normalizedRange.end) as string;
       const duplicate = findDuplicateHabitSlot(
         habits,
         trimmedTitle,
@@ -1310,7 +1372,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         t = healthOption.label;
       }
       if (tipo === 'vacanza') {
-        const vacationTitle = t || 'Vacanza';
+        const vacationTitle = '';
         const travel = buildVacationTravelMeta();
         const endDate = travel.giornoRitorno ?? travel.giornoPartenza;
         const startAt = `${travel.giornoPartenza}T${travel.orarioPartenza}:00`;
@@ -1481,10 +1543,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         // Se è una task/evento/viaggio temporizzato, aggiungi anche la programmazione
         // (non richiedere taskHasTime: altrimenti le task non salvano orario/ripetizioni finché il flag non è aggiornato)
         if (mode === 'timed') {
-          const time = minutesToHhmm(startMin) as string;
-          // Se c'è orario di inizio ma nessuna fine, salva fine = inizio + 1 ora
-          const rawEndMin = endMin !== null ? endMin : startMin + 60;
-          const endTime = minutesToHhmm(Math.min(rawEndMin, 24 * 60)) as string;
+          const normalizedRange = clampTimedRange(startMin, endMin);
+          const time = minutesToHhmm(normalizedRange.start) as string;
+          const endTime = minutesToHhmm(normalizedRange.end) as string;
 
           if (freq === 'single') {
             // save one-off override for selected date only
@@ -1863,10 +1924,9 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       updateHabitColor(existing.id, color);
     } else if (type === 'schedule' && existing) {
       const occNForVal = Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
-      const time = mode === 'timed' ? minutesToHhmm(startMin) as string : null;
-      // Se c'è orario di inizio ma nessuna fine impostata, salva fine = inizio + 1 ora (come in Oggi)
-      const rawEndMin = mode === 'timed' && endMin !== null ? endMin : (mode === 'timed' && time ? startMin + 60 : null);
-      const endTime = rawEndMin != null ? minutesToHhmm(Math.min(rawEndMin, 24 * 60)) as string : null;
+      const normalizedRange = mode === 'timed' ? clampTimedRange(startMin, endMin) : null;
+      const time = mode === 'timed' ? minutesToHhmm(normalizedRange!.start) as string : null;
+      const endTime = mode === 'timed' ? minutesToHhmm(normalizedRange!.end) as string : null;
       const shouldPersistEditedFirstOccurrence =
         !!ymd &&
         mode === 'timed' &&
@@ -2226,6 +2286,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setSelectedDow,
     currentStartMin,
     currentEndMin,
+    updateCurrentTimeRange,
     locationRule,
     pauseDuringTravel,
     notification,

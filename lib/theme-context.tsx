@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, ReactNode } from 'react';
 
-type ThemeType = 'classic' | 'futuristic';
+type ThemeType = 'classic';
 
 interface ThemeContextType {
   activeTheme: ThemeType;
@@ -10,10 +10,13 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function AppThemeProvider({ children }: { children: ReactNode }) {
-  const [activeTheme, setActiveTheme] = useState<ThemeType>('classic');
-
   return (
-    <ThemeContext.Provider value={{ activeTheme, setActiveTheme }}>
+    <ThemeContext.Provider
+      value={{
+        activeTheme: 'classic',
+        setActiveTheme: () => {},
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );
@@ -26,7 +29,6 @@ export function useAppTheme() {
   }
   return context;
 }
-
 
 
 

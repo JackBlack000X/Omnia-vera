@@ -134,8 +134,10 @@ export const styles = StyleSheet.create({
   },
 
   daysWrap: { flexDirection: 'row', flexWrap: 'nowrap', gap: 6, justifyContent: 'center' },
+  daysWrapCompact: { flexWrap: 'wrap' },
   monthlyDaysWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
   dayPill: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999, borderWidth: 1, minWidth: 40, alignItems: 'center' },
+  dayPillCompact: { minWidth: 38, paddingHorizontal: 10, paddingVertical: 9 },
   monthlyDayPill: { paddingHorizontal: 8, paddingVertical: 8, borderRadius: 999, borderWidth: 1, minWidth: 32, alignItems: 'center' },
   dayPillOn: { backgroundColor: '#ec4899', borderColor: '#ec4899' },
   dayPillOff: { backgroundColor: 'transparent', borderColor: '#334155' },

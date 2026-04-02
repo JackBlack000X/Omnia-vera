@@ -14,7 +14,7 @@ import type { NotificationConfig } from '@/lib/habits/schema';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type HoldableStepperButtonProps = {
@@ -396,6 +396,8 @@ function RepeatEndCustomPicker({
 
 // Modal multipurpose: type=new|rename|schedule|color
 export default function ModalScreen() {
+  const { width } = useWindowDimensions();
+  const useCompactWeekdays = width <= 395;
   const { type = 'new', id, folder, ymd } = useLocalSearchParams<{ type?: string; id?: string; folder?: string; ymd?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const colorScheme = useColorScheme();
@@ -620,7 +622,7 @@ export default function ModalScreen() {
             {type === 'new' ? 'Aggiungi' : type === 'rename' ? 'Rinomina Task' : type === 'schedule' ? 'Programma Abitudine' : type === 'edit' ? 'Modifica Task' : 'Scegli Colore'}
           </Text>
 
-          {(type === 'new' || type === 'rename' || type === 'edit') && !((m.tipo === 'viaggio' || m.tipo === 'salute') && (type === 'new' || type === 'edit')) && (
+          {(type === 'new' || type === 'rename' || type === 'edit') && !((m.tipo === 'viaggio' || m.tipo === 'salute' || m.tipo === 'vacanza') && (type === 'new' || type === 'edit')) && (
             <TextInput
               value={m.text}
               onChangeText={(v) => v.length <= 100 && m.setText(v)}
@@ -2215,12 +2217,20 @@ export default function ModalScreen() {
                   {m.freq === 'weekly' && (
                     <View style={{ marginTop: 12 }}>
                       <Text style={styles.subtle}>Giorni della settimana</Text>
-                      <View style={styles.daysWrap}>
+                      <View style={[styles.daysWrap, useCompactWeekdays && styles.daysWrapCompact]}>
                         {['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map((d, i) => {
                           const sundayIndex = (i + 1) % 7; // map Mon->1 ... Sun->0
                           const selected = m.daysOfWeek.includes(sundayIndex);
                           return (
-                            <TouchableOpacity key={i} onPress={() => m.toggleDow(sundayIndex)} style={[styles.dayPill, selected ? styles.dayPillOn : styles.dayPillOff]}>
+                            <TouchableOpacity
+                              key={i}
+                              onPress={() => m.toggleDow(sundayIndex)}
+                              style={[
+                                styles.dayPill,
+                                useCompactWeekdays && styles.dayPillCompact,
+                                selected ? styles.dayPillOn : styles.dayPillOff,
+                              ]}
+                            >
                               <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{d}</Text>
                             </TouchableOpacity>
                           );
@@ -2347,16 +2357,20 @@ export default function ModalScreen() {
                         <View style={styles.timeControls}>
                           <Text style={styles.timeLabel}>Ore</Text>
                           <View style={styles.timeStepperRow}>
-                            <HoldableStepperButton onPress={() => m.updateCurrentStartMin(Math.max(0, m.currentStartMin - 60))}>−</HoldableStepperButton>
+                            <HoldableStepperButton onPress={() => {
+                              const curS = m.currentStartMin;
+                              const curE = m.currentEndMin;
+                              const newStartMin = Math.max(0, curS - 60);
+                              const newEndMin = curE != null && curE - curS === 60 ? newStartMin + 60 : curE;
+                              m.updateCurrentTimeRange(newStartMin, newEndMin);
+                            }}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{Math.floor(m.currentStartMin / 60)}</Text>
                             <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               const newStartMin = Math.min(23 * 60 + 55, curS + 60);
-                              m.updateCurrentStartMin(newStartMin);
-                              if (curE !== null && curE !== undefined && newStartMin >= curE - 5) {
-                                m.updateCurrentEndMin(newStartMin + (curE - curS));
-                              }
+                              const newEndMin = curE != null && curE - curS === 60 ? newStartMin + 60 : curE;
+                              m.updateCurrentTimeRange(newStartMin, newEndMin);
                             }}>+</HoldableStepperButton>
                           </View>
                         </View>
@@ -2370,8 +2384,12 @@ export default function ModalScreen() {
                               const curE = m.currentEndMin;
                               const newStartMin = Math.min(23 * 60 + 55, curS + 5);
                               m.updateCurrentStartMin(newStartMin);
-                              if (curE !== null && curE !== undefined && newStartMin >= curE - 5) {
-                                m.updateCurrentEndMin(newStartMin + (curE - curS));
+                              if (curE != null) {
+                                if (newStartMin < curE) {
+                                  m.updateCurrentEndMin(curE);
+                                } else {
+                                  m.updateCurrentEndMin(Math.min(24 * 60, newStartMin + 5));
+                                }
                               }
                             }}>+</HoldableStepperButton>
                           </View>
@@ -2389,16 +2407,24 @@ export default function ModalScreen() {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               const newEndMin = (curE ?? curS + 60) - 60;
-                              m.updateCurrentEndMin(newEndMin);
-                              if (newEndMin < curS + 5) {
-                                m.updateCurrentStartMin(Math.max(0, curS - (curS + 5 - newEndMin)));
+                              if (curE != null && curE - curS === 60) {
+                                const nextStartMin = Math.max(0, newEndMin - 60);
+                                m.updateCurrentTimeRange(nextStartMin, newEndMin);
+                              } else {
+                                m.updateCurrentEndMin(newEndMin);
                               }
                             }}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{Math.floor(((m.currentEndMin ?? (m.currentStartMin + 60)) / 60))}</Text>
                             <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
-                              m.updateCurrentEndMin(Math.min(24 * 60, (curE ?? curS + 60) + 60));
+                              const newEndMin = Math.min(24 * 60, (curE ?? curS + 60) + 60);
+                              if (curE != null && curE - curS === 60) {
+                                const nextStartMin = Math.max(0, newEndMin - 60);
+                                m.updateCurrentTimeRange(nextStartMin, newEndMin);
+                              } else {
+                                m.updateCurrentEndMin(newEndMin);
+                              }
                             }}>+</HoldableStepperButton>
                     </View>
                         </View>
