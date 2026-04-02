@@ -6,13 +6,12 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "habitchecknative",
-    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.jackblack000x.habitchecknative",
+      "userInterfaceStyle": "dark",
       "infoPlist": {
-        "UIUserInterfaceStyle": "Dark",
         "NSLocationWhenInUseUsageDescription": "Tothemoon usa la tua posizione per mostrarti funzioni extra legate ai luoghi (es. completare automaticamente la task \"Palestra\" quando esci dalla palestra).",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Tothemoon ha bisogno dell’accesso alla posizione anche in background per completare automaticamente alcune task quando entri o esci da luoghi salvati, anche con l’app chiusa."
       },
