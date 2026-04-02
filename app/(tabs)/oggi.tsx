@@ -1658,21 +1658,22 @@ export default function OggiScreen() {
 
       {/* Main Timeline Scroll */}
       <GestureHandlerRootView
-        style={{ flex: 1 }}
+        style={styles.timelineHost}
       >
         <View
-          style={{ flex: 1 }}
+          style={styles.timelineViewport}
           onLayout={handleDragAreaLayout}
         >
         <ScrollView 
           ref={scrollViewRef}
           style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
           showsVerticalScrollIndicator={false}
           scrollEnabled={!draggingEventId}
           onScroll={handleScroll}
           scrollEventThrottle={16}
         >
-         <View style={{ height: contentHeight }}> 
+         <View style={[styles.timelineContent, { height: contentHeight }]}> 
              {/* Grid Lines & Hours */}
              {hours.map((h, idx) => {
                 const minutesFromStart = (h * 60) - windowStartMin;
@@ -2193,8 +2194,23 @@ const styles = StyleSheet.create({
   },
 
   // Timeline
+  timelineHost: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  timelineViewport: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
   scrollView: {
     flex: 1,
+    backgroundColor: '#000',
+  },
+  scrollViewContent: {
+    backgroundColor: '#000',
+  },
+  timelineContent: {
+    backgroundColor: '#000',
   },
   hourRow: {
     position: 'absolute',

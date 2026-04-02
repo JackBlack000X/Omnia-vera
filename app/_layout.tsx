@@ -1,7 +1,7 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { LogBox, StyleSheet, View } from 'react-native';
+import { LogBox, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -10,12 +10,8 @@ import { NoiseBackground } from '@/components/NoiseBackground';
 import { HabitsProvider } from '@/lib/habits/Provider';
 import { AppThemeProvider, useAppTheme } from '@/lib/theme-context';
 import { BagelFatOne_400Regular, useFonts } from '@expo-google-fonts/bagel-fat-one';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import '@/lib/geofenceTask';
-
-// Keep the splash screen visible while we fetch resources
-SplashScreen.preventAutoHideAsync().catch(() => { });
 
 LogBox.ignoreLogs([
   'InteractionManager has been deprecated and will be removed in a future release.',
@@ -25,6 +21,41 @@ LogBox.ignoreLogs([
 export const unstable_settings = {
   anchor: '(tabs)',
 };
+
+type RootErrorBoundaryProps = {
+  children: ReactNode;
+};
+
+type RootErrorBoundaryState = {
+  error: Error | null;
+};
+
+class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErrorBoundaryState> {
+  state: RootErrorBoundaryState = {
+    error: null,
+  };
+
+  static getDerivedStateFromError(error: Error): RootErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Root render failed', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={styles.errorScreen}>
+          <Text style={styles.errorTitle}>Errore avvio app</Text>
+          <Text style={styles.errorMessage}>{this.state.error.message || 'Errore sconosciuto'}</Text>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function RootNavigator() {
   const { activeTheme } = useAppTheme();
@@ -45,29 +76,43 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  useFonts({
     BagelFatOne_400Regular,
   });
-
-  useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync().catch(() => { });
-    }
-  }, [fontsLoaded]);
-
-  if (!fontsLoaded) {
-    return null;
-  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
       <SafeAreaProvider>
         <HabitsProvider>
           <AppThemeProvider>
-            <RootNavigator />
+            <RootErrorBoundary>
+              <RootNavigator />
+            </RootErrorBoundary>
           </AppThemeProvider>
         </HabitsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  errorScreen: {
+    flex: 1,
+    backgroundColor: '#220000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  errorTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    color: '#fecaca',
+    fontSize: 15,
+    textAlign: 'center',
+  },
+});
