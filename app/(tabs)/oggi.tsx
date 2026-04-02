@@ -277,14 +277,6 @@ export default function OggiScreen() {
   const prevDayYmd = useMemo(() => prevYmd(selectedDayYmd), [selectedDayYmd]);
   const nextDayYmd = useMemo(() => nextYmd(selectedDayYmd), [selectedDayYmd]);
   const nextDayResetTime = useMemo(() => getResetTimeForDay(nextDayYmd), [getResetTimeForDay, nextDayYmd]);
-  const currentLogicalMinute = useMemo(() => {
-    if (selectedDayYmd !== todayYmd) return null;
-    let minutes = currentTime.getHours() * 60 + currentTime.getMinutes();
-    if (dayResetTime !== '00:00' && minutes < toMinutes(currentDayResetTime)) {
-      minutes += 1440;
-    }
-    return minutes;
-  }, [selectedDayYmd, todayYmd, currentTime, dayResetTime, currentDayResetTime]);
 
   const isPastReset = useMemo(() => {
     if (!dayResetTime || dayResetTime === '00:00') return false;
@@ -641,76 +633,6 @@ export default function OggiScreen() {
         ];
     const travelActiveRanges = getTravelActiveRangesForLogicalDate(habits, logicalYmd, currentDayResetTime);
 
-    const pushNotificationPreview = ({
-      habit,
-      previewId,
-      previewTitle,
-      eventStartAbsolute,
-      eventCalendarYmd,
-      eventStartMinute,
-    }: {
-      habit: Habit;
-      previewId: string;
-      previewTitle: string;
-      eventStartAbsolute: number;
-      eventCalendarYmd: string;
-      eventStartMinute: number;
-    }) => {
-      const notifCfg = habit.notification;
-      if (!notifCfg?.enabled || !notifCfg.showAsTaskInOggi) return;
-
-      let previewCalendarYmd = eventCalendarYmd;
-      let previewMinute = eventStartMinute;
-
-      if (notifCfg.minutesBefore === null && notifCfg.customTime && isValidTimeString(notifCfg.customTime)) {
-        previewCalendarYmd = notifCfg.customDate ?? eventCalendarYmd;
-        previewMinute = toMinutes(notifCfg.customTime);
-      } else {
-        previewMinute -= Math.max(0, notifCfg.minutesBefore ?? 0);
-        while (previewMinute < 0) {
-          previewMinute += 1440;
-          previewCalendarYmd = prevYmd(previewCalendarYmd);
-        }
-      }
-
-      const previewDay = daysToCheck.find(day => day.ymd === previewCalendarYmd);
-      if (!previewDay) return;
-
-      let previewStartAbsolute = previewDay.displayOffset + previewMinute;
-      const previewEndAbsolute = eventStartAbsolute;
-
-      if (previewEndAbsolute <= previewStartAbsolute) {
-        previewStartAbsolute = Math.max(previewDay.displayOffset, previewEndAbsolute - 5);
-      }
-      if (previewEndAbsolute <= previewStartAbsolute) return;
-      if (habit.pauseDuringTravel && rangeOverlapsAny(previewStartAbsolute, previewEndAbsolute, travelActiveRanges)) {
-        return;
-      }
-
-      if (selectedDayYmd === todayYmd && currentLogicalMinute !== null && currentLogicalMinute >= eventStartAbsolute) {
-        return;
-      }
-
-      items.push({
-        id: previewId,
-        habitId: habit.id,
-        calendarYmd: previewCalendarYmd,
-        displayOffsetMinutes: previewDay.displayOffset,
-        title: `Avviso · ${previewTitle}`,
-        startTime: minutesToTime(previewStartAbsolute),
-        endTime: minutesToTime(previewEndAbsolute),
-        isAllDay: false,
-        color: '#f59e0b',
-        createdAt: habit.createdAt,
-        createdAtMs: habit.createdAtMs,
-        tipo: habit.tipo,
-        habitFreq: habit.habitFreq,
-        dragDisabled: true,
-        isNotificationPreview: true,
-        notificationPreviewCompleted: selectedDayYmd < todayYmd,
-      });
-    };
-
     for (const h of habits) {
       if (isTravelLikeTipo(h.tipo) && h.travel) {
           const travel = h.travel;
@@ -870,14 +792,6 @@ export default function OggiScreen() {
             ...baseMeta,
             dragDisabled: dragDisabledForThisEvent,
           });
-          pushNotificationPreview({
-            habit: h,
-            previewId: `${eventId}::notif-preview`,
-            previewTitle: eventTitle,
-            eventStartAbsolute: absoluteStart,
-            eventCalendarYmd: day.ymd,
-            eventStartMinute: startM,
-          });
         } else {
           const dayOv = h.occurrenceSlotOverrides?.[day.ymd] ?? {};
           const anchorMin =
@@ -923,20 +837,12 @@ export default function OggiScreen() {
               ...baseMeta,
               dragDisabled: dragDisabledForThisEvent,
             });
-            pushNotificationPreview({
-              habit: h,
-              previewId: `${occurrenceId}::notif-preview`,
-              previewTitle: occurrenceTitle,
-              eventStartAbsolute: slotStartAbs,
-              eventCalendarYmd: day.ymd,
-              eventStartMinute: sM,
-            });
           }
         }
       }
     }
     return { timedEvents: items, allDayEvents: allDay, vacationHighlightRanges: vacationRanges };
-  }, [habits, selectedDayYmd, prevDayYmd, dayResetTime, currentDayResetTime, nextDayResetTime, nextDayYmd, todayYmd, currentLogicalMinute]);
+  }, [habits, selectedDayYmd, prevDayYmd, dayResetTime, currentDayResetTime, nextDayResetTime, nextDayYmd, todayYmd]);
 
   const handleOccurrenceSlotDragEnd = useCallback(
     ({ event, ymd, newStartTime, newEndTime }: { event: OggiEvent; ymd: string; newStartTime: string; newEndTime: string }) => {
@@ -1017,7 +923,6 @@ export default function OggiScreen() {
       const now = new Date();
       for (const ev of layoutEvents) {
         if (ev.isAllDay) continue;
-        if ('isNotificationPreview' in ev && ev.isNotificationPreview) continue;
 
         const habit = habits.find(h => h.id === resolveOggiHabitId(ev));
         const notifCfg = habit?.notification;
@@ -1882,28 +1787,31 @@ export default function OggiScreen() {
                    currentDate={currentDate}
                    getDay={getDay}
                     setTimeOverrideRange={(habitId, ymd, start, end) => {
-                      const logicalYmd = selectedDayYmd;
-                      const usesPreviousCalendarDay = dayResetTime !== '00:00' && toMinutes(currentDayResetTime) > 12 * 60;
+                      const targetYmd = ymd ?? selectedDayYmd;
+                      const targetPrevYmd = prevYmd(targetYmd);
+                      const targetNextYmd = nextYmd(targetYmd);
+                      const targetResetTime = getResetTimeForDay(targetYmd);
+                      const usesPreviousCalendarDay = dayResetTime !== '00:00' && toMinutes(targetResetTime) > 12 * 60;
 
                       // Resolve display start/end back to calendar YMDs
                       const resolve = (minutes: number) => {
-                        let calYmd = logicalYmd;
+                        let calYmd = targetYmd;
                         let calMin = minutes;
                         if (usesPreviousCalendarDay) {
                           if (minutes >= 1440) {
                             calMin = minutes - 1440;
                           } else {
-                            calYmd = prevDayYmd;
+                            calYmd = targetPrevYmd;
                           }
                         } else if (minutes >= 1440) {
                           calMin = minutes - 1440;
-                          calYmd = nextDayYmd;
+                          calYmd = targetNextYmd;
                         }
                         return { ymd: calYmd, time: minutesToTime(calMin) };
                       };
 
                       const { ymd: startYmd, time: startTime } = resolve(toMinutes(start));
-                      const { ymd: endYmd, time: endTime } = resolve(toMinutes(end));
+                      const { time: endTime } = resolve(toMinutes(end));
 
                       // Bridges are complex. If it starts on YMD and ends on YMD+1, we store it as an override on YMD.
                       // IMPORTANT: We always store the override on the STARTING calendar day.

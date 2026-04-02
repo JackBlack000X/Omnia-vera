@@ -105,8 +105,6 @@ function DraggableEvent({
   const bg = event.color;
   const light = isLightColor(bg);
   const isTravel = isTravelLikeTipo(event.tipo as any);
-  const isNotificationPreview = Boolean(event.isNotificationPreview);
-  const isCompletedNotificationPreview = Boolean(event.notificationPreviewCompleted);
 
   const dragWidthValue = useSharedValue(layoutStyle.width);
   const dragLeftValue = useSharedValue(layoutStyle.left);
@@ -560,12 +558,7 @@ function DraggableEvent({
       height: layoutStyle.height,
       backgroundColor: bg,
     },
-    isNotificationPreview && {
-      borderWidth: 1,
-      borderColor: light ? 'rgba(0, 0, 0, 0.16)' : 'rgba(255, 255, 255, 0.2)',
-    },
     animatedStyle,
-    !isDragging && isCompletedNotificationPreview && { opacity: 0.58 },
     !isDragging && isTravel && { opacity: 0.7 },
   ];
 

@@ -160,6 +160,86 @@ function migrateLegacyResetHistoryV2(history: Record<string, string>): Record<st
   return migrated;
 }
 
+function cloneHabitSchedule(schedule: Habit['schedule']): Habit['schedule'] {
+  if (!schedule) return schedule;
+  return {
+    ...schedule,
+    daysOfWeek: [...(schedule.daysOfWeek ?? [])],
+    monthDays: schedule.monthDays ? [...schedule.monthDays] : undefined,
+    weeklyTimes: schedule.weeklyTimes
+      ? Object.fromEntries(
+          Object.entries(schedule.weeklyTimes).map(([key, value]) => [
+            key,
+            value ? { ...value } : value,
+          ]),
+        )
+      : undefined,
+    monthlyTimes: schedule.monthlyTimes
+      ? Object.fromEntries(
+          Object.entries(schedule.monthlyTimes).map(([key, value]) => [
+            key,
+            value ? { ...value } : value,
+          ]),
+        )
+      : undefined,
+    weeklyOccurrences: schedule.weeklyOccurrences ? { ...schedule.weeklyOccurrences } : undefined,
+    monthlyOccurrences: schedule.monthlyOccurrences ? { ...schedule.monthlyOccurrences } : undefined,
+    weeklyGaps: schedule.weeklyGaps ? { ...schedule.weeklyGaps } : undefined,
+    monthlyGaps: schedule.monthlyGaps ? { ...schedule.monthlyGaps } : undefined,
+  };
+}
+
+function cloneHabitForDuplicate(source: Habit): Habit {
+  const {
+    id: _id,
+    createdAtMs: _createdAtMs,
+    calendarEventId: _calendarEventId,
+    schedule,
+    timeOverrides,
+    occurrenceSlotOverrides,
+    travel,
+    notification,
+    locationRule,
+    health,
+    smartTask,
+    ...rest
+  } = source;
+
+  return {
+    ...rest,
+    createdAt: formatYmd(),
+    createdAtMs: Date.now(),
+    schedule: cloneHabitSchedule(schedule),
+    timeOverrides: timeOverrides
+      ? Object.fromEntries(
+          Object.entries(timeOverrides).map(([key, value]) => [
+            key,
+            typeof value === 'string' ? value : value ? { ...value } : value,
+          ]),
+        )
+      : undefined,
+    occurrenceSlotOverrides: occurrenceSlotOverrides
+      ? Object.fromEntries(
+          Object.entries(occurrenceSlotOverrides).map(([key, daySlots]) => [
+            key,
+            Object.fromEntries(
+              Object.entries(daySlots).map(([slotIndex, slot]) => [
+                slotIndex,
+                { ...slot },
+              ]),
+            ),
+          ]),
+        )
+      : undefined,
+    travel: travel ? { ...travel } : undefined,
+    notification: notification ? { ...notification } : undefined,
+    locationRule: locationRule ? { ...locationRule } : undefined,
+    health: health ? { ...health } : undefined,
+    smartTask: smartTask ? { ...smartTask } : undefined,
+    aggregateCompleted: false,
+  };
+}
+
 function getLogicalDayKeyWithResolver(
   date: Date | string,
   resolveResetTime: (ymd: string) => string,
@@ -722,12 +802,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       if (!source) return prev;
       newId = generateUUID();
       const copy: Habit = {
-        ...source,
+        ...cloneHabitForDuplicate(source),
         id: newId,
-        createdAt: formatYmd(),
         order: prev.length,
-        aggregateCompleted: false,
-        timeOverrides: {},
       };
       return [...prev, copy];
     });

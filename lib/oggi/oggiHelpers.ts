@@ -25,8 +25,6 @@ export type OggiEvent = {
   occurrenceSlotIndex?: number;
   occurrenceTotal?: number;
   dragDisabled?: boolean;
-  isNotificationPreview?: boolean;
-  notificationPreviewCompleted?: boolean;
 };
 
 const OCC_ID_MARKER = '::occ::';

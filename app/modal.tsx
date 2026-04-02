@@ -2352,7 +2352,36 @@ export default function ModalScreen() {
                   )}
                   <View style={styles.timeColumn}>
                     <View style={styles.timeSection}>
-                      <Text style={styles.timeSectionTitle}>Inizio</Text>
+                      <View style={{ position: 'relative', justifyContent: 'center', alignItems: 'center', minHeight: 24 }}>
+                        <Text style={styles.timeSectionTitle}>Inizio</Text>
+                        {m.weekCustomTimeOverride && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              const { year, month, day } = parseYmdSafe(m.weekCustomTimeOverride.ymd);
+                              m.setAnnualYear(year);
+                              m.setAnnualMonth(month);
+                              m.setAnnualDay(day);
+                            }}
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 999,
+                              backgroundColor: 'rgba(245,158,11,0.18)',
+                              borderWidth: 1,
+                              borderColor: 'rgba(245,158,11,0.5)',
+                            }}
+                          >
+                            <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>
+                              {(() => {
+                                const { year, day, month } = parseYmdSafe(m.weekCustomTimeOverride.ymd);
+                                return `Custom ${day}.${month}.${String(year).slice(-2)}`;
+                              })()}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     <View style={styles.timePicker}>
                         <View style={styles.timeControls}>
                           <Text style={styles.timeLabel}>Ore</Text>
