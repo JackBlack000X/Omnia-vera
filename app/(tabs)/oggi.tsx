@@ -394,6 +394,20 @@ export default function OggiScreen() {
     return true;
   }, []);
 
+  const hasAnyDaySpecificRecurringCustomization = useCallback((habit: Habit) => {
+    const hasTimeOverride = Object.values(habit.timeOverrides ?? {}).some((value) => {
+      if (!value || value === '00:00') return false;
+      if (typeof value === 'string') return true;
+      return value.start !== value.end;
+    });
+
+    const hasOccurrenceOverride = Object.values(habit.occurrenceSlotOverrides ?? {}).some((dayOverrides) =>
+      Object.keys(dayOverrides ?? {}).length > 0
+    );
+
+    return hasTimeOverride || hasOccurrenceOverride;
+  }, []);
+
   const applyRecurringScopedTimeChange = useCallback((
     habitId: string,
     ymd: string,
@@ -521,8 +535,11 @@ export default function OggiScreen() {
     }
 
     if (
-      freq === 'daily' ||
-      ((freq === 'weekly' || freq === 'monthly') && isUniformRecurringTime(habit, freq))
+      !hasAnyDaySpecificRecurringCustomization(habit) &&
+      (
+        freq === 'daily' ||
+        ((freq === 'weekly' || freq === 'monthly') && isUniformRecurringTime(habit, freq))
+      )
     ) {
       buttons.push({
         text: 'Da oggi in poi',
@@ -537,7 +554,7 @@ export default function OggiScreen() {
     }
 
     return buttons;
-  }, [habits, detectHabitFreq, setTimeOverrideRange, updateScheduleFromDate, applyRecurringScopedTimeChange, isUniformRecurringTime]);
+  }, [habits, detectHabitFreq, setTimeOverrideRange, updateScheduleFromDate, applyRecurringScopedTimeChange, isUniformRecurringTime, hasAnyDaySpecificRecurringCustomization]);
 
   const weekday = useMemo(() => currentDate.getDay(), [currentDate]);
   const dayOfMonth = useMemo(() => currentDate.getDate(), [currentDate]);
@@ -706,7 +723,7 @@ export default function OggiScreen() {
             if (h.pauseDuringTravel && rangeOverlapsAny(logicalWindowStart, logicalWindowEnd, travelActiveRanges)) {
               continue;
             }
-            allDay.push({ id: h.id, title: h.text, startTime: '00:00', endTime: '24:00', isAllDay: true, color: h.color ?? '#3b82f6', createdAt: h.createdAt, tipo: h.tipo, habitFreq: h.habitFreq });
+            allDay.push({ id: h.id, title: h.text, startTime: '00:00', endTime: '24:00', isAllDay: true, color: h.color ?? '#3b82f6', createdAt: h.createdAt, tipo: h.tipo, habitFreq: detectHabitFreq(h) });
             continue;
          }
       }
@@ -771,7 +788,7 @@ export default function OggiScreen() {
           createdAt: h.createdAt,
           createdAtMs: h.createdAtMs,
           tipo: h.tipo,
-          habitFreq: h.habitFreq,
+          habitFreq: detectHabitFreq(h),
         };
 
         if (nOcc <= 1) {
@@ -879,14 +896,213 @@ export default function OggiScreen() {
           }
         }
       }
-      setMultipleOccurrenceSlotOverrides(habitId, targetYmd, allSlots);
-      setPendingEventPositions((prev) => {
-        const next = { ...prev };
-        delete next[event.id];
-        return next;
-      });
+
+      const clearPendingPosition = () => {
+        setPendingEventPositions((prev) => {
+          const next = { ...prev };
+          delete next[event.id];
+          return next;
+        });
+      };
+
+      const applyOnlyToday = () => {
+        setMultipleOccurrenceSlotOverrides(habitId, targetYmd, allSlots);
+        clearPendingPosition();
+      };
+
+      const freq = detectHabitFreq(habit);
+      const targetDate = parseYmdSafe(targetYmd);
+      const daySlotOverrides = habit.occurrenceSlotOverrides?.[targetYmd] ?? {};
+      const currentSlotAlreadyCustomized = daySlotOverrides[slot] != null;
+      const otherSlotsAlreadyCustomized = Object.keys(daySlotOverrides).some(
+        (index) => Number(index) !== slot
+      );
+      const hasExistingDaySpecificTimeOverride = (() => {
+        const candidateYmds = new Set<string>([
+          targetYmd,
+          ymd,
+          event.calendarYmd ?? '',
+          selectedDayYmd,
+        ].filter(Boolean));
+
+        for (const candidateYmd of candidateYmds) {
+          const timeOverride = habit.timeOverrides?.[candidateYmd];
+          if (timeOverride && timeOverride !== '00:00') {
+            return true;
+          }
+        }
+
+        return false;
+      })();
+      if (freq === 'single') {
+        applyOnlyToday();
+        return;
+      }
+      // If another occurrence of the same task/day is already saved as
+      // "solo oggi", the rest of that day can save directly too. But when
+      // the user drags the very same customized occurrence again, we should
+      // reopen the menu so they can choose the scope once more.
+      if (!currentSlotAlreadyCustomized && (otherSlotsAlreadyCustomized || hasExistingDaySpecificTimeOverride)) {
+        applyOnlyToday();
+        return;
+      }
+
+      const sortedSlots = Object.entries(allSlots)
+        .map(([index, slotValue]) => ({
+          index: Number(index),
+          startMin: toMinutes(slotValue.start),
+          endMin: toMinutes(slotValue.end),
+          slotValue,
+        }))
+        .sort((left, right) => left.index - right.index);
+
+      const deriveUniformPattern = () => {
+        if (sortedSlots.length === 0) return null;
+        const duration = sortedSlots[0]!.endMin - sortedSlots[0]!.startMin;
+        if (duration <= 0) return null;
+
+        let gapMinutes: number | null = null;
+        for (let i = 0; i < sortedSlots.length; i++) {
+          const slotItem = sortedSlots[i]!;
+          if (slotItem.endMin - slotItem.startMin !== duration) return null;
+          if (i > 0) {
+            const prevSlot = sortedSlots[i - 1]!;
+            const nextGap = slotItem.startMin - prevSlot.startMin;
+            if (nextGap <= 0) return null;
+            if (gapMinutes === null) gapMinutes = nextGap;
+            else if (gapMinutes !== nextGap) return null;
+          }
+        }
+
+        return {
+          start: sortedSlots[0]!.slotValue.start,
+          end: sortedSlots[0]!.slotValue.end,
+          gapMinutes: gapMinutes ?? Math.max(5, habit.occurrenceGapMinutes ?? 360),
+        };
+      };
+
+      const applyScopedRecurringChange = (scope: 'period' | 'future') => {
+        const pattern = deriveUniformPattern();
+        if (!pattern) {
+          Alert.alert(
+            'Solo oggi disponibile',
+            'Per una disposizione personalizzata delle ripetizioni, per ora puoi salvarla solo come eccezione del giorno.'
+          );
+          return;
+        }
+
+        const targetWeekday = targetDate.getDay();
+        const targetDayOfMonth = targetDate.getDate();
+        const targetMonth = targetDate.getMonth() + 1;
+
+        setHabits(prev => prev.map(h => {
+          if (h.id !== habitId) return h;
+
+          const schedule = { ...(h.schedule ?? { daysOfWeek: [] }) } as NonNullable<Habit['schedule']>;
+          // Keep all day-specific slot overrides. Choosing a recurring scope
+          // changes the base pattern, but must not wipe previous "solo oggi"
+          // customizations for any specific date.
+          const nextSlotOverrides = h.occurrenceSlotOverrides;
+
+          if (freq === 'daily') {
+            schedule.time = pattern.start;
+            schedule.endTime = pattern.end;
+            return {
+              ...h,
+              schedule,
+              occurrenceGapMinutes: pattern.gapMinutes,
+              occurrenceSlotOverrides: nextSlotOverrides,
+            };
+          }
+
+          if (freq === 'weekly') {
+            schedule.weeklyTimes = { ...(schedule.weeklyTimes ?? {}) };
+            schedule.weeklyTimes[targetWeekday] = { start: pattern.start, end: pattern.end };
+            schedule.weeklyGaps = { ...(schedule.weeklyGaps ?? {}) };
+            schedule.weeklyGaps[targetWeekday] = pattern.gapMinutes;
+            if ((schedule.daysOfWeek?.length ?? 0) <= 1) {
+              schedule.time = pattern.start;
+              schedule.endTime = pattern.end;
+            } else {
+              schedule.time = null;
+              schedule.endTime = null;
+            }
+            return {
+              ...h,
+              schedule,
+              occurrenceSlotOverrides: nextSlotOverrides,
+            };
+          }
+
+          if (freq === 'monthly') {
+            schedule.monthlyTimes = { ...(schedule.monthlyTimes ?? {}) };
+            schedule.monthlyTimes[targetDayOfMonth] = { start: pattern.start, end: pattern.end };
+            schedule.monthlyGaps = { ...(schedule.monthlyGaps ?? {}) };
+            schedule.monthlyGaps[targetDayOfMonth] = pattern.gapMinutes;
+            if ((schedule.monthDays?.length ?? 0) <= 1) {
+              schedule.time = pattern.start;
+              schedule.endTime = pattern.end;
+            } else {
+              schedule.time = null;
+              schedule.endTime = null;
+            }
+            return {
+              ...h,
+              schedule,
+              occurrenceSlotOverrides: nextSlotOverrides,
+            };
+          }
+
+          schedule.time = pattern.start;
+          schedule.endTime = pattern.end;
+          return {
+            ...h,
+            schedule,
+            occurrenceGapMinutes: pattern.gapMinutes,
+            occurrenceSlotOverrides: nextSlotOverrides,
+          };
+        }));
+
+        clearPendingPosition();
+      };
+
+      const periodButtonLabel =
+        freq === 'weekly'
+          ? `Settimanale (${RECURRING_DAY_NAMES[targetDate.getDay()]})`
+          : freq === 'monthly'
+            ? `Mensile (${targetDate.getDate()})`
+            : freq === 'annual'
+              ? 'Annuale'
+              : null;
+
+      const buttons: { text: string; onPress: () => void }[] = [
+        { text: 'Solo oggi', onPress: applyOnlyToday },
+      ];
+
+      if (periodButtonLabel) {
+        buttons.push({
+          text: periodButtonLabel,
+          onPress: () => applyScopedRecurringChange('period'),
+        });
+      }
+
+      if (!hasAnyDaySpecificRecurringCustomization(habit)) {
+        buttons.push({
+          text: 'Da oggi in poi',
+          onPress: () => applyScopedRecurringChange('future'),
+        });
+      }
+
+      Alert.alert(
+        'Modifica attività ricorrente',
+        'Scegli come applicare questa modifica.',
+        [
+          { text: 'Annulla', style: 'cancel', onPress: clearPendingPosition },
+          ...buttons,
+        ]
+      );
     },
-    [habits, timedEvents, weekday, dayOfMonth, resolveDisplayTimeForEvent, setMultipleOccurrenceSlotOverrides, setPendingEventPositions],
+    [habits, timedEvents, weekday, dayOfMonth, resolveDisplayTimeForEvent, setMultipleOccurrenceSlotOverrides, setPendingEventPositions, detectHabitFreq, setHabits, hasAnyDaySpecificRecurringCustomization],
   );
 
 

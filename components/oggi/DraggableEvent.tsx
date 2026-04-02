@@ -438,7 +438,7 @@ function DraggableEvent({
 
         if (hasMovedRef.current && event.multiOccurrenceSlot && onOccurrenceSlotDragEnd) {
           onOccurrenceSlotDragEnd({ event, ymd: selectedYmd, newStartTime: finalStartTime, newEndTime: finalEndTime });
-        } else if (hasMovedRef.current && isRepeating && (finalStartTime !== event.startTime || finalEndTime !== event.endTime)) {
+        } else if (hasMovedRef.current && isRepeating) {
           const recurringButtons = getRecurringDragButtons
             ? getRecurringDragButtons({ event, ymd: selectedYmd, startTime: persistedStartTime, endTime: persistedEndTime })
             : [
