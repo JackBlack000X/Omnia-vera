@@ -1,10 +1,13 @@
+import { styles as indexStyles } from '@/components/index/indexStyles';
+import { THEME } from '@/constants/theme';
 import { useHabits } from '@/lib/habits/Provider';
 import { isHabitFullyDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type SortMode = 'app' | 'alphabetical' | 'color' | 'recent';
 type StatusFilter = 'all' | 'open' | 'completed';
@@ -121,7 +124,10 @@ export default function SearchScreen() {
 
   const results = useMemo(() => {
     return habits
-      .filter((habit) => habit.tipo === 'task' || habit.tipo === 'abitudine')
+      .filter((habit) => {
+        const tipo = habit.tipo ?? 'task';
+        return tipo === 'task' || tipo === 'abitudine';
+      })
       .map((habit) => {
         const isCompleted = isHabitFullyDoneForDay(logicalTodayHistory, habit);
         const searchableText = normalizeSearchText(habit.text);
@@ -170,135 +176,168 @@ export default function SearchScreen() {
     <>
       <Stack.Screen
         options={{
-          headerRight: () => (
-            <Pressable onPress={openFilterMenu} hitSlop={10} style={styles.headerButton}>
-              <Ionicons name="options-outline" size={22} color="#fff" />
-            </Pressable>
-          ),
+          title: '',
+          headerLargeTitleEnabled: false,
+          ...(Platform.OS === 'ios'
+            ? {
+                unstable_headerLeftItems: () => [
+                  {
+                    type: 'custom' as const,
+                    hidesSharedBackground: true,
+                    element: (
+                      <Text style={styles.headerTitleText} numberOfLines={1}>
+                        Cerca
+                      </Text>
+                    ),
+                  },
+                ],
+              }
+            : {
+                headerLeft: () => (
+                  <Text style={styles.headerTitleText} numberOfLines={1}>
+                    Cerca
+                  </Text>
+                ),
+              }),
         }}
       />
 
       <Stack.SearchBar
         placeholder="Cerca task e abitudini..."
-        placement="automatic"
+        placement={Platform.OS === 'ios' ? 'stacked' : 'automatic'}
+        hideNavigationBar={false}
         hideWhenScrolling={false}
-        onChangeText={(event) => setQuery(event.nativeEvent.text)}
+        onChangeText={(event) => setQuery(String(event.nativeEvent?.text ?? ''))}
+        onCancelButtonPress={() => setQuery('')}
+        onClose={Platform.OS === 'android' ? () => setQuery('') : undefined}
       />
 
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.heroRow}>
-          <Text style={styles.heroTitle}>Cerca</Text>
-          <Pressable onPress={openFilterMenu} hitSlop={10} style={styles.inlineFilterButton}>
-            <Ionicons name="ellipsis-horizontal" size={22} color="#9ca3af" />
-          </Pressable>
-        </View>
-
-        <View style={styles.toolbarRow}>
-          <Text style={styles.resultCount}>
-            {results.length === 1 ? '1 risultato' : `${results.length} risultati`}
-          </Text>
-          <View style={styles.toolbarMeta}>
-            <Text style={styles.metaPill}>{sortLabels[sortMode]}</Text>
-            <Text style={styles.metaPill}>{statusLabels[statusFilter]}</Text>
+      <SafeAreaView style={[indexStyles.screen, styles.safeFill]} edges={['left', 'right', 'bottom']}>
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.toolbarRow}>
+            <View style={styles.toolbarLeft}>
+              <Text style={styles.resultCount}>
+                {results.length === 1 ? '1 risultato' : `${results.length} risultati`}
+              </Text>
+              <View style={styles.toolbarMeta}>
+                <Text style={styles.metaPill}>{sortLabels[sortMode]}</Text>
+                <Text style={styles.metaPill}>{statusLabels[statusFilter]}</Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={openFilterMenu}
+              hitSlop={10}
+              style={({ pressed }) => [styles.filterCluster, pressed && styles.filterClusterPressed]}
+            >
+              <Ionicons name="options-outline" size={20} color="#fff" />
+              <Ionicons name="ellipsis-horizontal" size={18} color={THEME.textMuted} />
+            </Pressable>
           </View>
-        </View>
 
-        {results.length > 0 ? (
-          <View style={styles.resultsList}>
-            {results.map(({ habit, isCompleted }: SearchResult) => (
-              <Pressable
-                key={habit.id}
-                onPress={() => {
-                  router.push({
-                    pathname: '/modal',
-                    params: { type: 'edit', id: habit.id },
-                  });
-                }}
-                style={({ pressed }) => [
-                  styles.resultCard,
-                  { backgroundColor: habit.color ?? '#111827' },
-                  pressed ? styles.resultCardPressed : null,
-                ]}
-              >
-                <View style={styles.leadingCheckWrap}>
-                  <View style={styles.leadingCheckCircle} />
-                </View>
-                <View style={[styles.resultBody, styles.resultBodyCard]}>
-                  <Text style={styles.resultTitle} numberOfLines={1}>
-                    {habit.text}
-                  </Text>
-                  <Text style={styles.resultTime}>{getTimeLabel(habit)}</Text>
-                  <Text style={styles.resultSubtitle} numberOfLines={1}>
-                    {getScheduleLabel(habit)}
-                  </Text>
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaPill}>{habit.tipo === 'abitudine' ? 'Abitudine' : 'Task'}</Text>
-                    <Text style={styles.metaPill}>{isCompleted ? 'Completata' : 'Aperta'}</Text>
+          {results.length > 0 ? (
+            <View style={styles.resultsList}>
+              {results.map(({ habit, isCompleted }: SearchResult) => (
+                <Pressable
+                  key={habit.id}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/modal',
+                      params: { type: 'edit', id: habit.id },
+                    });
+                  }}
+                  style={({ pressed }) => [
+                    styles.resultCard,
+                    { backgroundColor: habit.color ?? '#111827' },
+                    pressed ? styles.resultCardPressed : null,
+                  ]}
+                >
+                  <View style={styles.leadingCheckWrap}>
+                    <View style={styles.leadingCheckCircle} />
                   </View>
-                </View>
-                <Ionicons
-                  name={isCompleted ? 'notifications' : 'chevron-forward'}
-                  size={isCompleted ? 18 : 20}
-                  color={isCompleted ? '#ff5a4f' : '#d1d5db'}
-                  style={[styles.stateIcon, isCompleted ? styles.alertIcon : null]}
-                />
-              </Pressable>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="search-outline" size={28} color="#64748b" />
-            <Text style={styles.emptyTitle}>Nessun risultato</Text>
-            <Text style={styles.emptyText}>
-              Prova un altro nome oppure cambia ordinamento o stato dal pulsante filtro.
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+                  <View style={[styles.resultBody, styles.resultBodyCard]}>
+                    <Text style={styles.resultTitle} numberOfLines={1}>
+                      {habit.text}
+                    </Text>
+                    <Text style={styles.resultTime}>{getTimeLabel(habit)}</Text>
+                    <Text style={styles.resultSubtitle} numberOfLines={1}>
+                      {getScheduleLabel(habit)}
+                    </Text>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaPill}>{habit.tipo === 'abitudine' ? 'Abitudine' : 'Task'}</Text>
+                      <Text style={styles.metaPill}>{isCompleted ? 'Completata' : 'Aperta'}</Text>
+                    </View>
+                  </View>
+                  <Ionicons
+                    name={isCompleted ? 'notifications' : 'chevron-forward'}
+                    size={isCompleted ? 18 : 20}
+                    color={isCompleted ? '#ff5a4f' : '#d1d5db'}
+                    style={[styles.stateIcon, isCompleted ? styles.alertIcon : null]}
+                  />
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="search-outline" size={28} color="#64748b" />
+              <Text style={styles.emptyTitle}>Nessun risultato</Text>
+              <Text style={styles.emptyText}>
+                Prova un altro nome oppure cambia ordinamento o stato dal pulsante filtro.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  headerTitleText: {
+    color: THEME.text,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+  safeFill: {
+    flex: 1,
+  },
   screen: {
     flex: 1,
     backgroundColor: '#000',
   },
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 20,
     paddingBottom: 40,
   },
-  headerButton: {
-    paddingHorizontal: 4,
-    paddingVertical: 2,
+  toolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 22,
   },
-  heroRow: {
+  toolbarLeft: {
+    flex: 1,
+    minWidth: 0,
+    gap: 10,
+  },
+  filterCluster: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 18,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#111827',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#374151',
   },
-  heroTitle: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.6,
-  },
-  inlineFilterButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toolbarRow: {
-    gap: 10,
-    marginBottom: 18,
+  filterClusterPressed: {
+    opacity: 0.85,
   },
   toolbarMeta: {
     flexDirection: 'row',
