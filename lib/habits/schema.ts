@@ -39,7 +39,7 @@ export type NotificationConfig = {
   minutesBefore: number | null; // null = custom time
   customTime?: string | null; // 'HH:MM' if minutesBefore is null
   customDate?: string | null; // 'YYYY-MM-DD' if set, overrides the event day
-  showAsTaskInOggi?: boolean; // mostra un avviso temporaneo nella timeline di Oggi
+  showAsTaskInOggi?: boolean; // mostra un avviso in Oggi come promemoria visibile
 };
 
 export type TrackerEntry = {
@@ -55,7 +55,7 @@ export type TrackerEntry = {
   createdAt: string; // YYYY-MM-DD
 };
 
-export type HabitTipo = 'task' | 'abitudine' | 'evento' | 'viaggio' | 'vacanza' | 'salute';
+export type HabitTipo = 'task' | 'abitudine' | 'avviso' | 'evento' | 'viaggio' | 'vacanza' | 'salute';
 
 export type HealthMetric = 'sleep' | 'steps' | 'distance' | 'activeEnergy';
 

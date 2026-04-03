@@ -651,12 +651,12 @@ export default function ModalScreen() {
                         : t === 'evento'
                         ? 'Evento'
                         : 'Viaggio'}
-                    </Text>
+                  </Text>
                   </TouchableOpacity>
                 ))}
               </View>
               <View style={[styles.row, { marginTop: 8 }]}>
-                {extraTypeOptions.map(t => (
+                {(['vacanza', 'avviso'] as const).map(t => (
                   <TouchableOpacity
                     key={t}
                     onPress={() => {
@@ -667,11 +667,10 @@ export default function ModalScreen() {
                       styles.chip,
                       m.tipo === t ? styles.chipActive : styles.chipGhost,
                       { paddingHorizontal: 16, paddingVertical: 8 },
-                      !healthFeatureEnabled && t === 'salute' && m.tipo !== 'salute' ? { opacity: 0.45 } : null,
                     ]}
                   >
                     <Text style={m.tipo === t ? styles.chipActiveText : styles.chipGhostText}>
-                      {t === 'vacanza' ? 'Vacanza' : 'Salute'}
+                      {t === 'vacanza' ? 'Vacanza' : 'Avviso'}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -929,38 +928,13 @@ export default function ModalScreen() {
                       <Ionicons name={notifOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" style={{ marginLeft: 6 }} />
                     )}
                   </TouchableOpacity>
-                  {m.notification.enabled && (
-                    <TouchableOpacity
-                      onPress={(e) => {
-                        if (m.tipo === 'vacanza') return;
-                        e.stopPropagation();
-                        m.setNotification({ ...m.notification, showAsTaskInOggi: !m.notification.showAsTaskInOggi });
-                      }}
-                      style={{
-                        marginLeft: 10,
-                        width: 26,
-                        height: 26,
-                        borderRadius: 999,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderWidth: 1,
-                        borderColor: m.notification.showAsTaskInOggi ? '#f59e0b' : '#475569',
-                        backgroundColor: m.notification.showAsTaskInOggi ? '#f59e0b' : 'transparent',
-                        opacity: m.tipo === 'vacanza' ? 0.35 : 1,
-                      }}
-                    >
-                      <Text style={{ color: m.notification.showAsTaskInOggi ? '#111827' : '#cbd5e1', fontSize: 13, fontWeight: '800' }}>
-                        1
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
                 <Switch
                   value={m.notification.enabled}
                   onValueChange={v => {
                     m.setNotification(
                       m.tipo === 'vacanza'
-                        ? { ...m.notification, enabled: v, minutesBefore: null, showAsTaskInOggi: false }
+                        ? { ...m.notification, enabled: v, minutesBefore: null }
                         : { ...m.notification, enabled: v }
                     );
                     if (v) setNotifOpen(true); else setNotifOpen(false);
@@ -980,9 +954,43 @@ export default function ModalScreen() {
                         </Text>
                       </View>
                       <NotificationCustomPicker
-                        notification={{ ...m.notification, minutesBefore: null, showAsTaskInOggi: false }}
-                        setNotification={(next) => m.setNotification({ ...next, minutesBefore: null, showAsTaskInOggi: false })}
+                        notification={{ ...m.notification, minutesBefore: null }}
+                        setNotification={(next) => m.setNotification({ ...next, minutesBefore: null })}
                       />
+                    </>
+                  ) : m.tipo === 'avviso' ? (
+                    <>
+                      <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#1e293b' }}>
+                        <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>Notifiche sempre attive</Text>
+                        <Text style={{ color: '#94a3b8', fontSize: 13, marginTop: 4, lineHeight: 18 }}>
+                          Un avviso usa sempre una notifica e non si può disattivare.
+                        </Text>
+                      </View>
+                      {([
+                        { label: 'Al momento dell\'evento', value: 0 },
+                        { label: '5 minuti prima', value: 5 },
+                        { label: '10 minuti prima', value: 10 },
+                        { label: '15 minuti prima', value: 15 },
+                        { label: '30 minuti prima', value: 30 },
+                        { label: '1 ora prima', value: 60 },
+                        { label: '2 ore prima', value: 120 },
+                        { label: 'Orario personalizzato', value: null },
+                      ] as { label: string; value: number | null }[]).map((opt, idx, arr) => {
+                        const isSelected = m.notification.minutesBefore === opt.value;
+                        return (
+                          <TouchableOpacity
+                            key={String(opt.value)}
+                            onPress={() => m.setNotification({ ...m.notification, minutesBefore: opt.value, customTime: opt.value !== null ? null : m.notification.customTime, enabled: true })}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: '#1e293b' }}
+                          >
+                            <Text style={{ color: '#e2e8f0', fontSize: 15 }}>{opt.label}</Text>
+                            {isSelected && <Ionicons name="checkmark" size={18} color="#ec4899" />}
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {m.notification.minutesBefore === null && (
+                        <NotificationCustomPicker notification={m.notification} setNotification={(next) => m.setNotification({ ...next, enabled: true, minutesBefore: null })} />
+                      )}
                     </>
                   ) : (
                     <>
@@ -1094,7 +1102,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'viaggio' && m.tipo !== 'vacanza' && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'viaggio' && m.tipo !== 'vacanza' && m.tipo !== 'avviso' && (
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <Text style={styles.sectionTitle}>Chiedi valutazione</Text>
@@ -2302,19 +2310,23 @@ export default function ModalScreen() {
                 </View>
               )}
 
-              <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Orario</Text></View>
-              <View style={styles.row}>
-                <TouchableOpacity onPress={() => m.setModeWithConfirmation('allDay')} style={[styles.chip, m.mode === 'allDay' ? styles.chipActive : styles.chipGhost]}>
-                  <Text style={m.mode === 'allDay' ? styles.chipActiveText : styles.chipGhostText}>Tutto il giorno</Text>
-                </TouchableOpacity>
-                {m.tipo !== 'salute' && (
-                  <TouchableOpacity onPress={() => m.setModeWithConfirmation('timed')} style={[styles.chip, m.mode === 'timed' ? styles.chipActive : styles.chipGhost]}>
-                    <Text style={m.mode === 'timed' ? styles.chipActiveText : styles.chipGhostText}>Orario specifico</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              {m.tipo !== 'avviso' && (
+                <>
+                  <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Orario</Text></View>
+                  <View style={styles.row}>
+                    <TouchableOpacity onPress={() => m.setModeWithConfirmation('allDay')} style={[styles.chip, m.mode === 'allDay' ? styles.chipActive : styles.chipGhost]}>
+                      <Text style={m.mode === 'allDay' ? styles.chipActiveText : styles.chipGhostText}>Tutto il giorno</Text>
+                    </TouchableOpacity>
+                    {m.tipo !== 'salute' && (
+                      <TouchableOpacity onPress={() => m.setModeWithConfirmation('timed')} style={[styles.chip, m.mode === 'timed' ? styles.chipActive : styles.chipGhost]}>
+                        <Text style={m.mode === 'timed' ? styles.chipActiveText : styles.chipGhostText}>Orario specifico</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </>
+              )}
 
-              {m.mode === 'timed' && (
+              {(m.tipo === 'avviso' || m.mode === 'timed') && (
                 <View style={{ marginTop: 12 }}>
                   <Text style={styles.subtle}>Orario</Text>
                   {m.freq === 'weekly' && m.daysOfWeek.length > 1 && (
@@ -2425,62 +2437,63 @@ export default function ModalScreen() {
                         </View>
                       </View>
                     </View>
-
-                    <View style={styles.timeSection}>
-                      <Text style={styles.timeSectionTitle}>Fine</Text>
-                      <View style={styles.timePicker}>
-                        <View style={styles.timeControls}>
-                          <Text style={styles.timeLabel}>Ore</Text>
-                          <View style={styles.timeStepperRow}>
-                            <HoldableStepperButton onPress={() => {
-                              const curS = m.currentStartMin;
-                              const curE = m.currentEndMin;
-                              const newEndMin = (curE ?? curS + 60) - 60;
-                              if (curE != null && curE - curS === 60) {
-                                const nextStartMin = Math.max(0, newEndMin - 60);
-                                m.updateCurrentTimeRange(nextStartMin, newEndMin);
-                              } else {
-                                m.updateCurrentEndMin(newEndMin);
-                              }
-                            }}>−</HoldableStepperButton>
-                            <Text style={styles.timeValue}>{Math.floor(((m.currentEndMin ?? (m.currentStartMin + 60)) / 60))}</Text>
-                            <HoldableStepperButton onPress={() => {
-                              const curS = m.currentStartMin;
-                              const curE = m.currentEndMin;
-                              const newEndMin = Math.min(24 * 60, (curE ?? curS + 60) + 60);
-                              if (curE != null && curE - curS === 60) {
-                                const nextStartMin = Math.max(0, newEndMin - 60);
-                                m.updateCurrentTimeRange(nextStartMin, newEndMin);
-                              } else {
-                                m.updateCurrentEndMin(newEndMin);
-                              }
-                            }}>+</HoldableStepperButton>
-                    </View>
-                        </View>
-                        <View style={styles.timeControls}>
-                          <Text style={styles.timeLabel}>Min</Text>
-                          <View style={styles.timeStepperRow}>
-                            <HoldableStepperButton onPress={() => {
-                              const curS = m.currentStartMin;
-                              const curE = m.currentEndMin;
-                              const newEndMin = (curE ?? curS + 60) - 5;
-                              m.updateCurrentEndMin(newEndMin);
-                              if (newEndMin < curS + 5) {
-                                m.updateCurrentStartMin(Math.max(0, curS - (curS + 5 - newEndMin)));
-                              }
-                            }}>−</HoldableStepperButton>
-                            <Text style={styles.timeValue}>{((m.currentEndMin ?? (m.currentStartMin + 60)) % 60)}</Text>
-                            <HoldableStepperButton onPress={() => {
-                              const curS = m.currentStartMin;
-                              const curE = m.currentEndMin;
-                              m.updateCurrentEndMin(Math.min(24 * 60, (curE ?? curS + 60) + 5));
-                            }}>+</HoldableStepperButton>
+                    {m.tipo !== 'avviso' && (
+                      <>
+                        <View style={styles.timeSection}>
+                          <Text style={styles.timeSectionTitle}>Fine</Text>
+                          <View style={styles.timePicker}>
+                            <View style={styles.timeControls}>
+                              <Text style={styles.timeLabel}>Ore</Text>
+                              <View style={styles.timeStepperRow}>
+                                <HoldableStepperButton onPress={() => {
+                                  const curS = m.currentStartMin;
+                                  const curE = m.currentEndMin;
+                                  const newEndMin = (curE ?? curS + 60) - 60;
+                                  if (curE != null && curE - curS === 60) {
+                                    const nextStartMin = Math.max(0, newEndMin - 60);
+                                    m.updateCurrentTimeRange(nextStartMin, newEndMin);
+                                  } else {
+                                    m.updateCurrentEndMin(newEndMin);
+                                  }
+                                }}>−</HoldableStepperButton>
+                                <Text style={styles.timeValue}>{Math.floor(((m.currentEndMin ?? (m.currentStartMin + 60)) / 60))}</Text>
+                                <HoldableStepperButton onPress={() => {
+                                  const curS = m.currentStartMin;
+                                  const curE = m.currentEndMin;
+                                  const newEndMin = Math.min(24 * 60, (curE ?? curS + 60) + 60);
+                                  if (curE != null && curE - curS === 60) {
+                                    const nextStartMin = Math.max(0, newEndMin - 60);
+                                    m.updateCurrentTimeRange(nextStartMin, newEndMin);
+                                  } else {
+                                    m.updateCurrentEndMin(newEndMin);
+                                  }
+                                }}>+</HoldableStepperButton>
+                              </View>
+                            </View>
+                            <View style={styles.timeControls}>
+                              <Text style={styles.timeLabel}>Min</Text>
+                              <View style={styles.timeStepperRow}>
+                                <HoldableStepperButton onPress={() => {
+                                  const curS = m.currentStartMin;
+                                  const curE = m.currentEndMin;
+                                  const newEndMin = (curE ?? curS + 60) - 5;
+                                  m.updateCurrentEndMin(newEndMin);
+                                  if (newEndMin < curS + 5) {
+                                    m.updateCurrentStartMin(Math.max(0, curS - (curS + 5 - newEndMin)));
+                                  }
+                                }}>−</HoldableStepperButton>
+                                <Text style={styles.timeValue}>{((m.currentEndMin ?? (m.currentStartMin + 60)) % 60)}</Text>
+                                <HoldableStepperButton onPress={() => {
+                                  const curS = m.currentStartMin;
+                                  const curE = m.currentEndMin;
+                                  m.updateCurrentEndMin(Math.min(24 * 60, (curE ?? curS + 60) + 5));
+                                }}>+</HoldableStepperButton>
+                              </View>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    </View>
-                    <Text style={styles.duration}>{formatDuration((m.currentEndMin ?? (m.currentStartMin + 60)) - m.currentStartMin)}</Text>
-                    <View style={styles.timeSection}>
+                        <Text style={styles.duration}>{formatDuration((m.currentEndMin ?? (m.currentStartMin + 60)) - m.currentStartMin)}</Text>
+                        <View style={styles.timeSection}>
                       <Text style={styles.timeSectionTitle}>Ripetizioni</Text>
                       <View style={[styles.timePicker, { justifyContent: 'center' }]}>
                         <View style={[styles.timeControls, { flex: 0, minWidth: 160 }]}>
@@ -2493,7 +2506,7 @@ export default function ModalScreen() {
                         </View>
                       </View>
                     </View>
-                    {m.currentDailyOccurrences > 1 && (() => {
+                      {m.currentDailyOccurrences > 1 && (() => {
                         const sgi = m.slotGapInfo;
                         const displayGap = sgi.kind === 'uniform' ? sgi.gap : m.currentGapMinutes;
                         const isCustom = sgi.kind === 'custom';
@@ -2536,6 +2549,8 @@ export default function ModalScreen() {
                           </View>
                         );
                       })()}
+                      </>
+                    )}
                   </View>
                   <Text style={[styles.subtle, { marginTop: 8, textAlign: 'center', fontSize: 12 }]}>
                     La prima occorrenza usa l’orario di inizio sopra; le altre si calcolano col distacco, senza uscire dalla giornata logica.

@@ -42,7 +42,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
   const inferredExistingTipo: HabitTipo = (existing?.tipo ?? 'task');
   const supportsOptionalTime = (currentTipo: HabitTipo) =>
-    currentTipo === 'task' || currentTipo === 'abitudine';
+    currentTipo === 'task' || currentTipo === 'abitudine' || currentTipo === 'avviso';
   const todayYmdForInit = useMemo(() => ymd ?? getDay(new Date()), [ymd, getDay]);
   const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
   const calendarTodayYmd = useMemo(() => formatYmd(new Date()), []);
@@ -277,8 +277,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   // schedule state
 
   const initialDays = existing?.schedule?.daysOfWeek ?? [];
-  const initialStart = (!effectiveTimeForToday.isAllDayMarker ? effectiveTimeForToday.start : null) ?? existing?.schedule?.time ?? null;
-  const initialEnd = (!effectiveTimeForToday.isAllDayMarker ? effectiveTimeForToday.end : null) ?? existing?.schedule?.endTime ?? null;
+  const initialStart = tipo === 'avviso'
+    ? '00:00'
+    : ((!effectiveTimeForToday.isAllDayMarker ? effectiveTimeForToday.start : null) ?? existing?.schedule?.time ?? null);
+  const initialEnd = tipo === 'avviso'
+    ? null
+    : ((!effectiveTimeForToday.isAllDayMarker ? effectiveTimeForToday.end : null) ?? existing?.schedule?.endTime ?? null);
   // Compute initial mode: if any recurring selection (weekly/monthly/annual) or any time is configured, default to 'timed'.
   const scheduleObj = existing?.schedule;
   const hasRecurringSelection = (initialDays.length > 0)
@@ -304,6 +308,19 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     setText(option.label);
     setColor(option.solidColor);
   }, [tipo, healthMetric, mode]);
+  useEffect(() => {
+    if (tipo === 'avviso' && mode !== 'timed') setMode('timed');
+  }, [tipo, mode]);
+  useEffect(() => {
+    if (tipo === 'avviso' && !notification.enabled) {
+      setNotification(prev => ({ ...prev, enabled: true }));
+    }
+  }, [tipo, notification.enabled]);
+  useEffect(() => {
+    if (tipo !== 'avviso') return;
+    setStartMin(0);
+    setEndMin(null);
+  }, [tipo]);
   const [freq, setFreq] = useState<'single' | 'daily' | 'weekly' | 'monthly' | 'annual'>(() => {
     if (existing) {
       // Use explicit saved frequency if present
@@ -499,7 +516,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     return false;
   }, [freq, annualDay, annualMonth, annualYear, todayYmdForInit]);
 
-  const [startMin, setStartMin] = useState<number>(hhmmToMinutes(initialStart ?? '08:00') ?? 8 * 60);
+  const [startMin, setStartMin] = useState<number>(hhmmToMinutes(initialStart ?? (tipo === 'avviso' ? '00:00' : '08:00')) ?? (tipo === 'avviso' ? 0 : 8 * 60));
   const [endMin, setEndMin] = useState<number | null>(hhmmToMinutes(initialEnd) ?? null);
   const [dailyOccurrences, setDailyOccurrences] = useState(() => {
     if (existing) {
@@ -1630,7 +1647,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         if (mode === 'timed') {
           const normalizedRange = clampTimedRange(startMin, endMin);
           const time = minutesToHhmm(normalizedRange.start) as string;
-          const endTime = minutesToHhmm(normalizedRange.end) as string;
+          const endTime = tipo === 'avviso' ? null : (minutesToHhmm(normalizedRange.end) as string);
 
           if (freq === 'single') {
             // save one-off override for selected date only
@@ -1968,7 +1985,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             locationRule: locationRule ?? undefined,
             pauseDuringTravel: !isTravelLikeTipo(tipo) ? pauseDuringTravel : undefined,
             notification,
-            askReview: !isTravelLikeTipo(tipo) ? askReview : undefined,
+            askReview: !isTravelLikeTipo(tipo) && tipo !== 'avviso' ? askReview : undefined,
             smartTask: resolvedSmartTask
               ? {
                   enabled: smartTaskEnabled,
@@ -2315,7 +2332,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         tipo: existingTipo,
         locationRule: locationRule ?? undefined,
         notification,
-        askReview: !isTravelLikeTipo(existingTipo) ? askReview : undefined,
+        askReview: !isTravelLikeTipo(existingTipo) && existingTipo !== 'avviso' ? askReview : undefined,
         timeOverrides: nextTimeOverrides,
         smartTask: preservedSmartTask
           ? {

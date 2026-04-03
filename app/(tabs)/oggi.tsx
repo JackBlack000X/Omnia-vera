@@ -695,6 +695,7 @@ export default function OggiScreen() {
     const travelActiveRanges = getTravelActiveRangesForLogicalDate(habits, logicalYmd, currentDayResetTime);
 
     for (const h of habits) {
+      if (h.tipo === 'avviso') continue;
       if (isTravelLikeTipo(h.tipo) && h.travel) {
           const travel = h.travel;
           const color = h.color ?? '#3b82f6';
