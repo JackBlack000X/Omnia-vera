@@ -301,6 +301,8 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: -0.5,
+    marginLeft: -4,
+    marginTop: 15,
   },
   safeFill: {
     flex: 1,
@@ -310,7 +312,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   content: {
-    paddingTop: 20,
+    paddingTop: 10,
     paddingBottom: 40,
   },
   toolbarRow: {
