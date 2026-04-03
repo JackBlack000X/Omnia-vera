@@ -590,7 +590,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
               {badge.key === 'notification' ? (
                 <View style={styles.notificationBadgeWrap}>
                   <Ionicons name={badge.icon} size={17} color={badge.color} />
-                  {habit.notification?.showAsTaskInOggi && (
+                  {habit.tipo === 'avviso' && (
                     <Text style={styles.notificationBadgeOne}>1</Text>
                   )}
                 </View>

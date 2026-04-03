@@ -925,7 +925,14 @@ export default function ModalScreen() {
                   <TouchableOpacity onPress={() => { if (m.notification.enabled) setNotifOpen(v => !v); }} style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Text style={styles.sectionTitle}>Notifiche</Text>
                     {m.notification.enabled && (
-                      <Ionicons name={notifOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" style={{ marginLeft: 6 }} />
+                      <View style={{ marginLeft: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name={notifOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
+                        {m.tipo === 'avviso' && (
+                          <View style={{ width: 18, height: 18, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f43f5e' }}>
+                            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>1</Text>
+                          </View>
+                        )}
+                      </View>
                     )}
                   </TouchableOpacity>
                 </View>
