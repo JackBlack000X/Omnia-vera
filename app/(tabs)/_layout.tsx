@@ -13,6 +13,7 @@ export default function TabLayout() {
       backgroundColor="#000"
       blurEffect="systemChromeMaterialDark"
       disableTransparentOnScrollEdge
+      minimizeBehavior="onScrollDown"
       shadowColor="transparent"
       tintColor="#3b82f6"
       iconColor={{ default: '#e5e7eb', selected: '#3b82f6' }}
@@ -36,6 +37,11 @@ export default function TabLayout() {
         <NativeTabs.Trigger.Icon sf={{ default: 'bag', selected: 'bag.fill' }} />
         <NativeTabs.Trigger.Label>Negozio</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger
+        name="search"
+        role="search"
+        contentStyle={nativeTabContentStyle}
+      />
     </NativeTabs>
   );
 }
