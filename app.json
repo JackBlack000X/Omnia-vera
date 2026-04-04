@@ -68,7 +68,8 @@
       "@react-native-community/datetimepicker",
       "expo-web-browser",
       "./plugins/with-tothemoon-action-button",
-      "./plugins/with-ios-26-fmt-fix"
+      "./plugins/with-ios-26-fmt-fix",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

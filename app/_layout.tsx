@@ -5,11 +5,14 @@ import { LogBox, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { HabitsProvider } from '@/lib/habits/Provider';
 import { AppThemeProvider } from '@/lib/theme-context';
+import { STORAGE_KEYS } from '@/lib/storageKeys';
+import IntroVideo from '@/components/IntroVideo';
 import { BagelFatOne_400Regular, useFonts } from '@expo-google-fonts/bagel-fat-one';
-import { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode, useCallback, useEffect, useState } from 'react';
 import '@/lib/geofenceTask';
 
 LogBox.ignoreLogs([
@@ -74,6 +77,33 @@ export default function RootLayout() {
   useFonts({
     BagelFatOne_400Regular,
   });
+
+  const [showIntro, setShowIntro] = useState<boolean | null>(null); // null = loading
+
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEYS.introSeen).then((val) => {
+      setShowIntro(val !== 'true');
+    });
+  }, []);
+
+  const handleIntroDone = useCallback(() => {
+    setShowIntro(false);
+    AsyncStorage.setItem(STORAGE_KEYS.introSeen, 'true').catch(() => {});
+  }, []);
+
+  // While checking AsyncStorage, show nothing (black screen matches splash)
+  if (showIntro === null) {
+    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+  }
+
+  // Show ONLY the intro video — don't mount the app tree yet
+  if (showIntro) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
+        <IntroVideo onDone={handleIntroDone} />
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
