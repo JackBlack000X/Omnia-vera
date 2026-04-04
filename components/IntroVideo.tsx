@@ -11,7 +11,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const introSource = require('@/assets/intro.mp4');
+const introSource = require('@/assets/intro.mov');
 
 type Props = {
   onDone: () => void;
