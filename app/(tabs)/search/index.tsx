@@ -5,7 +5,7 @@ import { isHabitFullyDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActionSheetIOS, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -67,6 +67,8 @@ function getScheduleLabel(habit: Habit) {
   if (habit.habitFreq === 'annual') return 'Annuale';
   return habit.tipo === 'abitudine' ? 'Abitudine' : 'Task';
 }
+
+import { useIsFocused } from '@react-navigation/native';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -176,47 +178,30 @@ export default function SearchScreen() {
     <>
       <Stack.Screen
         options={{
-          title: '',
-          headerLargeTitleEnabled: false,
-          ...(Platform.OS === 'ios'
-            ? {
-                unstable_headerLeftItems: () => [
-                  {
-                    type: 'custom' as const,
-                    hidesSharedBackground: true,
-                    element: (
-                      <Text style={styles.headerTitleText} numberOfLines={1}>
-                        Cerca
-                      </Text>
-                    ),
-                  },
-                ],
-              }
-            : {
-                headerLeft: () => (
-                  <Text style={styles.headerTitleText} numberOfLines={1}>
-                    Cerca
-                  </Text>
-                ),
-              }),
+          title: 'Cerca',
+          headerLargeTitle: true,
+          headerTitleStyle: { color: THEME.text },
+          headerLargeTitleStyle: {
+            color: THEME.text,
+            fontWeight: 'bold',
+          },
+          headerSearchBarOptions: {
+            placeholder: 'Cerca task e abitudini...',
+            hideNavigationBar: false,
+            hideWhenScrolling: false,
+            textColor: THEME.text,
+            onChangeText: (event) => setQuery(event.nativeEvent.text),
+            onCancelButtonPress: () => setQuery(''),
+          },
         }}
       />
 
-      <Stack.SearchBar
-        placeholder="Cerca task e abitudini..."
-        placement={Platform.OS === 'ios' ? 'stacked' : 'automatic'}
-        hideNavigationBar={false}
-        hideWhenScrolling={false}
-        onChangeText={(event) => setQuery(String(event.nativeEvent?.text ?? ''))}
-        onCancelButtonPress={() => setQuery('')}
-        onClose={Platform.OS === 'android' ? () => setQuery('') : undefined}
-      />
-
-      <SafeAreaView style={[indexStyles.screen, styles.safeFill]} edges={['left', 'right', 'bottom']}>
+      <View style={[indexStyles.screen, styles.safeFill]}>
         <ScrollView
           style={styles.screen}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          contentInsetAdjustmentBehavior="automatic"
         >
           <View style={styles.toolbarRow}>
             <View style={styles.toolbarLeft}>
@@ -290,7 +275,7 @@ export default function SearchScreen() {
             </View>
           )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </>
   );
 }
@@ -301,8 +286,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: -0.5,
-    marginLeft: -4,
-    marginTop: 15,
   },
   safeFill: {
     flex: 1,

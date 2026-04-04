@@ -6,7 +6,7 @@ export default function SearchLayout() {
     <Stack
       screenOptions={{
         contentStyle: { backgroundColor: '#000' },
-        headerLargeTitle: false,
+        headerLargeTitle: true,
         headerShadowVisible: false,
         headerStyle: { backgroundColor: '#000' },
         headerTintColor: '#fff',
