@@ -13,7 +13,14 @@ import { STORAGE_KEYS } from '@/lib/storageKeys';
 import IntroVideo from '@/components/IntroVideo';
 import { BagelFatOne_400Regular, useFonts } from '@expo-google-fonts/bagel-fat-one';
 import { Component, ErrorInfo, ReactNode, useCallback, useEffect, useState } from 'react';
+import * as SystemUI from 'expo-system-ui';
+import { Appearance } from 'react-native';
 import '@/lib/geofenceTask';
+
+// Forza la finestra rootView a nero (impedisce i lampi bianchi)
+SystemUI.setBackgroundColorAsync('#000');
+// Forza React Native a simulare sempre e solo Dark Mode per componenti nativi
+Appearance.setColorScheme('dark');
 
 LogBox.ignoreLogs([
   'InteractionManager has been deprecated and will be removed in a future release.',

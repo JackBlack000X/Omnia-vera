@@ -4,16 +4,15 @@ import React from 'react';
 export default function TabLayout() {
   const nativeTabContentStyle = { backgroundColor: '#000' } as const;
   const nativeTabsHostProps = {
-    nativeContainerStyle: { backgroundColor: '#000' },
+    nativeContainerStyle: { backgroundColor: 'transparent' },
   } as const;
 
   return (
     <NativeTabs
       {...nativeTabsHostProps}
-      backgroundColor="#000"
+      backgroundColor="transparent"
       blurEffect="systemChromeMaterialDark"
       disableTransparentOnScrollEdge
-      minimizeBehavior="onScrollDown"
       shadowColor="transparent"
       tintColor="#3b82f6"
       iconColor={{ default: '#e5e7eb', selected: '#3b82f6' }}

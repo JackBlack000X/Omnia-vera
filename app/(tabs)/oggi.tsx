@@ -1909,6 +1909,8 @@ export default function OggiScreen() {
           scrollEnabled={!draggingEventId}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          indicatorStyle="white"
+          contentInsetAdjustmentBehavior="never"
         >
          <View style={[styles.timelineContent, { height: contentHeight }]}> 
              {/* Grid Lines & Hours */}
