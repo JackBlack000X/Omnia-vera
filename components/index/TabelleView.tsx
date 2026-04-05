@@ -1,6 +1,7 @@
 import { useHabits } from '@/lib/habits/Provider';
 import type { UserTable } from '@/lib/habits/schema';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import React, { useCallback, useRef, useState } from 'react';
 import {
   Animated,
@@ -781,9 +782,6 @@ export default function TabelleView() {
     <View style={mv.container}>
       <View style={mv.toolbar}>
         <Text style={mv.toolbarSub}>{tables.length > 0 ? `${tables.length} tabella${tables.length !== 1 ? 'e' : ''}` : ''}</Text>
-        <TouchableOpacity style={mv.addBtn} onPress={() => setShowCreate(true)}>
-          <Ionicons name="add" size={22} color={C.accent} />
-        </TouchableOpacity>
       </View>
 
       {tables.length === 0 ? (
@@ -819,6 +817,32 @@ export default function TabelleView() {
           onClose={() => setOpenTable(null)}
         />
       )}
+
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            right: 20,
+            bottom: 98,
+            width: 83,
+            height: 83,
+            borderRadius: 42,
+            overflow: 'hidden',
+            pointerEvents: 'auto',
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: 'rgba(255,255,255,0.2)',
+          }}
+          onPress={() => setShowCreate(true)}
+        >
+          <BlurView
+            intensity={80}
+            tint="systemChromeMaterialDark"
+            style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Ionicons name="add" size={40} color="#0A84FF" />
+          </BlurView>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

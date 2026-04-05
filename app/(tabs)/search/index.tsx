@@ -3,7 +3,9 @@ import { THEME } from '@/constants/theme';
 import { useHabits } from '@/lib/habits/Provider';
 import { isHabitFullyDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
+import { HabitItem } from '@/components/HabitItem';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { Stack, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActionSheetIOS, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -185,6 +187,23 @@ export default function SearchScreen() {
             color: THEME.text,
             fontWeight: 'bold',
           },
+          headerRight: () => (
+            <Pressable
+              onPress={openFilterMenu}
+              hitSlop={10}
+              style={({ pressed }) => [{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                overflow: 'hidden',
+                backgroundColor: '#1a1a1a',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }, pressed && { opacity: 0.7, transform: [{ scale: 0.96 }] }]}
+            >
+              <Ionicons name="options-outline" size={24} color="rgba(255,255,255,0.9)" />
+            </Pressable>
+          ),
           headerSearchBarOptions: {
             placeholder: 'Cerca task e abitudini...',
             hideNavigationBar: false,
@@ -196,74 +215,50 @@ export default function SearchScreen() {
         }}
       />
 
-      <View style={[indexStyles.screen, styles.safeFill]}>
+      <View style={[indexStyles.screen, styles.safeFill, { overflow: 'visible', zIndex: 999 }]}>
         <ScrollView
-          style={styles.screen}
+          style={[styles.screen, { overflow: 'visible' }]}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           contentInsetAdjustmentBehavior="automatic"
         >
+
           <View style={styles.toolbarRow}>
             <View style={styles.toolbarLeft}>
               <Text style={styles.resultCount}>
                 {results.length === 1 ? '1 risultato' : `${results.length} risultati`}
               </Text>
-              <View style={styles.toolbarMeta}>
-                <Text style={styles.metaPill}>{sortLabels[sortMode]}</Text>
-                <Text style={styles.metaPill}>{statusLabels[statusFilter]}</Text>
-              </View>
             </View>
-            <Pressable
-              onPress={openFilterMenu}
-              hitSlop={10}
-              style={({ pressed }) => [styles.filterCluster, pressed && styles.filterClusterPressed]}
-            >
-              <Ionicons name="options-outline" size={20} color="#fff" />
-              <Ionicons name="ellipsis-horizontal" size={18} color={THEME.textMuted} />
-            </Pressable>
           </View>
 
           {results.length > 0 ? (
             <View style={styles.resultsList}>
-              {results.map(({ habit, isCompleted }: SearchResult) => (
-                <Pressable
-                  key={habit.id}
-                  onPress={() => {
-                    router.push({
-                      pathname: '/modal',
-                      params: { type: 'edit', id: habit.id },
-                    });
-                  }}
-                  style={({ pressed }) => [
-                    styles.resultCard,
-                    { backgroundColor: habit.color ?? '#111827' },
-                    pressed ? styles.resultCardPressed : null,
-                  ]}
-                >
-                  <View style={styles.leadingCheckWrap}>
-                    <View style={styles.leadingCheckCircle} />
-                  </View>
-                  <View style={[styles.resultBody, styles.resultBodyCard]}>
-                    <Text style={styles.resultTitle} numberOfLines={1}>
-                      {habit.text}
-                    </Text>
-                    <Text style={styles.resultTime}>{getTimeLabel(habit)}</Text>
-                    <Text style={styles.resultSubtitle} numberOfLines={1}>
-                      {getScheduleLabel(habit)}
-                    </Text>
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaPill}>{habit.tipo === 'abitudine' ? 'Abitudine' : 'Task'}</Text>
-                      <Text style={styles.metaPill}>{isCompleted ? 'Completata' : 'Aperta'}</Text>
-                    </View>
-                  </View>
-                  <Ionicons
-                    name={isCompleted ? 'notifications' : 'chevron-forward'}
-                    size={isCompleted ? 18 : 20}
-                    color={isCompleted ? '#ff5a4f' : '#d1d5db'}
-                    style={[styles.stateIcon, isCompleted ? styles.alertIcon : null]}
-                  />
-                </Pressable>
-              ))}
+              {results.map((item: SearchResult, index: number) => {
+                const { habit, isCompleted } = item;
+                const goEdit = () => {
+                  router.push({
+                    pathname: '/modal',
+                    params: { type: 'edit', id: habit.id },
+                  });
+                };
+                return (
+                  <Pressable
+                    key={habit.id}
+                    onPress={goEdit}
+                    style={({ pressed }) => [pressed && { opacity: 0.88 }, { marginBottom: 4 }]}
+                  >
+                    <HabitItem
+                      habit={habit}
+                      index={index}
+                      isDone={isCompleted}
+                      completionMode="day"
+                      onRename={goEdit}
+                      onSchedule={goEdit}
+                      onColor={goEdit}
+                    />
+                  </Pressable>
+                );
+              })}
             </View>
           ) : (
             <View style={styles.emptyState}>
@@ -287,6 +282,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.5,
   },
+  headerRow: {
+    marginTop: 2,
+    marginBottom: 10,
+  },
   safeFill: {
     flex: 1,
   },
@@ -295,7 +294,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   content: {
-    paddingTop: 10,
+    paddingTop: 0,
     paddingBottom: 40,
   },
   toolbarRow: {
@@ -303,26 +302,31 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: 12,
-    marginBottom: 22,
+    marginTop: 0,
+    marginBottom: 6,
   },
   toolbarLeft: {
     flex: 1,
     minWidth: 0,
     gap: 10,
+    paddingLeft: 7,
   },
   filterCluster: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#111827',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#374151',
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  filterGlass: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterClusterPressed: {
-    opacity: 0.85,
+    opacity: 0.7,
+    transform: [{ scale: 0.96 }],
   },
   toolbarMeta: {
     flexDirection: 'row',

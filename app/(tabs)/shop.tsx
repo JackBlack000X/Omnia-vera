@@ -58,9 +58,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    marginBottom: 20,
+    paddingHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 15,
   },
   coinsWrap: {
     flexDirection: 'row',
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     justifyContent: 'center',
   },
   optionsContainer: {
