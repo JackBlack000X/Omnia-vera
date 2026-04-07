@@ -43,6 +43,11 @@ function normalizeSearchText(value: string) {
     .trim();
 }
 
+function getHabitDisplayTitle(habit: Habit) {
+  const title = habit.text?.trim();
+  return title && title.length > 0 ? title : 'Senza titolo';
+}
+
 function getCreatedAtRank(habit: Habit) {
   if (typeof habit.createdAtMs === 'number') return habit.createdAtMs;
   if (habit.createdAt) {
@@ -134,7 +139,8 @@ export default function SearchScreen() {
       })
       .map((habit) => {
         const isCompleted = isHabitFullyDoneForDay(logicalTodayHistory, habit);
-        const searchableText = normalizeSearchText(habit.text);
+        const displayTitle = getHabitDisplayTitle(habit);
+        const searchableText = normalizeSearchText(displayTitle);
         const score = normalizedQuery
           ? (searchableText.startsWith(normalizedQuery) ? 0 : searchableText.includes(normalizedQuery) ? 1 : 2)
           : 0;
@@ -145,32 +151,35 @@ export default function SearchScreen() {
         if (statusFilter === 'open' && item.isCompleted) return false;
         if (statusFilter === 'completed' && !item.isCompleted) return false;
         if (!normalizedQuery) return true;
-        return normalizeSearchText(item.habit.text).includes(normalizedQuery);
+        return normalizeSearchText(getHabitDisplayTitle(item.habit)).includes(normalizedQuery);
       })
       .sort((left, right) => {
         if (normalizedQuery && left.score !== right.score) return left.score - right.score;
 
+        const leftTitle = getHabitDisplayTitle(left.habit);
+        const rightTitle = getHabitDisplayTitle(right.habit);
+
         switch (sortMode) {
           case 'alphabetical':
-            return left.habit.text.localeCompare(right.habit.text, 'it');
+            return leftTitle.localeCompare(rightTitle, 'it');
           case 'color': {
             const leftColor = left.habit.color ?? '';
             const rightColor = right.habit.color ?? '';
             const byColor = leftColor.localeCompare(rightColor, 'it');
             if (byColor !== 0) return byColor;
-            return left.habit.text.localeCompare(right.habit.text, 'it');
+            return leftTitle.localeCompare(rightTitle, 'it');
           }
           case 'recent': {
             const byRecent = getCreatedAtRank(right.habit) - getCreatedAtRank(left.habit);
             if (byRecent !== 0) return byRecent;
-            return left.habit.text.localeCompare(right.habit.text, 'it');
+            return leftTitle.localeCompare(rightTitle, 'it');
           }
           case 'app':
           default: {
             const leftOrder = left.habit.order ?? 0;
             const rightOrder = right.habit.order ?? 0;
             if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-            return left.habit.text.localeCompare(right.habit.text, 'it');
+            return leftTitle.localeCompare(rightTitle, 'it');
           }
         }
       });
@@ -235,6 +244,10 @@ export default function SearchScreen() {
             <View style={styles.resultsList}>
               {results.map((item: SearchResult, index: number) => {
                 const { habit, isCompleted } = item;
+                const displayHabit = {
+                  ...habit,
+                  text: getHabitDisplayTitle(habit),
+                };
                 const goEdit = () => {
                   router.push({
                     pathname: '/modal',
@@ -245,10 +258,10 @@ export default function SearchScreen() {
                   <Pressable
                     key={habit.id}
                     onPress={goEdit}
-                    style={({ pressed }) => [pressed && { opacity: 0.88 }, { marginBottom: 4 }]}
+                    style={({ pressed }) => [pressed && { opacity: 0.88 }]}
                   >
                     <HabitItem
-                      habit={habit}
+                      habit={displayHabit}
                       index={index}
                       isDone={isCompleted}
                       completionMode="day"
@@ -338,7 +351,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   resultsList: {
-    gap: 12,
+    gap: 0,
   },
   resultCard: {
     backgroundColor: '#0f172a',
