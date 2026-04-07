@@ -133,13 +133,22 @@ const MonthView = React.memo(function MonthView({
     <View style={[styles.calendarMonth, isFirst && { marginTop: 4 }]}>
       <View style={styles.monthNav}>
         <View style={[styles.monthLabel, isCurrentMonthActive && styles.monthLabelActive]}>
-          <Text
-            style={[styles.monthYear, isCurrentMonthActive && styles.monthYearActive]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            {getMonthName(month)} {year}
-          </Text>
+          <View style={styles.monthLabelRow}>
+            <Text
+              style={[styles.monthYear, styles.monthYearLeft, isCurrentMonthActive && styles.monthYearActive]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {getMonthName(month)}
+            </Text>
+            <Text
+              style={[styles.monthYear, styles.monthYearRight, isCurrentMonthActive && styles.monthYearActive]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {year}
+            </Text>
+          </View>
         </View>
       </View>
       <View style={styles.calendar}>
@@ -465,7 +474,7 @@ export default function CalendarScreen() {
           <View style={styles.headerText}>
             {activeTheme !== 'futuristic' && (
               <View style={styles.headerTitleRow}>
-                <Text style={styles.title}>Calendario Abitudini</Text>
+                <Text style={styles.title}>Calendario</Text>
                 <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButtonInline}>
                   <View style={styles.infoCircleSmall}>
                     <Text style={styles.infoTextSmall}>i</Text>
@@ -597,6 +606,7 @@ const styles = StyleSheet.create({
     gap: 0,
     minWidth: 80,
     justifyContent: 'flex-end',
+    marginTop: -4,
   },
   streakFlameSpacer: {
     width: 0,
@@ -626,6 +636,11 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingLeft: 5,
   },
+  monthLabelRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   monthLabelActive: {
   },
   monthYear: { 
@@ -641,12 +656,21 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 0,
   },
+  monthYearLeft: {
+    flexShrink: 1,
+    paddingRight: 10,
+  },
+  monthYearRight: {
+    flex: 1,
+    textAlign: 'right',
+    paddingRight: 5,
+  },
   monthYearActive: { 
     letterSpacing: -1.2,
   },
   scrollContent: { 
     paddingBottom: 100,
-    paddingTop: 20,
+    paddingTop: 0,
   },
   calendarMonth: { marginBottom: 32 },
 
