@@ -1,6 +1,7 @@
 import DraggableEvent from '@/components/oggi/DraggableEvent';
 import DayReviewModal, { ReviewHabitItem } from '@/components/oggi/DayReviewModal';
 import TrackerModal from '@/components/oggi/TrackerModal';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { THEME } from '@/constants/theme';
 import { isToday, parseYmdSafe } from '@/lib/date';
 import { getLogicalDayKey, useHabits } from '@/lib/habits/Provider';
@@ -1825,15 +1826,14 @@ export default function OggiScreen() {
         </Text>
         <View style={styles.headerRight}>
           {todayWeather ? (
-            <Ionicons
-              name={weatherCodeToIcon(todayWeather.code) as any}
+            <IconSymbol
+              name={weatherCodeToIcon(todayWeather.code)}
               size={24}
               color={weatherCodeToColor(todayWeather.code)}
-              style={{ marginRight: 2 }}
+              type="multicolor"
+              style={styles.weatherIcon}
             />
-          ) : (
-            <View style={styles.weatherPlaceholder} />
-          )}
+          ) : null}
           <TouchableOpacity onPress={() => navigateDate('next')} style={styles.navButton}>
              <Ionicons name="chevron-forward" size={24} color={THEME.text} />
           </TouchableOpacity>
@@ -2412,15 +2412,15 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
+  },
+  weatherIcon: {
+    marginRight: 2,
+    transform: [{ translateY: 0 }],
   },
   settingsButton: {
     padding: 4,
-  },
-  weatherPlaceholder: {
-    width: 24,
-    height: 24,
-    marginRight: 2,
   },
   
   // All Day

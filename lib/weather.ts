@@ -1,7 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import {
+  filterWeatherDaysFromToday,
+  isWeatherCacheUsable,
+  pickPreferredCoordinates,
+  type WeatherCacheEntry,
+  type WeatherCoordinates,
+} from './weatherCache';
+import { deriveDailyWeatherFromHourly } from './weatherForecast';
 
-const CACHE_KEY = 'weather_cache_v1';
+export { WEATHER_FALLBACK_SYMBOL, weatherCodeToColor, weatherCodeToIcon, type WeatherSymbolName } from './weatherSymbols';
+export {
+  filterWeatherDaysFromToday,
+  isWeatherCacheUsable,
+  pickPreferredCoordinates,
+  type WeatherCacheEntry,
+  type WeatherCoordinates,
+} from './weatherCache';
+
+const CACHE_KEY = 'weather_cache_v2';
 const CITY_KEY = 'weather_fallback_city_v2'; // stores JSON {name, latitude, longitude}
 
 export type WeatherDay = {
@@ -9,36 +26,7 @@ export type WeatherDay = {
   code: number; // WMO weather code
 };
 
-type WeatherCache = {
-  latitude: number;
-  longitude: number;
-  fetchedAt: number;
-  days: WeatherDay[];
-};
-
-// WMO Weather codes -> Ionicons icon name
-export function weatherCodeToIcon(code: number): string {
-  if (code === 0) return 'sunny';
-  if (code <= 3) return 'partly-sunny';
-  if (code <= 48) return 'cloud';
-  if (code <= 57) return 'rainy';
-  if (code <= 67) return 'rainy';
-  if (code <= 77) return 'snow';
-  if (code <= 82) return 'rainy';
-  if (code >= 95) return 'thunderstorm';
-  return 'cloud';
-}
-
-export function weatherCodeToColor(code: number): string {
-  if (code === 0) return '#FFD700';
-  if (code <= 3) return '#FFA500';
-  if (code <= 48) return '#B0B0B0';
-  if (code <= 67) return '#4A90D9';
-  if (code <= 77) return '#E0E0E0';
-  if (code <= 82) return '#4A90D9';
-  if (code >= 95) return '#8B6CC1';
-  return '#B0B0B0';
-}
+type WeatherCache = WeatherCacheEntry;
 
 // Known cities for fallback (no GPS)
 export const FALLBACK_CITIES: { name: string; latitude: number; longitude: number }[] = [
@@ -101,11 +89,12 @@ export async function clearWeatherCache(): Promise<void> {
 }
 
 async function getCoordinates(): Promise<{ latitude: number; longitude: number } | null> {
-  // Check fallback city first — if user explicitly set one, use it
   const savedCity = await getFallbackCity();
-  if (savedCity) return { latitude: savedCity.latitude, longitude: savedCity.longitude };
+  const fallbackCoordinates = savedCity
+    ? { latitude: savedCity.latitude, longitude: savedCity.longitude }
+    : null;
 
-  // Try GPS
+  // Prefer GPS for the local forecast, then fall back to the saved city.
   try {
     let { status } = await Location.getForegroundPermissionsAsync();
     if (status !== 'granted') {
@@ -114,13 +103,21 @@ async function getCoordinates(): Promise<{ latitude: number; longitude: number }
     }
     if (status === 'granted') {
       const loc = await Location.getLastKnownPositionAsync();
-      if (loc) return { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+      if (loc) {
+        return pickPreferredCoordinates(
+          { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+          fallbackCoordinates,
+        );
+      }
       const fresh = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
-      return { latitude: fresh.coords.latitude, longitude: fresh.coords.longitude };
+      return pickPreferredCoordinates(
+        { latitude: fresh.coords.latitude, longitude: fresh.coords.longitude },
+        fallbackCoordinates,
+      );
     }
   } catch {}
 
-  return null;
+  return fallbackCoordinates;
 }
 
 async function getCachedWeather(): Promise<WeatherCache | null> {
@@ -138,30 +135,31 @@ async function setCachedWeather(cache: WeatherCache): Promise<void> {
 }
 
 export async function fetchWeather(
-  coordsOverride?: { latitude: number; longitude: number }
+  coordsOverride?: WeatherCoordinates
 ): Promise<WeatherDay[] | null> {
-  // Check cache first (valid for 3 hours)
   const cached = await getCachedWeather();
-  if (cached && Date.now() - cached.fetchedAt < 3 * 60 * 60 * 1000) {
-    // Filter out past days (keep today + future)
-    const today = new Date().toISOString().split('T')[0];
-    const validDays = cached.days.filter(d => d.date >= today);
-    if (validDays.length > 0) return validDays;
+  const today = new Date().toISOString().split('T')[0];
+  const coords = coordsOverride ?? (await getCoordinates());
+  const cachedValidDays = cached ? filterWeatherDaysFromToday(cached.days, today) : [];
+
+  if (coords && isWeatherCacheUsable(cached, coords)) {
+    if (cachedValidDays.length > 0) return cachedValidDays;
   }
 
-  const coords = coordsOverride ?? (await getCoordinates());
-  if (!coords) return cached?.days ?? null;
+  if (!coords) {
+    return cachedValidDays.length > 0 ? cachedValidDays : null;
+  }
 
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&daily=weather_code&timezone=Europe%2FZurich&forecast_days=7`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}&hourly=weather_code&timezone=Europe%2FZurich&forecast_days=7`;
     const res = await fetch(url);
-    if (!res.ok) return cached?.days ?? null;
+    if (!res.ok) return cachedValidDays.length > 0 ? cachedValidDays : null;
     const data = await res.json();
 
-    const days: WeatherDay[] = (data.daily?.time ?? []).map((date: string, i: number) => ({
-      date,
-      code: data.daily.weather_code[i],
-    }));
+    const days = deriveDailyWeatherFromHourly(
+      data.hourly?.time ?? [],
+      data.hourly?.weather_code ?? [],
+    );
 
     await setCachedWeather({
       latitude: coords.latitude,
@@ -170,10 +168,8 @@ export async function fetchWeather(
       days,
     });
 
-    // Filter out past days
-    const today = new Date().toISOString().split('T')[0];
-    return days.filter(d => d.date >= today);
+    return filterWeatherDaysFromToday(days, today);
   } catch {
-    return cached?.days ?? null;
+    return cachedValidDays.length > 0 ? cachedValidDays : null;
   }
 }

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { GlassView } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -24,20 +25,22 @@ export default function ShopScreen() {
         
         <View style={styles.content}>
           <View style={styles.optionsContainer}>
-            <TouchableOpacity style={styles.optionButton} activeOpacity={0.8} onPress={() => {}}>
-              <View style={styles.optionContentRow}>
-                <Ionicons
-                  name="time-outline"
-                  size={24}
-                  color="white"
-                  style={{ marginRight: 10 }}
-                />
-                <View>
-                  <Text style={styles.optionText}>other desins coming soon</Text>
-                  <Text style={styles.optionSubText}>Classic design is the only available option for now.</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
+            <View style={styles.optionGroup}>
+              <TouchableOpacity style={styles.optionButton} activeOpacity={0.86} onPress={() => {}}>
+                <GlassView
+                  glassEffectStyle="regular"
+                  colorScheme="dark"
+                  isInteractive
+                  style={styles.optionGlass}
+                >
+                  <Text style={styles.optionText}>Other themes soon</Text>
+                  <View style={styles.optionArrowBubble}>
+                    <Ionicons name="arrow-forward" size={16} color="white" />
+                  </View>
+                </GlassView>
+              </TouchableOpacity>
+              <Text style={styles.optionSubText}>Classic design is the only available option for now.</Text>
+            </View>
           </View>
         </View>
       </SafeAreaView>
@@ -123,32 +126,55 @@ const styles = StyleSheet.create({
   optionsContainer: {
     gap: 16,
     width: '100%',
+    alignItems: 'center',
+  },
+  optionGroup: {
+    alignItems: 'center',
+    gap: 12,
   },
   optionButton: {
-    backgroundColor: 'rgba(30, 30, 30, 0.8)',
-    paddingVertical: 20,
-    paddingHorizontal: 24,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 22,
+    shadowOffset: {
+      width: 0,
+      height: 12,
+    },
   },
-  optionContentRow: {
+  optionGlass: {
+    minHeight: 64,
+    minWidth: 272,
+    paddingVertical: 10,
+    paddingLeft: 20,
+    paddingRight: 12,
+    borderRadius: 999,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    overflow: 'hidden',
+  },
+  optionArrowBubble: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   optionText: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '600',
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
     textAlign: 'center',
+    flexShrink: 1,
   },
   optionSubText: {
-    marginTop: 4,
     color: '#e5e7eb',
     fontSize: 13,
+    textAlign: 'center',
+    maxWidth: 300,
   },
 });

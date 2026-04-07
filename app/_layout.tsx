@@ -1,7 +1,7 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { LogBox, StyleSheet, Text, View } from 'react-native';
+import { Appearance, LogBox, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -14,7 +14,6 @@ import IntroVideo from '@/components/IntroVideo';
 import { BagelFatOne_400Regular, useFonts } from '@expo-google-fonts/bagel-fat-one';
 import { Component, ErrorInfo, ReactNode, useCallback, useEffect, useState } from 'react';
 import * as SystemUI from 'expo-system-ui';
-import { Appearance } from 'react-native';
 import '@/lib/geofenceTask';
 
 // Forza la finestra rootView a nero (impedisce i lampi bianchi)
@@ -81,7 +80,7 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
-  useFonts({
+  const [fontsLoaded] = useFonts({
     BagelFatOne_400Regular,
   });
 
@@ -98,8 +97,8 @@ export default function RootLayout() {
     AsyncStorage.setItem(STORAGE_KEYS.introSeen, 'true').catch(() => {});
   }, []);
 
-  // While checking AsyncStorage, show nothing (black screen matches splash)
-  if (showIntro === null) {
+  // Keep the app on a black boot screen until both storage and the custom font are ready.
+  if (showIntro === null || !fontsLoaded) {
     return <View style={{ flex: 1, backgroundColor: '#000' }} />;
   }
 
