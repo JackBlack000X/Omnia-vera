@@ -11,6 +11,7 @@ import { HabitsProvider } from '@/lib/habits/Provider';
 import { AppThemeProvider } from '@/lib/theme-context';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
 import IntroVideo from '@/components/IntroVideo';
+import WidgetSyncBridge from '@/components/WidgetSyncBridge';
 import { BagelFatOne_400Regular, useFonts } from '@expo-google-fonts/bagel-fat-one';
 import { Component, ErrorInfo, ReactNode, useCallback, useEffect, useState } from 'react';
 import * as SystemUI from 'expo-system-ui';
@@ -115,6 +116,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
       <SafeAreaProvider>
         <HabitsProvider>
+          <WidgetSyncBridge />
           <AppThemeProvider>
             <RootErrorBoundary>
               <RootNavigator />
