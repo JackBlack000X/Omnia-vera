@@ -2425,7 +2425,20 @@ export default function ModalScreen() {
                         <View style={styles.timeControls}>
                           <Text style={styles.timeLabel}>Min</Text>
                           <View style={styles.timeStepperRow}>
-                            <HoldableStepperButton onPress={() => m.updateCurrentStartMin(Math.max(0, m.currentStartMin - 5))}>−</HoldableStepperButton>
+                            <HoldableStepperButton
+                              onPress={() => {
+                                const curS = m.currentStartMin;
+                                const curE = m.currentEndMin ?? curS + 60;
+                                const newS = Math.max(0, curS - 5);
+                                if (curE > curS + 5) {
+                                  m.updateCurrentStartMin(newS);
+                                } else {
+                                  m.updateCurrentTimeRange(newS, curE - 5);
+                                }
+                              }}
+                            >
+                              −
+                            </HoldableStepperButton>
                             <Text style={styles.timeValue}>{m.currentStartMin % 60}</Text>
                             <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
@@ -2480,15 +2493,20 @@ export default function ModalScreen() {
                             <View style={styles.timeControls}>
                               <Text style={styles.timeLabel}>Min</Text>
                               <View style={styles.timeStepperRow}>
-                                <HoldableStepperButton onPress={() => {
-                                  const curS = m.currentStartMin;
-                                  const curE = m.currentEndMin;
-                                  const newEndMin = (curE ?? curS + 60) - 5;
-                                  m.updateCurrentEndMin(newEndMin);
-                                  if (newEndMin < curS + 5) {
-                                    m.updateCurrentStartMin(Math.max(0, curS - (curS + 5 - newEndMin)));
-                                  }
-                                }}>−</HoldableStepperButton>
+                                <HoldableStepperButton
+                                  onPress={() => {
+                                    const curS = m.currentStartMin;
+                                    const curE = m.currentEndMin ?? curS + 60;
+                                    const newE = curE - 5;
+                                    if (newE >= curS + 5) {
+                                      m.updateCurrentEndMin(newE);
+                                    } else {
+                                      m.updateCurrentTimeRange(curS - 5, curE - 5);
+                                    }
+                                  }}
+                                >
+                                  −
+                                </HoldableStepperButton>
                                 <Text style={styles.timeValue}>{((m.currentEndMin ?? (m.currentStartMin + 60)) % 60)}</Text>
                                 <HoldableStepperButton onPress={() => {
                                   const curS = m.currentStartMin;
