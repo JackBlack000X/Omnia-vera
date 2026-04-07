@@ -3,10 +3,10 @@ import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
 import { useAppTheme } from '@/lib/theme-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import LottieView from 'lottie-react-native';
+import React, { useMemo, useState } from 'react';
+import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -17,6 +17,9 @@ const STREAK_VERTICAL_INSET = 0;
 const STREAK_LINE_EXTEND = 8;
 const DAY_BORDER_RADIUS = 8;
 const STREAK_EDGE_CLIP = DAY_BORDER_RADIUS - 1;
+
+/** Riferimento stabile: evita che la nativa riparsifici / resetti la Lottie a ogni re-render. */
+const STREAK_FLAME_LOTTIE_SOURCE = require('@/assets/animations/fire.json');
 
 type CompletionLevel = 'perfect' | 'good' | 'medium' | 'low';
 
@@ -38,85 +41,20 @@ function getCompletionStyle(level: CompletionLevel, isPast: boolean): { backgrou
   }
 }
 
-function AnimatedStreakFlame() {
-  const scale = useRef(new Animated.Value(1)).current;
-  const scaleY = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(1)).current;
-  const glowOpacity = useRef(new Animated.Value(0.6)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const rotate = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const flicker = () =>
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(scale, { toValue: 1.12, duration: 120, useNativeDriver: true }),
-          Animated.timing(scaleY, { toValue: 1.08, duration: 120, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 0.92, duration: 120, useNativeDriver: true }),
-          Animated.timing(glowOpacity, { toValue: 0.85, duration: 120, useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: -3, duration: 120, useNativeDriver: true }),
-          Animated.timing(rotate, { toValue: 1, duration: 120, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.timing(scale, { toValue: 0.96, duration: 100, useNativeDriver: true }),
-          Animated.timing(scaleY, { toValue: 1.05, duration: 100, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
-          Animated.timing(glowOpacity, { toValue: 0.5, duration: 100, useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: 1, duration: 100, useNativeDriver: true }),
-          Animated.timing(rotate, { toValue: 0, duration: 100, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.timing(scale, { toValue: 1.18, duration: 180, useNativeDriver: true }),
-          Animated.timing(scaleY, { toValue: 0.95, duration: 180, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 0.88, duration: 180, useNativeDriver: true }),
-          Animated.timing(glowOpacity, { toValue: 0.9, duration: 180, useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: -2, duration: 180, useNativeDriver: true }),
-          Animated.timing(rotate, { toValue: 1, duration: 180, useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.timing(scale, { toValue: 1, duration: 220, useNativeDriver: true }),
-          Animated.timing(scaleY, { toValue: 1, duration: 220, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-          Animated.timing(glowOpacity, { toValue: 0.6, duration: 220, useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: 0, duration: 220, useNativeDriver: true }),
-          Animated.timing(rotate, { toValue: 0, duration: 220, useNativeDriver: true }),
-        ]),
-      ]);
-
-    const loop = Animated.loop(flicker(), { iterations: -1 });
-    loop.start();
-    return () => loop.stop();
-  }, [scale, scaleY, opacity, glowOpacity, translateY, rotate]);
-
-  const rotateDeg = rotate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '5deg'],
-  });
-
+const StreakFlameLottie = React.memo(function StreakFlameLottie() {
   return (
-    <Animated.View
-      style={[
-        styles.streakFlameWrap,
-        {
-          transform: [
-            { scaleX: scale },
-            { scaleY },
-            { translateY },
-            { rotate: rotateDeg },
-          ],
-          opacity,
-        },
-      ]}
-    >
-      <Animated.View style={[styles.streakFlameGlow, { opacity: glowOpacity }]} pointerEvents="none">
-        <Ionicons name="flame" size={36} color="#fbbf24" />
-      </Animated.View>
-      <View style={styles.streakFlameCore}>
-        <Ionicons name="flame" size={28} color="#f59e0b" />
-      </View>
-    </Animated.View>
+    <View style={styles.streakFlameWrap} pointerEvents="none" collapsable={false}>
+      <LottieView
+        source={STREAK_FLAME_LOTTIE_SOURCE}
+        loop
+        autoPlay
+        resizeMode="contain"
+        renderMode="SOFTWARE"
+        style={styles.streakFlameLottie}
+      />
+    </View>
   );
-}
+});
 
 type MonthData = { year: number; month: number; date: Date; numWeeks: number };
 
@@ -503,7 +441,7 @@ export default function CalendarScreen() {
             <View style={styles.streakBadge}>
               <Text style={styles.streakValue}>{currentPerfectStreak}</Text>
               <View style={styles.streakFlameSpacer} />
-              <AnimatedStreakFlame />
+              <StreakFlameLottie />
             </View>
             {activeTheme === 'futuristic' && (
               <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
@@ -627,20 +565,18 @@ const styles = StyleSheet.create({
     width: 0,
   },
   streakFlameWrap: {
-    width: 38,
-    height: 38,
+    width: 26.4,
+    height: 26.4,
+    marginTop: 0,
+    marginLeft: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
+    overflow: 'hidden',
   },
-  streakFlameGlow: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  streakFlameCore: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  streakFlameLottie: {
+    width: 24.2,
+    height: 30.8,
+    marginTop: -5,
   },
   streakValue: {
     color: '#FFD700',
