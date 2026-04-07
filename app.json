@@ -62,9 +62,23 @@
           "locationWhenInUsePermission": "Tothemoon usa la tua posizione per mostrarti funzioni extra legate ai luoghi mentre utilizzi l’app."
         }
       ],
+      [
+        "rn-group-preferences",
+        {
+          "appGroup": "group.com.jackblack000x.habitchecknative"
+        }
+      ],
+      [
+        "react-native-widget-extension",
+        {
+          "widgetsFolder": "widgets/TothemoonWidgets",
+          "groupIdentifier": "group.com.jackblack000x.habitchecknative"
+        }
+      ],
       "@react-native-community/datetimepicker",
       "expo-web-browser",
       "./plugins/with-tothemoon-action-button",
+      "./plugins/with-tothemoon-widget-center",
       "./plugins/with-ios-26-fmt-fix",
       "expo-video"
     ],

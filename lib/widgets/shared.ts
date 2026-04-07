@@ -1,0 +1,9 @@
+export const WIDGET_APP_GROUP = 'group.com.jackblack000x.habitchecknative';
+export const TODAY_WIDGET_KIND = 'TodayWidget';
+export const STREAK_WIDGET_KIND = 'StreakWidget';
+export const NEXT_TASK_WIDGET_KIND = 'NextTaskWidget';
+export const TODAY_WIDGET_SNAPSHOT_KEY = 'tothemoon_widget_today_snapshot_v1';
+export const STREAK_WIDGET_SNAPSHOT_KEY = 'tothemoon_widget_streak_snapshot_v1';
+export const NEXT_TASK_WIDGET_SNAPSHOT_KEY = 'tothemoon_widget_next_task_snapshot_v1';
+export const WIDGET_COMMAND_QUEUE_KEY = 'tothemoon_widget_command_queue_v1';
+export const WIDGET_DEEPLINK_PREFIX = 'habitchecknative://';
