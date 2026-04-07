@@ -26,13 +26,16 @@ export function getMonthYear(date: Date, tz = TZ): { year: number; month: number
   }
 }
 
-export function getMonthName(month: number, tz = TZ): string {
+export function getMonthName(month: number, tz = TZ, localeTag = 'en-US'): string {
   try {
     const d = new Date(2024, month - 1, 1);
-    return new Intl.DateTimeFormat('it-IT', { timeZone: tz, month: 'long' }).format(d);
+    return new Intl.DateTimeFormat(localeTag, { timeZone: tz, month: 'long' }).format(d);
   } catch {
-    const names = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
-    return names[month - 1] ?? 'Mese';
+    const names = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    return names[month - 1] ?? 'Month';
   }
 }
 

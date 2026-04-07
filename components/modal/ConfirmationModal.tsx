@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Text, TouchableOpacity, View } from 'react-native';
 
 // Simple full-screen confirmation modal
@@ -17,6 +18,7 @@ export function ConfirmationModal({
   onCancel: () => void;
   isDark: boolean;
 }) {
+  const { t } = useTranslation();
   if (!visible) return null;
 
   return (
@@ -87,7 +89,7 @@ export function ConfirmationModal({
               color: isDark ? '#9ca3af' : '#6b7280',
               textAlign: 'center',
             }}>
-              Annulla
+              {t('confirmation.cancel')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -106,7 +108,7 @@ export function ConfirmationModal({
               color: '#ffffff',
               textAlign: 'center',
             }}>
-              Conferma
+              {t('confirmation.confirm')}
             </Text>
           </TouchableOpacity>
         </View>

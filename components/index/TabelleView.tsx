@@ -5,6 +5,7 @@ import { Kalam_400Regular, Kalam_700Bold, useFonts } from '@expo-google-fonts/ka
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import React, { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Animated,
@@ -199,6 +200,7 @@ function CreateModal({ visible, onClose, onCreate }: {
   onClose: () => void;
   onCreate: (name: string, color: string, cols: number, rows: number) => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName]   = useState('');
   const [cols, setCols]   = useState(4);
   const [rows, setRows]   = useState(5);
@@ -215,18 +217,18 @@ function CreateModal({ visible, onClose, onCreate }: {
           <View style={cm.sheet}>
             <View style={cm.handle} />
             <View style={cm.hdr}>
-              <TouchableOpacity onPress={close}><Text style={cm.cancel}>Annulla</Text></TouchableOpacity>
-              <Text style={cm.title}>Nuova tabella</Text>
+              <TouchableOpacity onPress={close}><Text style={cm.cancel}>{t('common.cancel')}</Text></TouchableOpacity>
+              <Text style={cm.title}>{t('tablesUi.newTableTitle')}</Text>
               <TouchableOpacity disabled={!canCreate} onPress={() => { if (canCreate) { onCreate(name.trim(), accent, cols, rows); reset(); onClose(); } }}>
-                <Text style={[cm.done, !canCreate && { opacity: 0.3 }]}>Crea</Text>
+                <Text style={[cm.done, !canCreate && { opacity: 0.3 }]}>{t('tablesUi.create')}</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 32 }}>
-              <Text style={cm.label}>NOME</Text>
-              <TextInput style={cm.input} value={name} onChangeText={setName} placeholder="Es. Budget mensile" placeholderTextColor={C.textMuted} maxLength={60} autoFocus />
+              <Text style={cm.label}>{t('tablesUi.nameLabel')}</Text>
+              <TextInput style={cm.input} value={name} onChangeText={setName} placeholder={t('tablesUi.namePh')} placeholderTextColor={C.textMuted} maxLength={60} autoFocus />
 
-              <Text style={cm.label}>COLORE</Text>
+              <Text style={cm.label}>{t('tablesUi.colorLabel')}</Text>
               <View style={cm.colors}>
                 {ACCENT_COLORS.map(c => (
                   <TouchableOpacity key={c} onPress={() => setAccent(c)}>
@@ -235,10 +237,10 @@ function CreateModal({ visible, onClose, onCreate }: {
                 ))}
               </View>
 
-              <Text style={cm.label}>DIMENSIONE</Text>
+              <Text style={cm.label}>{t('tablesUi.sizeLabel')}</Text>
               <View style={cm.sizeRow}>
                 <View style={cm.sizeItem}>
-                  <Text style={cm.sizeLabel}>Colonne</Text>
+                  <Text style={cm.sizeLabel}>{t('tablesUi.columns')}</Text>
                   <View style={cm.sizeStepper}>
                     <TouchableOpacity onPress={() => setCols(c => Math.max(1, c - 1))} style={cm.stepBtn}><Text style={cm.stepTxt}>−</Text></TouchableOpacity>
                     <Text style={cm.sizeVal}>{cols}</Text>
@@ -246,7 +248,7 @@ function CreateModal({ visible, onClose, onCreate }: {
                   </View>
                 </View>
                 <View style={cm.sizeItem}>
-                  <Text style={cm.sizeLabel}>Righe</Text>
+                  <Text style={cm.sizeLabel}>{t('tablesUi.rowsLabel')}</Text>
                   <View style={cm.sizeStepper}>
                     <TouchableOpacity onPress={() => setRows(r => Math.max(1, r - 1))} style={cm.stepBtn}><Text style={cm.stepTxt}>−</Text></TouchableOpacity>
                     <Text style={cm.sizeVal}>{rows}</Text>
@@ -291,6 +293,7 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
   onUpdate: (patch: Partial<UserTable>) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const accent = table.color;
   const [fontsLoaded] = useFonts({
     Kalam_400Regular,
@@ -579,7 +582,7 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
         <View style={sv.topBar}>
           <TouchableOpacity style={sv.backBtn} onPress={() => { commitEdit(); onClose(); }}>
             <Ionicons name="chevron-back" size={22} color={accent} />
-            <Text style={[sv.backTxt, sketchRowTitle, { color: accent }]}>Tabelle</Text>
+            <Text style={[sv.backTxt, sketchRowTitle, { color: accent }]}>{t('tablesUi.back')}</Text>
           </TouchableOpacity>
           <Text style={[sv.topTitle, sketchColTitle]} numberOfLines={1}>{table.name}</Text>
           <TouchableOpacity
@@ -587,19 +590,21 @@ function SpreadsheetView({ table, onUpdate, onClose }: {
             onPress={() => {
               if (!selected) return;
               Alert.alert(
-                selected.area === 'body' ? 'Elimina riga' : 'Opzioni',
-                selected.area === 'body' ? `Eliminare la riga ${selected.row + 1}?` : 'Cosa vuoi fare?',
+                selected.area === 'body' ? t('tablesUi.deleteRowTitle') : t('tablesUi.selectionTitle'),
+                selected.area === 'body'
+                  ? t('tablesUi.deleteRowMessage', { n: selected.row + 1 })
+                  : t('tablesUi.selectionMessage'),
                 selected.area === 'body'
                   ? [
-                      { text: 'Annulla', style: 'cancel' },
-                      { text: 'Elimina riga', style: 'destructive', onPress: () => {
+                      { text: t('common.cancel'), style: 'cancel' },
+                      { text: t('tablesUi.deleteRowConfirm'), style: 'destructive', onPress: () => {
                           const nextHCols = headerCols.filter((_, i) => i !== selected.row);
                           const nextCells = cells.filter((_, i) => i !== selected.row);
                           setHeaderCols(nextHCols); setCells(nextCells);
                           save(headerRows, nextHCols, nextCells); setSelected(null);
                       }},
                     ]
-                  : [{ text: 'OK', style: 'cancel' }]
+                  : [{ text: t('common.ok'), style: 'cancel' }]
               );
             }}
             disabled={!selected}
@@ -867,29 +872,36 @@ const sv = StyleSheet.create({
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 export default function TabelleView() {
+  const { t } = useTranslation();
   const { tables, addTable, updateTable, deleteTable } = useHabits();
   const [showCreate, setShowCreate] = useState(false);
   const [openTable, setOpenTable]   = useState<UserTable | null>(null);
 
-  const handleDelete = (t: UserTable) =>
-    Alert.alert('Elimina tabella', `Eliminare "${t.name}"?`, [
-      { text: 'Annulla', style: 'cancel' },
-      { text: 'Elimina', style: 'destructive', onPress: () => deleteTable(t.id) },
+  const handleDelete = (table: UserTable) =>
+    Alert.alert(t('index.tableDeleteTitle'), t('index.tableDeleteMessage', { name: table.name }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.delete'), style: 'destructive', onPress: () => deleteTable(table.id) },
     ]);
 
   return (
     <View style={mv.container}>
       <View style={mv.toolbar}>
-        <Text style={mv.toolbarSub}>{tables.length > 0 ? `${tables.length} tabella${tables.length !== 1 ? 'e' : ''}` : ''}</Text>
+        <Text style={mv.toolbarSub}>
+          {tables.length > 0
+            ? tables.length === 1
+              ? t('tablesUi.countOne')
+              : t('tablesUi.countMany', { count: tables.length })
+            : ''}
+        </Text>
       </View>
 
       {tables.length === 0 ? (
         <View style={mv.empty}>
           <View style={mv.emptyIcon}><Ionicons name="grid-outline" size={44} color="rgba(255,255,255,0.22)" /></View>
-          <Text style={mv.emptyTitle}>Nessuna tabella</Text>
-          <Text style={mv.emptyHint}>Tocca + per creare la tua prima tabella</Text>
+          <Text style={mv.emptyTitle}>{t('tablesUi.emptyTitle')}</Text>
+          <Text style={mv.emptyHint}>{t('tablesUi.emptyHint')}</Text>
           <TouchableOpacity style={mv.emptyBtn} onPress={() => setShowCreate(true)}>
-            <Text style={mv.emptyBtnTxt}>Crea tabella</Text>
+            <Text style={mv.emptyBtnTxt}>{t('tablesUi.createTable')}</Text>
           </TouchableOpacity>
         </View>
       ) : (

@@ -9,9 +9,11 @@ import { getFallbackCity } from '@/lib/weather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, ScrollView } from 'react-native';
 
 export function useModalLogic(params: { type: string; id?: string; folder?: string; ymd?: string; scrollRef: React.RefObject<ScrollView | null> }) {
+  const { t } = useTranslation();
   const { type, id, folder, ymd, scrollRef } = params;
   const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
   const router = useRouter();
@@ -131,15 +133,15 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
   const showNativeMergeAlert = useCallback((onConfirm: () => void) => {
     Alert.alert(
-      'Combina con task esistente?',
-      'Esiste una task con stesso nome e colore. Vuoi combinarle?',
+      t('modalLogic.mergeTitle'),
+      t('modalLogic.mergeMessage'),
       [
-        { text: 'Annulla', style: 'destructive' },
-        { text: 'Conferma', onPress: onConfirm },
+        { text: t('modalLogic.mergeCancel'), style: 'destructive' },
+        { text: t('modalLogic.mergeConfirm'), onPress: onConfirm },
       ],
       { cancelable: true },
     );
-  }, []);
+  }, [t]);
 
   const setHealthMetricWithDefaults = useCallback((nextMetric: HealthMetric) => {
     const option = HEALTH_HABIT_OPTIONS.find((entry) => entry.metric === nextMetric);
@@ -1161,18 +1163,23 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   }, [monthDays]);
 
   function toggleDow(d: number) {
-    const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
     const isAdding = !daysOfWeek.includes(d);
 
     if (isAdding) {
       // Adding a day - clear monthly days
       if (monthDays.length > 0) {
         const sortedMonthDays = [...monthDays].sort((a, b) => a - b);
-        const monthlyDaysText = sortedMonthDays.length === 1 ? `giorno ${sortedMonthDays[0]}` : `giorni ${sortedMonthDays.join(', ')}`;
+        const monthlyDaysText =
+          sortedMonthDays.length === 1
+            ? t('modalLogic.monthlyDayOne', { day: sortedMonthDays[0] })
+            : t('modalLogic.monthlyDayMany', { days: sortedMonthDays.join(', ') });
         setConfirmationModal({
           visible: true,
-          title: 'Conferma cancellazione',
-          message: `Selezionando ${dayNames[d]} cancellerai i ${monthlyDaysText} del mese. Sei sicuro?`,
+          title: t('modalLogic.confirmClearTitle'),
+          message: t('modalLogic.confirmDowMessage', {
+            day: t(`weekdaysFull.${d}` as const),
+            monthly: monthlyDaysText,
+          }),
           onConfirm: () => {
             setDaysOfWeek(prev => {
               const next = sortDow([...prev, d]);
@@ -1236,13 +1243,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (isAdding) {
       // Adding a day - clear weekly days
       if (daysOfWeek.length > 0) {
-        const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
         const sortedWeekDays = [...daysOfWeek].sort((a, b) => a - b);
-        const weeklyDaysText = sortedWeekDays.map(day => dayNames[day]).join(', ');
+        const weeklyDaysText = sortedWeekDays.map((day) => t(`weekdaysFull.${day}` as const)).join(', ');
         setConfirmationModal({
           visible: true,
-          title: 'Conferma cancellazione',
-          message: `Selezionando il giorno ${d} cancellerai i giorni ${weeklyDaysText}. Sei sicuro?`,
+          title: t('modalLogic.confirmClearTitle'),
+          message: t('modalLogic.confirmMonthMessage', { day: d, weekly: weeklyDaysText }),
           onConfirm: () => {
             setMonthDays(prev => [...prev, d].sort((a, b) => a - b));
             setDaysOfWeek([]);
@@ -1292,8 +1298,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (mode === 'timed' && newMode === 'allDay') {
       setConfirmationModal({
         visible: true,
-        title: 'Conferma cancellazione',
-        message: 'Passando a "Tutto il giorno" cancellerai tutti gli orari specifici. Sei sicuro?',
+        title: t('modalLogic.confirmClearTitle'),
+        message: t('modalLogic.allDayClearMessage'),
         onConfirm: () => {
           // Clear all time-related data
           setStartMin(8 * 60); // Reset to default 8:00
@@ -1362,21 +1368,44 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (currentFreqHasSelection && newFreqNeedsSelection && freq !== newFreq) {
       let message = '';
       if (freq === 'weekly' && hasWeeklyDays) {
-        const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-        const weeklyDaysText = [...daysOfWeek].sort((a, b) => a - b).map(day => dayNames[day]).join(', ');
-        message = `Cambiando a ${newFreq === 'monthly' ? 'mensile' : newFreq === 'annual' ? 'annuale' : 'singola'} cancellerai i giorni ${weeklyDaysText}. Sei sicuro?`;
+        const weeklyDaysText = [...daysOfWeek].sort((a, b) => a - b).map((day) => t(`weekdaysFull.${day}` as const)).join(', ');
+        const target =
+          newFreq === 'monthly'
+            ? t('modalLogic.freqLabelMonthly')
+            : newFreq === 'annual'
+              ? t('modalLogic.freqLabelAnnual')
+              : t('modalLogic.freqLabelSingle');
+        message = t('modalLogic.freqFromWeekly', { target, days: weeklyDaysText });
       } else if (freq === 'monthly' && hasMonthlyDays) {
         const monthlyDaysText = [...monthDays].sort((a, b) => a - b).join(', ');
-        message = `Cambiando a ${newFreq === 'weekly' ? 'settimanale' : newFreq === 'annual' ? 'annuale' : 'singola'} cancellerai i giorni ${monthlyDaysText}. Sei sicuro?`;
+        const target =
+          newFreq === 'weekly'
+            ? t('modalLogic.freqLabelWeekly')
+            : newFreq === 'annual'
+              ? t('modalLogic.freqLabelAnnual')
+              : t('modalLogic.freqLabelSingle');
+        message = t('modalLogic.freqFromMonthly', { target, days: monthlyDaysText });
       } else if (freq === 'annual' && hasAnnualDate) {
-        message = `Cambiando a ${newFreq === 'weekly' ? 'settimanale' : newFreq === 'monthly' ? 'mensile' : 'singola'} cancellerai la data annuale. Sei sicuro?`;
+        const target =
+          newFreq === 'weekly'
+            ? t('modalLogic.freqLabelWeekly')
+            : newFreq === 'monthly'
+              ? t('modalLogic.freqLabelMonthly')
+              : t('modalLogic.freqLabelSingle');
+        message = t('modalLogic.freqFromAnnual', { target });
       } else if (freq === 'single' && hasSingleDate) {
-        message = `Cambiando a ${newFreq === 'weekly' ? 'settimanale' : newFreq === 'monthly' ? 'mensile' : 'annuale'} cancellerai la data specifica. Sei sicuro?`;
+        const target =
+          newFreq === 'weekly'
+            ? t('modalLogic.freqLabelWeekly')
+            : newFreq === 'monthly'
+              ? t('modalLogic.freqLabelMonthly')
+              : t('modalLogic.freqLabelAnnual');
+        message = t('modalLogic.freqFromSingle', { target });
       }
 
       setConfirmationModal({
         visible: true,
-        title: 'Conferma cancellazione',
+        title: t('modalLogic.confirmClearTitle'),
         message: message,
         onConfirm: () => {
           // Clear previous selections
@@ -1403,7 +1432,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const executeSave = (skipDuplicateCheck = false) => {
     const healthOption = tipo === 'salute' ? getHealthHabitOption(healthMetric) : null;
     if (tipo === 'salute' && !healthOption) {
-      Alert.alert('Seleziona una metrica', 'Scegli prima una metrica Apple Salute da collegare.');
+      Alert.alert(t('modalLogic.healthPickMetricTitle'), t('modalLogic.healthPickMetricMessage'));
       return;
     }
 
@@ -1428,14 +1457,14 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       );
       if (duplicate) {
         const interval = end ? `${start}-${end}` : start;
-        const fallbackTitle = trimmedTitle.length > 0 ? trimmedTitle : 'Task senza nome';
+        const fallbackTitle = trimmedTitle.length > 0 ? trimmedTitle : t('search.noTitle');
         const duplicateTitle = duplicate.habit.text?.trim().length
           ? duplicate.habit.text
           : fallbackTitle;
         setConfirmationModal({
           visible: true,
-          title: 'Task già esistente',
-          message: `Esiste già "${duplicateTitle}" con orario ${interval}. Vuoi crearla comunque?`,
+          title: t('modalLogic.duplicateSlotTitle'),
+          message: t('modalLogic.duplicateSlotMessage', { title: duplicateTitle, interval }),
           onConfirm: () => {
             setConfirmationModal((prev) => ({ ...prev, visible: false }));
             executeSave(true);
@@ -1486,12 +1515,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         };
 
         if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
-          Alert.alert('Intervallo non valido', 'La fine della vacanza deve essere dopo l’inizio.');
+          Alert.alert(t('modalLogic.vacationInvalidRangeTitle'), t('modalLogic.vacationInvalidRangeMessage'));
           return;
         }
 
         if (notificationForVacation.enabled && (!notificationForVacation.customDate || !notificationForVacation.customTime)) {
-          Alert.alert('Notifica incompleta', 'Per una vacanza scegli sia il giorno sia l’orario della notifica.');
+          Alert.alert(t('modalLogic.vacationNotifIncompleteTitle'), t('modalLogic.vacationNotifIncompleteMessage'));
           return;
         }
 
@@ -1548,10 +1577,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         if (mode === 'timed' && occNForVal > 1) {
           const gap = Math.max(5, Math.floor(occurrenceGapMinutes));
           if (!occurrenceChainFitsLogicalDay(dayResetTime, startMin, occNForVal, gap)) {
-            Alert.alert(
-              'Oltre la giornata',
-              'Con queste ripetizioni e questo distacco, l’ultima occorrenza andrebbe oltre la fine della giornata logica. Riduci le volte, aumenta il distacco o cambia l’orario di inizio.',
-            );
+            Alert.alert(t('modalLogic.occurrenceBeyondDayTitle'), t('modalLogic.occurrenceBeyondDayMessage'));
             return;
           }
         }

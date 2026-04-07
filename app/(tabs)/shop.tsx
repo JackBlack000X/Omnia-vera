@@ -2,17 +2,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { GlassView } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ShopScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
 
   return (
     <View style={styles.background}>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Shop</Text>
+          <Text style={styles.title}>{t('shop.title')}</Text>
           <View style={styles.headerRight}>
             <TouchableOpacity 
               onPress={() => router.push('/profile')}
@@ -33,13 +35,13 @@ export default function ShopScreen() {
                   isInteractive
                   style={styles.optionGlass}
                 >
-                  <Text style={styles.optionText}>Other themes soon</Text>
+                  <Text style={styles.optionText}>{t('shop.themesSoon')}</Text>
                   <View style={styles.optionArrowBubble}>
                     <Ionicons name="arrow-forward" size={16} color="white" />
                   </View>
                 </GlassView>
               </TouchableOpacity>
-              <Text style={styles.optionSubText}>Classic design is the only available option for now.</Text>
+              <Text style={styles.optionSubText}>{t('shop.themesSub')}</Text>
             </View>
           </View>
         </View>

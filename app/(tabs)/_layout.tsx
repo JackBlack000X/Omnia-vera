@@ -1,7 +1,9 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export default function TabLayout() {
+  const { t } = useTranslation();
   const nativeTabContentStyle = { backgroundColor: '#000' } as const;
   const nativeTabsHostProps = {
     nativeContainerStyle: { backgroundColor: 'transparent' },
@@ -19,22 +21,22 @@ export default function TabLayout() {
     >
       <NativeTabs.Trigger name="index" contentStyle={nativeTabContentStyle}>
         <NativeTabs.Trigger.Icon sf={{ default: 'list.bullet', selected: 'list.bullet' }} />
-        <NativeTabs.Trigger.Label>Attivita</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t('tabs.activities')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger
         name="oggi"
         contentStyle={nativeTabContentStyle}
       >
         <NativeTabs.Trigger.Icon sf={{ default: 'sun.max', selected: 'sun.max.fill' }} />
-        <NativeTabs.Trigger.Label>Oggi</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t('tabs.today')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="calendar" contentStyle={nativeTabContentStyle}>
         <NativeTabs.Trigger.Icon sf={{ default: 'calendar', selected: 'calendar' }} />
-        <NativeTabs.Trigger.Label>Calendario</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t('tabs.calendar')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="shop" contentStyle={nativeTabContentStyle}>
         <NativeTabs.Trigger.Icon sf={{ default: 'bag', selected: 'bag.fill' }} />
-        <NativeTabs.Trigger.Label>Negozio</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{t('tabs.shop')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger
         name="search"

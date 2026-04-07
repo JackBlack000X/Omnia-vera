@@ -1,15 +1,15 @@
 import { styles as indexStyles } from '@/components/index/indexStyles';
 import { THEME } from '@/constants/theme';
+import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { useHabits } from '@/lib/habits/Provider';
 import { isHabitFullyDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import { HabitItem } from '@/components/HabitItem';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { Stack, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActionSheetIOS, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 type SortMode = 'app' | 'alphabetical' | 'color' | 'recent';
 type StatusFilter = 'all' | 'open' | 'completed';
@@ -20,32 +20,12 @@ type SearchResult = {
   score: number;
 };
 
-const weekdayLabels = ['Domenica', 'Lunedi', 'Martedi', 'Mercoledi', 'Giovedi', 'Venerdi', 'Sabato'] as const;
-
-const sortLabels: Record<SortMode, string> = {
-  app: 'Ordine app',
-  alphabetical: 'Alfabetico',
-  color: 'Per colore',
-  recent: 'Piu recenti',
-};
-
-const statusLabels: Record<StatusFilter, string> = {
-  all: 'Tutte',
-  open: 'Aperte',
-  completed: 'Completate',
-};
-
 function normalizeSearchText(value: string) {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
-}
-
-function getHabitDisplayTitle(habit: Habit) {
-  const title = habit.text?.trim();
-  return title && title.length > 0 ? title : 'Senza titolo';
 }
 
 function getCreatedAtRank(habit: Habit) {
@@ -57,32 +37,41 @@ function getCreatedAtRank(habit: Habit) {
   return 0;
 }
 
-function getTimeLabel(habit: Habit) {
-  const start = habit.schedule?.time;
-  const end = habit.schedule?.endTime;
-  if (start && end) return `${start} - ${end}`;
-  if (start) return start;
-  return habit.habitFreq === 'single' ? 'Singola' : 'Senza orario';
-}
-
-function getScheduleLabel(habit: Habit) {
-  const days = habit.schedule?.daysOfWeek ?? [];
-  if (days.length > 0) return days.map((day) => weekdayLabels[day]).join(', ');
-  if (habit.habitFreq === 'daily') return 'Ogni giorno';
-  if (habit.habitFreq === 'weekly') return 'Settimanale';
-  if (habit.habitFreq === 'monthly') return 'Mensile';
-  if (habit.habitFreq === 'annual') return 'Annuale';
-  return habit.tipo === 'abitudine' ? 'Abitudine' : 'Task';
-}
-
-import { useIsFocused } from '@react-navigation/native';
-
 export default function SearchScreen() {
+  const { t } = useTranslation();
+  const fmt = useFormatLocale();
   const router = useRouter();
   const { habits, history, getDay } = useHabits();
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('app');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
+  const sortLabels = useMemo(
+    (): Record<SortMode, string> => ({
+      app: t('search.sortApp'),
+      alphabetical: t('search.sortAlpha'),
+      color: t('search.sortColor'),
+      recent: t('search.sortRecent'),
+    }),
+    [t],
+  );
+
+  const statusLabels = useMemo(
+    (): Record<StatusFilter, string> => ({
+      all: t('search.statusAll'),
+      open: t('search.statusOpen'),
+      completed: t('search.statusDone'),
+    }),
+    [t],
+  );
+
+  const getHabitDisplayTitle = useCallback(
+    (habit: Habit) => {
+      const title = habit.text?.trim();
+      return title && title.length > 0 ? title : t('search.noTitle');
+    },
+    [t],
+  );
 
   const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
   const logicalTodayHistory = history[logicalTodayYmd];
@@ -92,36 +81,36 @@ export default function SearchScreen() {
     const options: StatusFilter[] = ['all', 'open', 'completed'];
     ActionSheetIOS.showActionSheetWithOptions(
       {
-        title: 'Filtra per stato',
-        options: [...options.map((option) => statusLabels[option]), 'Annulla'],
+        title: t('search.filterStatusTitle'),
+        options: [...options.map((option) => statusLabels[option]), t('common.cancel')],
         cancelButtonIndex: options.length,
       },
       (buttonIndex) => {
         if (buttonIndex < options.length) setStatusFilter(options[buttonIndex]);
       },
     );
-  }, []);
+  }, [statusLabels, t]);
 
   const openSortPicker = useCallback(() => {
     const options: SortMode[] = ['app', 'alphabetical', 'color', 'recent'];
     ActionSheetIOS.showActionSheetWithOptions(
       {
-        title: 'Ordina risultati',
-        options: [...options.map((option) => sortLabels[option]), 'Annulla'],
+        title: t('search.sortTitle'),
+        options: [...options.map((option) => sortLabels[option]), t('common.cancel')],
         cancelButtonIndex: options.length,
       },
       (buttonIndex) => {
         if (buttonIndex < options.length) setSortMode(options[buttonIndex]);
       },
     );
-  }, []);
+  }, [sortLabels, t]);
 
   const openFilterMenu = useCallback(() => {
     ActionSheetIOS.showActionSheetWithOptions(
       {
-        title: 'Filtri Cerca',
+        title: t('search.filtersTitle'),
         message: `${sortLabels[sortMode]} • ${statusLabels[statusFilter]}`,
-        options: ['Ordina risultati', 'Filtra per stato', 'Annulla'],
+        options: [t('search.sortOption'), t('search.filterOption'), t('common.cancel')],
         cancelButtonIndex: 2,
       },
       (buttonIndex) => {
@@ -129,7 +118,7 @@ export default function SearchScreen() {
         if (buttonIndex === 1) openStatusPicker();
       },
     );
-  }, [openSortPicker, openStatusPicker, sortMode, statusFilter]);
+  }, [openSortPicker, openStatusPicker, sortMode, statusFilter, sortLabels, statusLabels, t]);
 
   const results = useMemo(() => {
     return habits
@@ -161,35 +150,35 @@ export default function SearchScreen() {
 
         switch (sortMode) {
           case 'alphabetical':
-            return leftTitle.localeCompare(rightTitle, 'it');
+            return leftTitle.localeCompare(rightTitle, fmt);
           case 'color': {
             const leftColor = left.habit.color ?? '';
             const rightColor = right.habit.color ?? '';
-            const byColor = leftColor.localeCompare(rightColor, 'it');
+            const byColor = leftColor.localeCompare(rightColor, fmt);
             if (byColor !== 0) return byColor;
-            return leftTitle.localeCompare(rightTitle, 'it');
+            return leftTitle.localeCompare(rightTitle, fmt);
           }
           case 'recent': {
             const byRecent = getCreatedAtRank(right.habit) - getCreatedAtRank(left.habit);
             if (byRecent !== 0) return byRecent;
-            return leftTitle.localeCompare(rightTitle, 'it');
+            return leftTitle.localeCompare(rightTitle, fmt);
           }
           case 'app':
           default: {
             const leftOrder = left.habit.order ?? 0;
             const rightOrder = right.habit.order ?? 0;
             if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-            return leftTitle.localeCompare(rightTitle, 'it');
+            return leftTitle.localeCompare(rightTitle, fmt);
           }
         }
       });
-  }, [habits, logicalTodayHistory, normalizedQuery, sortMode, statusFilter]);
+  }, [habits, logicalTodayHistory, normalizedQuery, sortMode, statusFilter, getHabitDisplayTitle, fmt]);
 
   return (
     <>
       <Stack.Screen
         options={{
-          title: 'Cerca',
+          title: t('search.title'),
           headerLargeTitle: true,
           headerTitleStyle: { color: THEME.text },
           headerLargeTitleStyle: {
@@ -214,7 +203,7 @@ export default function SearchScreen() {
             </Pressable>
           ),
           headerSearchBarOptions: {
-            placeholder: 'Cerca task e abitudini...',
+            placeholder: t('search.placeholder'),
             hideNavigationBar: false,
             hideWhenScrolling: false,
             textColor: THEME.text,
@@ -235,7 +224,7 @@ export default function SearchScreen() {
           <View style={styles.toolbarRow}>
             <View style={styles.toolbarLeft}>
               <Text style={styles.resultCount}>
-                {results.length === 1 ? '1 risultato' : `${results.length} risultati`}
+                {results.length === 1 ? t('search.resultOne') : t('search.resultMany', { count: results.length })}
               </Text>
             </View>
           </View>
@@ -276,9 +265,9 @@ export default function SearchScreen() {
           ) : (
             <View style={styles.emptyState}>
               <Ionicons name="search-outline" size={28} color="#64748b" />
-              <Text style={styles.emptyTitle}>Nessun risultato</Text>
+              <Text style={styles.emptyTitle}>{t('search.emptyTitle')}</Text>
               <Text style={styles.emptyText}>
-                Prova un altro nome oppure cambia ordinamento o stato dal pulsante filtro.
+                {t('search.emptyHint')}
               </Text>
             </View>
           )}

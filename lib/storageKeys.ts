@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   shopCoinsSpent: 'tothemoon_shop_coins_spent_v1',
   shopFuturisticUnlocked: 'tothemoon_shop_futuristic_unlocked_v1',
   introSeen: 'tothemoon_intro_seen_v1',
+  appLocale: 'tothemoon_app_locale_v1',
 } as const;
 
 export const LEGACY_STORAGE_KEYS = {

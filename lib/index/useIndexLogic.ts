@@ -2,6 +2,7 @@ import { useHabits } from '@/lib/habits/Provider';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
+import i18n from '@/lib/i18n/i18n';
 import {
     DOMANI_TOMORROW_KEY,
     FOLDER_COLORS,
@@ -523,11 +524,23 @@ export function useIndexLogic() {
 
   const handleMoveToFolder = useCallback((habit: Habit) => {
     const options = [
-      { text: 'Tutte (nessuna cartella)', onPress: () => { updateHabitFolder(habit.id, undefined); setClosingMenuId(habit.id); } },
-      ...folders.map(f => ({ text: typeof f.name === 'string' ? f.name : String(f.name ?? ''), onPress: () => { updateHabitFolder(habit.id, f.name); setClosingMenuId(habit.id); } })),
-      { text: 'Annulla', style: 'cancel' as const }
+      {
+        text: i18n.t('index.moveToFolderAllOption'),
+        onPress: () => {
+          updateHabitFolder(habit.id, undefined);
+          setClosingMenuId(habit.id);
+        },
+      },
+      ...folders.map(f => ({
+        text: typeof f.name === 'string' ? f.name : String(f.name ?? ''),
+        onPress: () => {
+          updateHabitFolder(habit.id, f.name);
+          setClosingMenuId(habit.id);
+        },
+      })),
+      { text: i18n.t('common.cancel'), style: 'cancel' as const },
     ];
-    Alert.alert('Sposta in cartella', `Dove vuoi spostare "${habit.text}"?`, options);
+    Alert.alert(i18n.t('index.moveToFolderTitle'), i18n.t('index.moveToFolderMessage', { name: habit.text }), options);
   }, [folders, updateHabitFolder]);
 
   const handleMenuOpen = useCallback((h: Habit) => {
@@ -1364,16 +1377,22 @@ export function useIndexLogic() {
 
       if (actualTarget) {
         const sourceTasks = (draggedItem as FolderBlockItem).tasks;
-        const sourceLabel = typeof (draggedItem as FolderBlockItem).folderName === 'string' ? (draggedItem as FolderBlockItem).folderName : 'Tutte';
-        const targetLabel = typeof actualTarget.folderName === 'string' ? actualTarget.folderName : 'Tutte';
+        const allLabel = i18n.t('common.tutte');
+        const sourceLabel =
+          typeof (draggedItem as FolderBlockItem).folderName === 'string'
+            ? (draggedItem as FolderBlockItem).folderName
+            : allLabel;
+        const targetLabel = typeof actualTarget.folderName === 'string' ? actualTarget.folderName : allLabel;
 
         if (sourceTasks.length > 0) {
           Alert.alert(
-            'Aggiungi task',
-            `Vuoi aggiungere le task di "${sourceLabel}" in "${targetLabel}"?`,
+            i18n.t('index.mergeFolderTasksTitle'),
+            i18n.t('index.mergeFolderTasksMessage', { source: sourceLabel, target: targetLabel }),
             [
               {
-                text: 'No', style: 'cancel', onPress: () => {
+                text: i18n.t('common.no'),
+                style: 'cancel',
+                onPress: () => {
                   if (from !== to) {
                     applyFolderReorder(data);
                     return;
@@ -1386,7 +1405,8 @@ export function useIndexLogic() {
                 }
               },
               {
-                text: 'Sì', onPress: () => {
+                text: i18n.t('common.yes'),
+                onPress: () => {
                   const sourceFolderName = (draggedItem as FolderBlockItem).folderName;
                   const targetFolderName = actualTarget!.folderName;
                   const sourceFolderDef = typeof sourceFolderName === 'string'

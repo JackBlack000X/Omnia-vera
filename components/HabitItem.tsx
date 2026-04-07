@@ -3,12 +3,14 @@ import { canUseHealthKit, getHealthSnapshotAsync, type HealthSnapshot } from '@/
 import { getHealthHabitOption } from '@/lib/healthHabits';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import { isTravelLikeTipo, type Habit } from '@/lib/habits/schema';
+import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
@@ -185,6 +187,9 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
 }
 
 export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, completionMode = 'day', completionDate, onToggleDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onLongPress, dragBadgeCount, onMenuOpen, onMenuClose, onSmartTaskCompleted }: Props) {
+  const { t } = useTranslation();
+  const fmt = useFormatLocale();
+  const allDayLabel = t('modal.allDay');
   const { activeTheme } = useAppTheme();
   const { toggleDone, removeHabit, getDay, history } = useHabits();
   const swipeableRef = useRef<Swipeable>(null);
@@ -296,7 +301,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
       if (startNorm && endNorm) return `${startNorm} - ${endNorm}`;
       if (startNorm) return startNorm;
       if (endNorm) return `- ${endNorm}`;
-      return 'Tutto il giorno';
+      return allDayLabel;
     };
 
     const getEffectiveWeeklyRange = (day: number) => {
@@ -308,7 +313,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
     if (weeklyDays.length > 1) {
       const ranges = weeklyDays.map(getEffectiveWeeklyRange);
       if (ranges.every((range) => range === ranges[0])) return ranges[0];
-      return 'Diversi orari';
+      return t('habitItem.variedTimes');
     }
 
     const monthDays = schedule.monthDays ?? [];
@@ -318,7 +323,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
         return buildRange(entry?.start ?? schedule.time, entry?.end ?? schedule.endTime);
       });
       if (ranges.every((range) => range === ranges[0])) return ranges[0];
-      return 'Diversi orari';
+      return t('habitItem.variedTimes');
     }
 
     return null;
@@ -343,13 +348,13 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
     const startNorm = formatDisplayTime(startRaw);
     const endNorm = formatDisplayTime(endRaw);
 
-    if (isAllDayMarker || habit.isAllDay) return 'Tutto il giorno';
+    if (isAllDayMarker || habit.isAllDay) return allDayLabel;
     if (uniformRange) return uniformRange;
-    if (!startRaw && !endNorm) return 'Tutto il giorno';
+    if (!startRaw && !endNorm) return allDayLabel;
     if (startNorm && endNorm) return `${startNorm} - ${endNorm}`;
     if (startNorm) return startNorm;
     if (endNorm) return `- ${endNorm}`;
-    return 'Tutto il giorno';
+    return allDayLabel;
   };
 
   const isSingle = habit.habitFreq === 'single' || (
@@ -364,46 +369,42 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
   const getFrequencyText = () => {
     if (habit.smartTask) {
       const intervalDays = Math.max(1, Math.round(habit.smartTask.intervalDays || 1));
-      return intervalDays === 1 ? 'Smart ogni giorno' : `Smart ogni ${intervalDays} giorni`;
+      return intervalDays === 1 ? t('habitItem.smartEveryDay') : t('habitItem.smartEveryNDays', { count: intervalDays });
     }
 
-    if (isSingle) return 'Singola';
+    if (isSingle) return t('search.singleOccurrence');
 
-    if (!habit.schedule) return 'Ogni giorno';
+    if (!habit.schedule) return t('search.everyDay');
 
     const { daysOfWeek, monthDays, yearMonth, yearDay } = habit.schedule;
     if (yearMonth && yearDay) {
-      return `Annuale ${String(yearDay)} / ${String(yearMonth)}`;
+      return t('habitItem.annualFmt', { day: String(yearDay), month: String(yearMonth) });
     }
 
     // Check if it's monthly
     if (monthDays && monthDays.length > 0) {
       if (monthDays.length === 1) {
-        return `Giorno ${monthDays[0]}`;
+        return t('habitItem.monthSingle', { day: monthDays[0] });
       }
       const sortedDays = [...monthDays].sort((a, b) => a - b);
-      return `Giorni ${sortedDays.join(', ')}`;
+      return t('habitItem.monthMany', { days: sortedDays.join(', ') });
     }
 
     // Weekly logic
-    if (daysOfWeek.length === 0) return 'Ogni giorno';
-    if (daysOfWeek.length === 7) return 'Ogni giorno';
-
-    // daysOfWeek uses 0 = Domenica ... 6 = Sabato
-    const dayNames = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    if (daysOfWeek.length === 0) return t('search.everyDay');
+    if (daysOfWeek.length === 7) return t('search.everyDay');
 
     if (daysOfWeek.length === 1) {
-      return dayNames[daysOfWeek[0]];
+      return t(`weekdaysFull.${daysOfWeek[0]}` as const);
     }
 
-    // For multiple days, show the specific day names
-    const selectedDays = daysOfWeek.map(dayIndex => dayNames[dayIndex]);
+    const selectedDays = daysOfWeek.map((dayIndex) => t(`weekdaysFull.${dayIndex}` as const));
     return selectedDays.join(', ');
   };
 
   const timeText = getTimeText();
   const frequencyText = getFrequencyText();
-  const displayTitle = isVacation ? 'Vacanza' : (isHealthHabit ? (healthOption?.label ?? habit.text) : habit.text);
+  const displayTitle = isVacation ? t('modal.tipoVacation') : (isHealthHabit ? (healthOption?.label ?? habit.text) : habit.text);
   const displaySubtext = isVacation ? vacationPeriod : timeText;
   const displayFrequency = isVacation ? null : frequencyText;
   const healthMetricValue = (() => {
@@ -435,13 +436,13 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
       return `${hours}h ${String(minutes).padStart(2, '0')}m`;
     }
     if (habit.health.metric === 'steps') {
-      return Math.round(healthMetricValue).toLocaleString('it-IT');
+      return Math.round(healthMetricValue).toLocaleString(fmt);
     }
     if (habit.health.metric === 'distance') {
-      return `${Number(healthMetricValue).toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+      return `${Number(healthMetricValue).toLocaleString(fmt, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${t('common.km')}`;
     }
     if (habit.health.metric === 'activeEnergy') {
-      return `${Math.round(healthMetricValue).toLocaleString('it-IT')} kcal`;
+      return `${Math.round(healthMetricValue).toLocaleString(fmt)} ${t('modal.kcalLabel')}`;
     }
     return null;
   })();
@@ -496,7 +497,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
     (!multiOccSegments && !isFullyCompletedInView) ||
     (multiOccSegments && isFullyCompletedInView)
   );
-  const shouldCenterContent = timeText === 'Tutto il giorno' && !shouldShowFrequency;
+  const shouldCenterContent = timeText === allDayLabel && !shouldShowFrequency;
   const activeBadges = [
     habit.askReview
       ? { key: 'review', icon: 'star', color: '#facc15' }
@@ -703,7 +704,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
             </View>
           </View>
         )}
-        {displaySubtext && displaySubtext !== 'Tutto il giorno' && (
+        {displaySubtext && displaySubtext !== allDayLabel && (
           <Text
             style={[
               styles.habitSubtext,

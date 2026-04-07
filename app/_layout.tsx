@@ -8,6 +8,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { HabitsProvider } from '@/lib/habits/Provider';
+import { LocaleProvider } from '@/lib/i18n/LocaleProvider';
+import i18n from '@/lib/i18n/i18n';
 import { AppThemeProvider } from '@/lib/theme-context';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
 import IntroVideo from '@/components/IntroVideo';
@@ -56,8 +58,8 @@ class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErrorBound
     if (this.state.error) {
       return (
         <View style={styles.errorScreen}>
-          <Text style={styles.errorTitle}>Errore avvio app</Text>
-          <Text style={styles.errorMessage}>{this.state.error.message || 'Errore sconosciuto'}</Text>
+          <Text style={styles.errorTitle}>{i18n.t('errors.bootTitle')}</Text>
+          <Text style={styles.errorMessage}>{this.state.error.message || i18n.t('errors.bootUnknown')}</Text>
         </View>
       );
     }
@@ -107,13 +109,16 @@ export default function RootLayout() {
   if (showIntro) {
     return (
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
-        <IntroVideo onDone={handleIntroDone} />
+        <LocaleProvider>
+          <IntroVideo onDone={handleIntroDone} />
+        </LocaleProvider>
       </GestureHandlerRootView>
     );
   }
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
+      <LocaleProvider>
       <SafeAreaProvider>
         <HabitsProvider>
           <WidgetSyncBridge />
@@ -124,6 +129,7 @@ export default function RootLayout() {
           </AppThemeProvider>
         </HabitsProvider>
       </SafeAreaProvider>
+      </LocaleProvider>
     </GestureHandlerRootView>
   );
 }

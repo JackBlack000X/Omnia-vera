@@ -1,3 +1,4 @@
+import i18n from '@/lib/i18n/i18n';
 import { canAskLocationPermission, getLocationPermissionStatusAsync, startGeofencingForRegions, stopGeofencingAsync } from '@/lib/location';
 import { loadPlaces } from '@/lib/places';
 import { getItemWithLegacy, LEGACY_STORAGE_KEYS, STORAGE_KEYS } from '@/lib/storageKeys';
@@ -509,11 +510,11 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         console.error('Failed to load data:', error);
         if (Platform.OS !== 'web') {
           Alert.alert(
-            'Errore caricamento dati',
-            'I dati potrebbero essere corrotti. Vuoi reimpostare l\'archivio?',
+            i18n.t('errors.loadDataTitle'),
+            i18n.t('errors.loadDataMessage'),
             [
-              { text: 'Annulla', style: 'cancel' },
-              { text: 'Reimposta', onPress: () => resetStorage() }
+              { text: i18n.t('common.cancel'), style: 'cancel' },
+              { text: i18n.t('errors.reset'), onPress: () => resetStorage() }
             ]
           );
         }
@@ -534,12 +535,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         if (Platform.OS === 'web') return;
 
         Alert.alert(
-          'Spazio insufficiente',
-          'Il salvataggio non riesce perché lo storage è pieno. Vuoi reimpostare l\'archivio (perdere i dati locali)?',
+          i18n.t('errors.outOfSpaceTitle'),
+          i18n.t('errors.outOfSpaceMessage'),
           [
-            { text: 'Annulla', style: 'cancel' },
+            { text: i18n.t('common.cancel'), style: 'cancel' },
             {
-              text: 'Reimposta',
+              text: i18n.t('errors.reset'),
               style: 'destructive',
               onPress: () => {
                 void (async () => {
@@ -574,12 +575,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         if (Platform.OS === 'web') return;
 
         Alert.alert(
-          'Spazio insufficiente',
-          'Il salvataggio non riesce perché lo storage è pieno. Vuoi reimpostare l\'archivio (perdere i dati locali)?',
+          i18n.t('errors.outOfSpaceTitle'),
+          i18n.t('errors.outOfSpaceMessage'),
           [
-            { text: 'Annulla', style: 'cancel' },
+            { text: i18n.t('common.cancel'), style: 'cancel' },
             {
-              text: 'Reimposta',
+              text: i18n.t('errors.reset'),
               style: 'destructive',
               onPress: () => {
                 void (async () => {
@@ -1302,7 +1303,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Failed to reset storage:', error);
       if (Platform.OS !== 'web') {
-        Alert.alert('Errore', 'Impossibile reimpostare l\'archivio');
+        Alert.alert(i18n.t('errors.resetFailedTitle'), i18n.t('errors.resetFailedMessage'));
       }
     }
   }, []);

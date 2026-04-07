@@ -3,6 +3,7 @@ import { ConfirmationModal } from '@/components/modal/ConfirmationModal';
 import { styles, COLORS } from '@/components/modal/modalStyles';
 import { canUseHealthKit, getHealthConnectionStateAsync, requestHealthAuthorizationAsync, type HealthConnectionInfo } from '@/lib/health';
 import { getHealthHabitOption, HEALTH_HABIT_OPTIONS } from '@/lib/healthHabits';
+import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { useModalLogic } from '@/lib/modal/useModalLogic';
 import { formatDuration } from '@/lib/modal/helpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +15,7 @@ import type { NotificationConfig } from '@/lib/habits/schema';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Switch, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -148,6 +150,8 @@ function NotificationCustomPicker({
   notification: NotificationConfig;
   setNotification: (n: NotificationConfig) => void;
 }) {
+  const { t } = useTranslation();
+  const fmt = useFormatLocale();
   const [showTime, setShowTime] = useState(false);
   const [showDate, setShowDate] = useState(false);
 
@@ -168,13 +172,13 @@ function NotificationCustomPicker({
     return new Date();
   })();
 
-  const formatTime = (t: string | null | undefined) =>
-    t ? t : 'Imposta orario';
+  const formatTime = (time: string | null | undefined) =>
+    time ? time : t('modal.setTime');
 
   const formatDate = (d: string | null | undefined) => {
-    if (!d) return 'Qualsiasi giorno';
+    if (!d) return t('modal.anyDay');
     const dt = new Date(d);
-    return dt.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+    return dt.toLocaleDateString(fmt, { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   return (
@@ -183,7 +187,7 @@ function NotificationCustomPicker({
         onPress={() => { setShowTime(v => !v); setShowDate(false); }}
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}
       >
-        <Text style={{ color: '#94a3b8', fontSize: 15 }}>Orario</Text>
+        <Text style={{ color: '#94a3b8', fontSize: 15 }}>{t('modal.notifTime')}</Text>
         <Text style={{ color: notification.customTime ? 'white' : '#475569', fontSize: 15, fontWeight: '600' }}>
           {formatTime(notification.customTime)}
         </Text>
@@ -210,7 +214,7 @@ function NotificationCustomPicker({
         onPress={() => { setShowDate(v => !v); setShowTime(false); }}
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}
       >
-        <Text style={{ color: '#94a3b8', fontSize: 15 }}>Giorno</Text>
+        <Text style={{ color: '#94a3b8', fontSize: 15 }}>{t('modal.notifDay')}</Text>
         <Text style={{ color: notification.customDate ? 'white' : '#475569', fontSize: 15, fontWeight: '600' }}>
           {formatDate(notification.customDate)}
         </Text>
@@ -239,7 +243,7 @@ function NotificationCustomPicker({
             onPress={() => { setNotification({ ...notification, customDate: null }); setShowDate(false); }}
             style={{ alignItems: 'center', paddingVertical: 10 }}
           >
-            <Text style={{ color: '#ec4899', fontSize: 14 }}>Rimuovi giorno</Text>
+            <Text style={{ color: '#ec4899', fontSize: 14 }}>{t('modal.removeDay')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -342,12 +346,14 @@ function RepeatEndCustomPicker({
   value: string | null;
   onChange: (d: string | null) => void;
 }) {
+  const { t } = useTranslation();
+  const fmt = useFormatLocale();
   const [showPicker, setShowPicker] = useState(false);
 
   const formatDate = (d: string | null | undefined) => {
-    if (!d) return 'Scegli data';
+    if (!d) return t('modal.pickDate');
     const dt = new Date(d);
-    return dt.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+    return dt.toLocaleDateString(fmt, { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   const dateDate = (() => {
@@ -362,7 +368,7 @@ function RepeatEndCustomPicker({
         onPress={() => setShowPicker(v => !v)}
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }}
       >
-        <Text style={{ color: '#94a3b8', fontSize: 15 }}>Data fine</Text>
+        <Text style={{ color: '#94a3b8', fontSize: 15 }}>{t('modal.endDate')}</Text>
         <Text style={{ color: value ? 'white' : '#475569', fontSize: 15, fontWeight: '600' }}>
           {formatDate(value)}
         </Text>
@@ -396,6 +402,8 @@ function RepeatEndCustomPicker({
 
 // Modal multipurpose: type=new|rename|schedule|color
 export default function ModalScreen() {
+  const { t } = useTranslation();
+  const fmt = useFormatLocale();
   const { width } = useWindowDimensions();
   const useCompactWeekdays = width <= 395;
   const { type = 'new', id, folder, ymd } = useLocalSearchParams<{ type?: string; id?: string; folder?: string; ymd?: string }>();
@@ -619,7 +627,15 @@ export default function ModalScreen() {
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}>
           <View style={styles.box}>
           <Text style={styles.title}>
-            {type === 'new' ? 'Aggiungi' : type === 'rename' ? 'Rinomina Task' : type === 'schedule' ? 'Programma Abitudine' : type === 'edit' ? 'Modifica Task' : 'Scegli Colore'}
+            {type === 'new'
+              ? t('modal.titleNew')
+              : type === 'rename'
+                ? t('modal.titleRename')
+                : type === 'schedule'
+                  ? t('modal.titleSchedule')
+                  : type === 'edit'
+                    ? t('modal.titleEdit')
+                    : t('modal.titleColor')}
           </Text>
 
           {(type === 'new' || type === 'rename' || type === 'edit') && !((m.tipo === 'viaggio' || m.tipo === 'salute' || m.tipo === 'vacanza') && (type === 'new' || type === 'edit')) && (
@@ -627,7 +643,7 @@ export default function ModalScreen() {
               value={m.text}
               onChangeText={(v) => v.length <= 100 && m.setText(v)}
               onSubmitEditing={m.save}
-              placeholder="Nome"
+              placeholder={t('modal.placeholderName')}
               placeholderTextColor="#64748b"
               style={styles.input}
             />
@@ -635,49 +651,49 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Tipo</Text>
+              <Text style={styles.sectionTitle}>{t('modal.sectionType')}</Text>
               <View style={[styles.row, { marginTop: 8 }]}>
-                {(['task', 'abitudine', 'evento', 'viaggio'] as const).map(t => (
+                {(['task', 'abitudine', 'evento', 'viaggio'] as const).map((tipoOpt) => (
                   <TouchableOpacity
-                    key={t}
-                    onPress={() => m.setTipo(t)}
-                    style={[styles.chip, m.tipo === t ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                    key={tipoOpt}
+                    onPress={() => m.setTipo(tipoOpt)}
+                    style={[styles.chip, m.tipo === tipoOpt ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
                   >
-                    <Text style={m.tipo === t ? styles.chipActiveText : styles.chipGhostText}>
-                      {t === 'task'
-                        ? 'Task'
-                        : t === 'abitudine'
-                        ? 'Abitudine'
-                        : t === 'evento'
-                        ? 'Evento'
-                        : 'Viaggio'}
+                    <Text style={m.tipo === tipoOpt ? styles.chipActiveText : styles.chipGhostText}>
+                      {tipoOpt === 'task'
+                        ? t('modal.tipoTask')
+                        : tipoOpt === 'abitudine'
+                        ? t('modal.tipoHabit')
+                        : tipoOpt === 'evento'
+                        ? t('modal.tipoEvent')
+                        : t('modal.tipoTravel')}
                   </Text>
                   </TouchableOpacity>
                 ))}
               </View>
               <View style={[styles.row, { marginTop: 8 }]}>
-                {(['vacanza', 'avviso'] as const).map(t => (
+                {(['vacanza', 'avviso'] as const).map((tipoOpt) => (
                   <TouchableOpacity
-                    key={t}
+                    key={tipoOpt}
                     onPress={() => {
-                      if (!healthFeatureEnabled && t === 'salute' && m.tipo !== 'salute') return;
-                      m.setTipo(t);
+                      if (!healthFeatureEnabled && tipoOpt === 'salute' && m.tipo !== 'salute') return;
+                      m.setTipo(tipoOpt);
                     }}
                     style={[
                       styles.chip,
-                      m.tipo === t ? styles.chipActive : styles.chipGhost,
+                      m.tipo === tipoOpt ? styles.chipActive : styles.chipGhost,
                       { paddingHorizontal: 16, paddingVertical: 8 },
                     ]}
                   >
-                    <Text style={m.tipo === t ? styles.chipActiveText : styles.chipGhostText}>
-                      {t === 'vacanza' ? 'Vacanza' : 'Avviso'}
+                    <Text style={m.tipo === tipoOpt ? styles.chipActiveText : styles.chipGhostText}>
+                      {tipoOpt === 'vacanza' ? t('modal.tipoVacation') : t('modal.tipoReminder')}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
               {!healthFeatureEnabled && (
                 <Text style={[styles.subtle, { marginTop: 10 }]}>
-                  Apple Salute e temporaneamente disattivato in questa build.
+                  {t('modal.healthDisabledBuild')}
                 </Text>
               )}
             </View>
@@ -685,12 +701,12 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && m.tipo === 'salute' && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Metrica salute</Text>
+              <Text style={styles.sectionTitle}>{t('modal.sectionHealthMetric')}</Text>
               {healthConnection.state !== 'ready' && healthOptionsToShow.length === 0 ? (
                 <View style={{ marginTop: 10, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: '#334155', backgroundColor: '#0f172a', gap: 10 }}>
-                  <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>Collega Apple Salute per scegliere una metrica</Text>
+                  <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>{t('modal.healthConnectTitle')}</Text>
                   <Text style={{ color: '#94a3b8', fontSize: 13, lineHeight: 18 }}>
-                    Tothemoon può usare Passi, Km, Calorie e Sonno. Appena dai il permesso, qui sopra compaiono le opzioni.
+                    {t('modal.healthConnectSub')}
                   </Text>
                   <TouchableOpacity
                     onPress={async () => {
@@ -699,10 +715,10 @@ export default function ModalScreen() {
                         const granted = await requestHealthAuthorizationAsync();
                         await refreshHealthConnection();
                         if (!granted) {
-                          Alert.alert('Permesso non concesso', 'Per creare una task Salute devi autorizzare Apple Salute.');
+                          Alert.alert(t('modal.healthPermissionTitle'), t('modal.healthPermissionBody'));
                         }
                       } catch {
-                        Alert.alert('Errore Apple Salute', 'Non sono riuscito a collegare Apple Salute in questo momento.');
+                        Alert.alert(t('modal.healthErrorTitle'), t('modal.healthErrorBody'));
                       } finally {
                         setHealthConnecting(false);
                       }
@@ -710,7 +726,7 @@ export default function ModalScreen() {
                     style={[styles.chip, styles.chipActive, { alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 10, opacity: healthConnecting ? 0.6 : 1 }]}
                     disabled={healthConnecting}
                   >
-                    <Text style={styles.chipActiveText}>{healthConnecting ? 'Collego...' : 'Collega Apple Salute'}</Text>
+                    <Text style={styles.chipActiveText}>{healthConnecting ? t('modal.healthConnecting') : t('modal.healthConnectCta')}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -764,11 +780,11 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && m.tipo === 'salute' && m.healthMetric === 'sleep' && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Obiettivo sonno</Text>
-              <Text style={styles.subtle}>Quante ore vuoi dormire per considerare completato l’obiettivo.</Text>
+              <Text style={styles.sectionTitle}>{t('modal.sectionSleepGoal')}</Text>
+              <Text style={styles.subtle}>{t('modal.sleepGoalSub')}</Text>
               <View style={[styles.timePicker, { marginTop: 8 }]}>
                 <View style={[styles.timeControls, { flex: 0, minWidth: 180 }]}>
-                  <Text style={styles.timeLabel}>Ore</Text>
+                  <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                   <View style={styles.timeStepperRow}>
                     <HoldableStepperButton onPress={() => m.setHealthGoalHours((prev: number) => Math.max(1, prev - 1))}>−</HoldableStepperButton>
                     <Text style={styles.timeValue}>{m.healthGoalHours}</Text>
@@ -781,14 +797,14 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && m.tipo === 'salute' && m.healthMetric === 'steps' && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Obiettivo passi</Text>
-              <Text style={styles.subtle}>Target giornaliero di passi.</Text>
+              <Text style={styles.sectionTitle}>{t('modal.sectionStepsGoal')}</Text>
+              <Text style={styles.subtle}>{t('modal.stepsGoalSub')}</Text>
               <View style={[styles.timePicker, { marginTop: 8 }]}>
                 <View style={[styles.timeControls, { flex: 0, minWidth: 220 }]}>
-                  <Text style={styles.timeLabel}>Passi</Text>
+                  <Text style={styles.timeLabel}>{t('modal.stepsLabel')}</Text>
                   <View style={styles.timeStepperRow}>
                     <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.max(1000, prev - 1000))}>−</HoldableStepperButton>
-                    <Text style={styles.timeValue}>{Math.round(m.healthGoalValue).toLocaleString('it-IT')}</Text>
+                    <Text style={styles.timeValue}>{Math.round(m.healthGoalValue).toLocaleString(fmt)}</Text>
                     <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.min(50000, prev + 1000))}>+</HoldableStepperButton>
                   </View>
                 </View>
@@ -798,14 +814,14 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && m.tipo === 'salute' && m.healthMetric === 'distance' && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Obiettivo km</Text>
-              <Text style={styles.subtle}>Target giornaliero di distanza camminata o corsa.</Text>
+              <Text style={styles.sectionTitle}>{t('modal.sectionKmGoal')}</Text>
+              <Text style={styles.subtle}>{t('modal.kmGoalSub')}</Text>
               <View style={[styles.timePicker, { marginTop: 8 }]}>
                 <View style={[styles.timeControls, { flex: 0, minWidth: 200 }]}>
-                  <Text style={styles.timeLabel}>Km</Text>
+                  <Text style={styles.timeLabel}>{t('modal.kmLabel')}</Text>
                   <View style={styles.timeStepperRow}>
                     <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.max(0.5, Math.round((prev - 0.5) * 10) / 10))}>−</HoldableStepperButton>
-                    <Text style={styles.timeValue}>{m.healthGoalValue.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</Text>
+                    <Text style={styles.timeValue}>{m.healthGoalValue.toLocaleString(fmt, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</Text>
                     <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.min(100, Math.round((prev + 0.5) * 10) / 10))}>+</HoldableStepperButton>
                   </View>
                 </View>
@@ -815,14 +831,14 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && m.tipo === 'salute' && m.healthMetric === 'activeEnergy' && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Obiettivo calorie</Text>
-              <Text style={styles.subtle}>Target giornaliero di calorie attive.</Text>
+              <Text style={styles.sectionTitle}>{t('modal.sectionKcalGoal')}</Text>
+              <Text style={styles.subtle}>{t('modal.kcalGoalSub')}</Text>
               <View style={[styles.timePicker, { marginTop: 8 }]}>
                 <View style={[styles.timeControls, { flex: 0, minWidth: 220 }]}>
-                  <Text style={styles.timeLabel}>Kcal</Text>
+                  <Text style={styles.timeLabel}>{t('modal.kcalLabel')}</Text>
                   <View style={styles.timeStepperRow}>
                     <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.max(50, prev - 50))}>−</HoldableStepperButton>
-                    <Text style={styles.timeValue}>{Math.round(m.healthGoalValue).toLocaleString('it-IT')}</Text>
+                    <Text style={styles.timeValue}>{Math.round(m.healthGoalValue).toLocaleString(fmt)}</Text>
                     <HoldableStepperButton onPress={() => m.setHealthGoalValue((prev: number) => Math.min(5000, prev + 50))}>+</HoldableStepperButton>
                   </View>
                 </View>
@@ -832,13 +848,13 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Cartella</Text>
+              <Text style={styles.sectionTitle}>{t('modal.sectionFolder')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
                 <TouchableOpacity
                   onPress={() => m.setSelectedFolder(null)}
                   style={[styles.chip, m.selectedFolder === null ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
                 >
-                  <Text style={m.selectedFolder === null ? styles.chipActiveText : styles.chipGhostText}>Tutte</Text>
+                  <Text style={m.selectedFolder === null ? styles.chipActiveText : styles.chipGhostText}>{t('common.tutte')}</Text>
                 </TouchableOpacity>
                 {m.availableFolders.map(folderName => (
                   <TouchableOpacity
@@ -862,7 +878,7 @@ export default function ModalScreen() {
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'vacanza' && m.tipo !== 'salute' && (
             <View style={styles.colorBottom}>
               <View style={[styles.sectionHeader, { marginTop: 12 }]}>
-                <Text style={styles.sectionTitle}>Colore</Text>
+                <Text style={styles.sectionTitle}>{t('modal.sectionColor')}</Text>
               </View>
               <View style={styles.colorSheet}>
                 <View style={styles.colorsRowWrap}>
@@ -877,11 +893,11 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'vacanza' && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Label</Text>
+              <Text style={styles.sectionTitle}>{t('modal.sectionLabel')}</Text>
               <TextInput
                 value={m.labelInput}
                 onChangeText={m.setLabelInput}
-                placeholder="Aggiungi etichetta..."
+                placeholder={t('modal.labelPlaceholder')}
                 placeholderTextColor="#64748b"
                 style={[styles.input, { marginTop: 8 }]}
               />
@@ -923,7 +939,7 @@ export default function ModalScreen() {
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                   <TouchableOpacity onPress={() => { if (m.notification.enabled) setNotifOpen(v => !v); }} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={styles.sectionTitle}>Notifiche</Text>
+                    <Text style={styles.sectionTitle}>{t('modal.sectionNotifications')}</Text>
                     {m.notification.enabled && (
                       <View style={{ marginLeft: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Ionicons name={notifOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
@@ -955,9 +971,9 @@ export default function ModalScreen() {
                   {m.tipo === 'vacanza' ? (
                     <>
                       <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-                        <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>Notifica con giorno specifico e orario</Text>
+                        <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>{t('modal.vacationNotifTitle')}</Text>
                         <Text style={{ color: '#94a3b8', fontSize: 13, marginTop: 4, marginBottom: 8 }}>
-                          Per le vacanze usiamo solo una notifica personalizzata.
+                          {t('modal.vacationNotifSub')}
                         </Text>
                       </View>
                       <NotificationCustomPicker
@@ -968,20 +984,20 @@ export default function ModalScreen() {
                   ) : m.tipo === 'avviso' ? (
                     <>
                       <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#1e293b' }}>
-                        <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>Notifiche sempre attive</Text>
+                        <Text style={{ color: '#e2e8f0', fontSize: 15, fontWeight: '600' }}>{t('modal.reminderNotifTitle')}</Text>
                         <Text style={{ color: '#94a3b8', fontSize: 13, marginTop: 4, lineHeight: 18 }}>
-                          Un avviso usa sempre una notifica e non si può disattivare.
+                          {t('modal.reminderNotifSub')}
                         </Text>
                       </View>
                       {([
-                        { label: 'Al momento dell\'evento', value: 0 },
-                        { label: '5 minuti prima', value: 5 },
-                        { label: '10 minuti prima', value: 10 },
-                        { label: '15 minuti prima', value: 15 },
-                        { label: '30 minuti prima', value: 30 },
-                        { label: '1 ora prima', value: 60 },
-                        { label: '2 ore prima', value: 120 },
-                        { label: 'Orario personalizzato', value: null },
+                        { label: t('modal.notifAtEvent'), value: 0 },
+                        { label: t('modal.notif5'), value: 5 },
+                        { label: t('modal.notif10'), value: 10 },
+                        { label: t('modal.notif15'), value: 15 },
+                        { label: t('modal.notif30'), value: 30 },
+                        { label: t('modal.notif60'), value: 60 },
+                        { label: t('modal.notif120'), value: 120 },
+                        { label: t('modal.notifCustomTime'), value: null },
                       ] as { label: string; value: number | null }[]).map((opt, idx, arr) => {
                         const isSelected = m.notification.minutesBefore === opt.value;
                         return (
@@ -1002,14 +1018,14 @@ export default function ModalScreen() {
                   ) : (
                     <>
                       {([
-                        { label: 'Al momento dell\'evento', value: 0 },
-                        { label: '5 minuti prima', value: 5 },
-                        { label: '10 minuti prima', value: 10 },
-                        { label: '15 minuti prima', value: 15 },
-                        { label: '30 minuti prima', value: 30 },
-                        { label: '1 ora prima', value: 60 },
-                        { label: '2 ore prima', value: 120 },
-                        { label: 'Orario personalizzato', value: null },
+                        { label: t('modal.notifAtEvent'), value: 0 },
+                        { label: t('modal.notif5'), value: 5 },
+                        { label: t('modal.notif10'), value: 10 },
+                        { label: t('modal.notif15'), value: 15 },
+                        { label: t('modal.notif30'), value: 30 },
+                        { label: t('modal.notif60'), value: 60 },
+                        { label: t('modal.notif120'), value: 120 },
+                        { label: t('modal.notifCustomTime'), value: null },
                       ] as { label: string; value: number | null }[]).map((opt, idx, arr) => {
                         const isSelected = m.notification.minutesBefore === opt.value;
                         return (
@@ -1037,13 +1053,13 @@ export default function ModalScreen() {
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <View style={{ flex: 1, paddingRight: 12, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.sectionTitle}>Smart task</Text>
+                  <Text style={styles.sectionTitle}>{t('modal.sectionSmartTask')}</Text>
                   <TouchableOpacity
                     onPress={() =>
                       Alert.alert(
-                        'Smart task',
-                        'Quando la attivi, dopo che la task viene fatta oppure passa senza essere fatta ti chiedo se era troppo presto, giusta cosi o troppo tardi. Se alla prossima occorrenza e giusta, la calibrazione si spegne da sola.',
-                        [{ text: 'OK', style: 'default', isPreferred: true }],
+                        t('modal.smartTaskInfoTitle'),
+                        t('modal.smartTaskInfoMessage'),
+                        [{ text: t('common.ok'), style: 'default', isPreferred: true }],
                       )
                     }
                     style={{
@@ -1075,13 +1091,13 @@ export default function ModalScreen() {
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <View style={{ flex: 1, paddingRight: 12, flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.sectionTitle}>Sospendi in viaggio</Text>
+                  <Text style={styles.sectionTitle}>{t('modal.sectionPauseTravel')}</Text>
                   <TouchableOpacity
                     onPress={() =>
                       Alert.alert(
-                        'Sospendi in viaggio',
-                        'Nasconde questa task in Oggi e Domani mentre un viaggio o una vacanza attivi coprono il suo orario.',
-                        [{ text: 'OK', style: 'default', isPreferred: true }],
+                        t('modal.pauseTravelInfoTitle'),
+                        t('modal.pauseTravelInfoMessage'),
+                        [{ text: t('common.ok'), style: 'default', isPreferred: true }],
                       )
                     }
                     style={{
@@ -1112,7 +1128,7 @@ export default function ModalScreen() {
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo !== 'viaggio' && m.tipo !== 'vacanza' && m.tipo !== 'avviso' && (
             <View style={{ marginTop: 20 }}>
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-                <Text style={styles.sectionTitle}>Chiedi valutazione</Text>
+                <Text style={styles.sectionTitle}>{t('modal.sectionAskReview')}</Text>
                 <Switch
                   value={m.askReview}
                   onValueChange={v => m.setAskReview(v)}
@@ -1125,19 +1141,19 @@ export default function ModalScreen() {
 
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (m.tipo === 'task' || m.tipo === 'abitudine') && (
             <View style={{ marginTop: 16 }}>
-              <Text style={styles.sectionTitle}>Orario</Text>
+              <Text style={styles.sectionTitle}>{t('modal.timeLabel')}</Text>
               <View style={[styles.row, { marginTop: 8 }]}>
                 <TouchableOpacity
                   onPress={() => m.setTaskHasTime(false)}
                   style={[styles.chip, !m.taskHasTime ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
                 >
-                  <Text style={!m.taskHasTime ? styles.chipActiveText : styles.chipGhostText}>Nessun orario</Text>
+                  <Text style={!m.taskHasTime ? styles.chipActiveText : styles.chipGhostText}>{t('modal.timeNone')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => m.setTaskHasTime(true)}
                   style={[styles.chip, m.taskHasTime ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
                 >
-                  <Text style={m.taskHasTime ? styles.chipActiveText : styles.chipGhostText}>Orario</Text>
+                  <Text style={m.taskHasTime ? styles.chipActiveText : styles.chipGhostText}>{t('modal.timeTimed')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1146,7 +1162,7 @@ export default function ModalScreen() {
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo === 'viaggio' && (
             <View style={{ marginTop: 20 }}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Dettagli viaggio</Text>
+                <Text style={styles.sectionTitle}>{t('modal.sectionTravelDetails')}</Text>
               </View>
 
               <View style={{ marginTop: 8 }}>
@@ -1160,7 +1176,7 @@ export default function ModalScreen() {
                       setFromConfirmed(false);
                     }}
                     editable={m.travelPartenzaTipo !== 'attuale'}
-                    placeholder={m.travelPartenzaTipo === 'attuale' ? 'Posizione attuale…' : 'Partenza:'}
+                    placeholder={m.travelPartenzaTipo === 'attuale' ? t('modal.departurePlaceholderCurrent') : t('modal.departurePlaceholder')}
                     placeholderTextColor="#64748b"
                     style={[styles.input, { flex: 1, color: m.travelPartenzaTipo === 'attuale' ? '#9ca3af' : 'white' }]}
                   />
@@ -1176,12 +1192,12 @@ export default function ModalScreen() {
                   </TouchableOpacity>
                 </View>
                 {fromSearching && m.travelPartenzaTipo !== 'attuale' && (
-                  <Text style={[styles.subtle, { marginTop: 6 }]}>Cerco città…</Text>
+                  <Text style={[styles.subtle, { marginTop: 6 }]}>{t('modal.searchingCities')}</Text>
                 )}
                 {m.travelPartenzaTipo !== 'attuale' && !fromSearching && !fromConfirmed && fromQuery.trim().length >= 2 && fromResults.length === 0 && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#0f172a', marginTop: 4 }}>
                     <Ionicons name="alert-circle-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
-                    <Text style={{ color: '#64748b', fontSize: 14 }}>Posizione non trovata</Text>
+                    <Text style={{ color: '#64748b', fontSize: 14 }}>{t('modal.placeNotFound')}</Text>
                   </View>
                 )}
                 {m.travelPartenzaTipo !== 'attuale' && fromResults.map((city, idx) => (
@@ -1243,17 +1259,17 @@ export default function ModalScreen() {
                     setToQuery(v);
                     setToConfirmed(false);
                   }}
-                  placeholder="Destinazione:"
+                  placeholder={t('modal.destinationPh')}
                   placeholderTextColor="#64748b"
                   style={styles.input}
                 />
                 {toSearching && (
-                  <Text style={[styles.subtle, { marginTop: 6 }]}>Cerco città…</Text>
+                  <Text style={[styles.subtle, { marginTop: 6 }]}>{t('modal.searchingCities')}</Text>
                 )}
                 {!toSearching && !toConfirmed && toQuery.trim().length >= 2 && toResults.length === 0 && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#0f172a', marginTop: 4 }}>
                     <Ionicons name="alert-circle-outline" size={16} color="#9ca3af" style={{ marginRight: 8 }} />
-                    <Text style={{ color: '#64748b', fontSize: 14 }}>Posizione non trovata</Text>
+                    <Text style={{ color: '#64748b', fontSize: 14 }}>{t('modal.placeNotFound')}</Text>
                   </View>
                 )}
                 {toResults.map((city, idx) => (
@@ -1301,7 +1317,7 @@ export default function ModalScreen() {
 
                 return (
                   <View style={{ marginTop: 16 }}>
-                    <Text style={styles.subtle}>Giorno partenza</Text>
+                    <Text style={styles.subtle}>{t('modal.departureDay')}</Text>
                     <View
                       style={[
                         {
@@ -1322,7 +1338,7 @@ export default function ModalScreen() {
                       ]}
                     >
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.day')}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <HoldableStepperButton
                             onPress={() => {
@@ -1355,7 +1371,7 @@ export default function ModalScreen() {
                       </View>
 
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.month')}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <HoldableStepperButton
                             onPress={() => {
@@ -1388,7 +1404,7 @@ export default function ModalScreen() {
                       </View>
 
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.year')}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <HoldableStepperButton
                             onPress={() => {
@@ -1518,10 +1534,10 @@ export default function ModalScreen() {
                     <>
                       <View style={styles.timeColumn}>
                         <View style={styles.timeSection}>
-                          <Text style={styles.timeSectionTitle}>Partenza</Text>
+                          <Text style={styles.timeSectionTitle}>{t('modal.travelDeparture')}</Text>
                           <View style={styles.timePicker}>
                             <View style={styles.timeControls}>
-                              <Text style={styles.timeLabel}>Ore</Text>
+                              <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                               <View style={styles.timeStepperRow}>
                                 <HoldableStepperButton onPress={() => setStart(startMin - 60)}>−</HoldableStepperButton>
                                 <Text style={styles.timeValue}>{Math.floor(startMin / 60)}</Text>
@@ -1529,7 +1545,7 @@ export default function ModalScreen() {
                               </View>
                             </View>
                             <View style={styles.timeControls}>
-                              <Text style={styles.timeLabel}>Min</Text>
+                              <Text style={styles.timeLabel}>{t('common.min')}</Text>
                               <View style={styles.timeStepperRow}>
                                 <HoldableStepperButton onPress={() => setStart(startMin - 5)}>−</HoldableStepperButton>
                                 <Text style={styles.timeValue}>{startMin % 60}</Text>
@@ -1541,11 +1557,11 @@ export default function ModalScreen() {
 
                         <View style={styles.timeSection}>
                           <Text style={styles.timeSectionTitle}>
-                            Arrivo{endIsNextDay ? ' (giorno dopo)' : ''}
+                            {endIsNextDay ? t('modal.travelArrivalNext') : t('modal.travelArrival')}
                           </Text>
                           <View style={styles.timePicker}>
                             <View style={styles.timeControls}>
-                              <Text style={styles.timeLabel}>Ore</Text>
+                              <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                               <View style={styles.timeStepperRow}>
                                 <HoldableStepperButton onPress={() => setEnd(endMin - 60)}>−</HoldableStepperButton>
                                 <Text style={styles.timeValue}>{Math.floor(endShown / 60)}</Text>
@@ -1553,7 +1569,7 @@ export default function ModalScreen() {
                               </View>
                             </View>
                             <View style={styles.timeControls}>
-                              <Text style={styles.timeLabel}>Min</Text>
+                              <Text style={styles.timeLabel}>{t('common.min')}</Text>
                               <View style={styles.timeStepperRow}>
                                 <HoldableStepperButton onPress={() => setEnd(endMin - 5)}>−</HoldableStepperButton>
                                 <Text style={styles.timeValue}>{endShown % 60}</Text>
@@ -1573,7 +1589,7 @@ export default function ModalScreen() {
 
               {/* Giorno ritorno sotto orari */}
               <View style={{ marginTop: 16 }}>
-                <Text style={styles.subtle}>Giorno ritorno (opzionale)</Text>
+                <Text style={styles.subtle}>{t('modal.returnDayOptional')}</Text>
                 {!m.travelGiornoRitorno ? (
                   <TouchableOpacity
                     onPress={() => {
@@ -1593,7 +1609,7 @@ export default function ModalScreen() {
                     }}
                     style={[styles.chip, styles.chipGhost, { marginTop: 8, alignSelf: 'flex-start' }]}
                   >
-                    <Text style={styles.chipGhostText}>Aggiungi giorno ritorno</Text>
+                    <Text style={styles.chipGhostText}>{t('modal.addReturnDay')}</Text>
                   </TouchableOpacity>
                 ) : (
                   (() => {
@@ -1649,7 +1665,7 @@ export default function ModalScreen() {
                             }}
                           >
                           <View style={{ alignItems: 'center' }}>
-                            <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                            <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.day')}</Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                               <HoldableStepperButton
                                 onPress={() => {
@@ -1682,7 +1698,7 @@ export default function ModalScreen() {
                           </View>
 
                           <View style={{ alignItems: 'center' }}>
-                            <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                            <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.month')}</Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                               <HoldableStepperButton
                                 onPress={() => {
@@ -1715,7 +1731,7 @@ export default function ModalScreen() {
                           </View>
 
                           <View style={{ alignItems: 'center' }}>
-                            <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                            <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.year')}</Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                               <HoldableStepperButton
                                 onPress={() => {
@@ -1856,11 +1872,11 @@ export default function ModalScreen() {
                                 <View style={styles.timeColumn}>
                                   <View style={styles.timeSection}>
                                     <Text style={styles.timeSectionTitle}>
-                                      Partenza (ritorno)
+                                      {t('modal.travelReturnDeparture')}
                                     </Text>
                                     <View style={styles.timePicker}>
                                       <View style={styles.timeControls}>
-                                        <Text style={styles.timeLabel}>Ore</Text>
+                                        <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                                         <View style={styles.timeStepperRow}>
                                           <HoldableStepperButton onPress={() => setStartR(startMinR - 60)}>
                                             −
@@ -1872,7 +1888,7 @@ export default function ModalScreen() {
                                         </View>
                                       </View>
                                       <View style={styles.timeControls}>
-                                        <Text style={styles.timeLabel}>Min</Text>
+                                        <Text style={styles.timeLabel}>{t('common.min')}</Text>
                                         <View style={styles.timeStepperRow}>
                                           <HoldableStepperButton onPress={() => setStartR(startMinR - 5)}>
                                             −
@@ -1888,11 +1904,11 @@ export default function ModalScreen() {
 
                                   <View style={styles.timeSection}>
                                     <Text style={styles.timeSectionTitle}>
-                                      Arrivo (ritorno){endIsNextDayR ? ' (giorno dopo)' : ''}
+                                      {endIsNextDayR ? t('modal.travelReturnArrivalNext') : t('modal.travelReturnArrival')}
                                     </Text>
                                     <View style={styles.timePicker}>
                                       <View style={styles.timeControls}>
-                                        <Text style={styles.timeLabel}>Ore</Text>
+                                        <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                                         <View style={styles.timeStepperRow}>
                                           <HoldableStepperButton onPress={() => setEndR(endMinR - 60)}>
                                             −
@@ -1904,7 +1920,7 @@ export default function ModalScreen() {
                                         </View>
                                       </View>
                                       <View style={styles.timeControls}>
-                                        <Text style={styles.timeLabel}>Min</Text>
+                                        <Text style={styles.timeLabel}>{t('common.min')}</Text>
                                         <View style={styles.timeStepperRow}>
                                           <HoldableStepperButton onPress={() => setEndR(endMinR - 5)}>
                                             −
@@ -1936,7 +1952,7 @@ export default function ModalScreen() {
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo === 'vacanza' && (
             <View style={{ marginTop: 20 }}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Intervallo vacanza</Text>
+                <Text style={styles.sectionTitle}>{t('modal.vacationRange')}</Text>
               </View>
 
               {(() => {
@@ -2026,10 +2042,10 @@ export default function ModalScreen() {
                         padding: 16,
                       }}
                     >
-                      <Text style={styles.subtle}>Data partenza</Text>
+                      <Text style={styles.subtle}>{t('modal.vacationStartDate')}</Text>
                       <View style={{ marginTop: 12, gap: 12 }}>
                         <View style={{ alignItems: 'center' }}>
-                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.day')}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                             <HoldableStepperButton onPress={() => setStartDate(-1)}>−</HoldableStepperButton>
                             <View
@@ -2046,17 +2062,17 @@ export default function ModalScreen() {
                           </View>
                         </View>
                         <View style={{ alignItems: 'center' }}>
-                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.month')}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                             <HoldableStepperButton onPress={() => setStartMonth(-1)}>−</HoldableStepperButton>
                             <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', minWidth: 96, textAlign: 'center', paddingVertical: 8 }}>
-                              {startDateLabel.toLocaleDateString('it-IT', { month: 'long' })}
+                              {startDateLabel.toLocaleDateString(fmt, { month: 'long' })}
                             </Text>
                             <HoldableStepperButton onPress={() => setStartMonth(1)}>+</HoldableStepperButton>
                           </View>
                         </View>
                         <View style={{ alignItems: 'center' }}>
-                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.year')}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                             <HoldableStepperButton onPress={() => setStartYear(-1)}>−</HoldableStepperButton>
                             <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', minWidth: 96, textAlign: 'center', paddingVertical: 8 }}>
@@ -2067,10 +2083,10 @@ export default function ModalScreen() {
                         </View>
                       </View>
                       <View style={{ marginTop: 18 }}>
-                        <Text style={styles.timeSectionTitle}>Orario partenza</Text>
+                        <Text style={styles.timeSectionTitle}>{t('modal.departureTime')}</Text>
                         <View style={styles.timePicker}>
                           <View style={styles.timeControls}>
-                            <Text style={styles.timeLabel}>Ore</Text>
+                            <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                             <View style={styles.timeStepperRow}>
                               <HoldableStepperButton onPress={() => setStartTime(startMinutes - 60)}>−</HoldableStepperButton>
                               <Text style={styles.timeValue}>{String(Math.floor(startMinutes / 60)).padStart(2, '0')}</Text>
@@ -2078,7 +2094,7 @@ export default function ModalScreen() {
                             </View>
                           </View>
                           <View style={styles.timeControls}>
-                            <Text style={styles.timeLabel}>Min</Text>
+                            <Text style={styles.timeLabel}>{t('common.min')}</Text>
                             <View style={styles.timeStepperRow}>
                               <HoldableStepperButton onPress={() => setStartTime(startMinutes - 5)}>−</HoldableStepperButton>
                               <Text style={styles.timeValue}>{String(startMinutes % 60).padStart(2, '0')}</Text>
@@ -2099,10 +2115,10 @@ export default function ModalScreen() {
                         padding: 16,
                       }}
                     >
-                      <Text style={styles.subtle}>Data ritorno</Text>
+                      <Text style={styles.subtle}>{t('modal.vacationEndDate')}</Text>
                       <View style={{ marginTop: 12, gap: 12 }}>
                         <View style={{ alignItems: 'center' }}>
-                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.day')}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                             <HoldableStepperButton onPress={() => setEndDate(-1)}>−</HoldableStepperButton>
                             <View
@@ -2119,17 +2135,17 @@ export default function ModalScreen() {
                           </View>
                         </View>
                         <View style={{ alignItems: 'center' }}>
-                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.month')}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                             <HoldableStepperButton onPress={() => setEndMonth(-1)}>−</HoldableStepperButton>
                             <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', minWidth: 96, textAlign: 'center', paddingVertical: 8 }}>
-                              {endDateLabel.toLocaleDateString('it-IT', { month: 'long' })}
+                              {endDateLabel.toLocaleDateString(fmt, { month: 'long' })}
                             </Text>
                             <HoldableStepperButton onPress={() => setEndMonth(1)}>+</HoldableStepperButton>
                           </View>
                         </View>
                         <View style={{ alignItems: 'center' }}>
-                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                          <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.year')}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                             <HoldableStepperButton onPress={() => setEndYear(-1)}>−</HoldableStepperButton>
                             <Text style={{ color: 'white', fontSize: 20, fontWeight: '700', minWidth: 96, textAlign: 'center', paddingVertical: 8 }}>
@@ -2140,10 +2156,10 @@ export default function ModalScreen() {
                         </View>
                       </View>
                       <View style={{ marginTop: 18 }}>
-                        <Text style={styles.timeSectionTitle}>Orario ritorno</Text>
+                        <Text style={styles.timeSectionTitle}>{t('modal.returnTime')}</Text>
                         <View style={styles.timePicker}>
                           <View style={styles.timeControls}>
-                            <Text style={styles.timeLabel}>Ore</Text>
+                            <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                             <View style={styles.timeStepperRow}>
                               <HoldableStepperButton onPress={() => setEndTime(endMinutes - 60)}>−</HoldableStepperButton>
                               <Text style={styles.timeValue}>{String(Math.floor(endMinutes / 60)).padStart(2, '0')}</Text>
@@ -2151,7 +2167,7 @@ export default function ModalScreen() {
                             </View>
                           </View>
                           <View style={styles.timeControls}>
-                            <Text style={styles.timeLabel}>Min</Text>
+                            <Text style={styles.timeLabel}>{t('common.min')}</Text>
                             <View style={styles.timeStepperRow}>
                               <HoldableStepperButton onPress={() => setEndTime(endMinutes - 5)}>−</HoldableStepperButton>
                               <Text style={styles.timeValue}>{String(endMinutes % 60).padStart(2, '0')}</Text>
@@ -2173,7 +2189,11 @@ export default function ModalScreen() {
                   {/* Giorno / Data inizio: sempre visibile sopra Ripetizione */}
                   <View style={[styles.sectionHeader, { marginTop: 16 }]}>
                     <Text style={styles.sectionTitle}>
-                      {m.freq === 'single' ? 'Giorno specifico' : m.freq === 'annual' ? "Giorno dell'anno" : 'Data inizio ripetizione'}
+                      {m.freq === 'single'
+                        ? t('modal.dateSpecificDay')
+                        : m.freq === 'annual'
+                          ? t('modal.dateAnnualDay')
+                          : t('modal.dateStartRepeat')}
                     </Text>
                   </View>
                   <View style={[
@@ -2181,7 +2201,7 @@ export default function ModalScreen() {
                     m.isToday && { borderWidth: 2, borderColor: '#ff3b30', borderRadius: 12, padding: 8 }
                   ]}>
                     <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Giorno</Text>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.day')}</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <HoldableStepperButton onPress={() => (m.setAnnualDayClamped ?? m.setAnnualDay)(d => Math.max(1, d - 1))}>−</HoldableStepperButton>
                         <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualDay}</Text>
@@ -2189,7 +2209,7 @@ export default function ModalScreen() {
                       </View>
                     </View>
                     <View style={{ alignItems: 'center' }}>
-                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Mese</Text>
+                      <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.month')}</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <HoldableStepperButton onPress={() => (m.setAnnualMonthClamped ?? m.setAnnualMonth)(prev => Math.max(1, prev - 1))}>−</HoldableStepperButton>
                         <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 64, textAlign: 'center' }}>{m.annualMonth}</Text>
@@ -2198,7 +2218,7 @@ export default function ModalScreen() {
                     </View>
                     {m.freq !== 'annual' && (
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>Anno</Text>
+                        <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.year')}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <HoldableStepperButton onPress={() => (m.setAnnualYearClamped ?? m.setAnnualYear)(y => y - 1)}>−</HoldableStepperButton>
                           <Text style={{ color: 'white', fontSize: 18, fontWeight: '700', minWidth: 84, textAlign: 'center' }}>{m.annualYear}</Text>
@@ -2208,32 +2228,32 @@ export default function ModalScreen() {
                     )}
                   </View>
 
-                  <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Ripetizione</Text></View>
+                  <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>{t('modal.sectionRepeat')}</Text></View>
                   <View style={styles.row}>
                     <TouchableOpacity onPress={() => m.setFreqWithConfirmation('single')} style={[styles.chip, m.freq === 'single' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'single' ? styles.chipActiveText : styles.chipGhostText}>Singola</Text>
+                      <Text style={m.freq === 'single' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqSingle')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => m.setFreqWithConfirmation('daily')} style={[styles.chip, m.freq === 'daily' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'daily' ? styles.chipActiveText : styles.chipGhostText}>Ogni giorno</Text>
+                      <Text style={m.freq === 'daily' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqDaily')}</Text>
                     </TouchableOpacity>
                   </View>
                   <View style={[styles.row, { marginTop: 8 }]}>
                     <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('weekly'); }} style={[styles.chip, m.freq === 'weekly' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'weekly' ? styles.chipActiveText : styles.chipGhostText}>Settimanale</Text>
+                      <Text style={m.freq === 'weekly' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqWeekly')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('monthly'); }} style={[styles.chip, m.freq === 'monthly' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'monthly' ? styles.chipActiveText : styles.chipGhostText}>Mensile</Text>
+                      <Text style={m.freq === 'monthly' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqMonthly')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('annual'); }} style={[styles.chip, m.freq === 'annual' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'annual' ? styles.chipActiveText : styles.chipGhostText}>Annuale</Text>
+                      <Text style={m.freq === 'annual' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqAnnual')}</Text>
                     </TouchableOpacity>
                   </View>
 
                   {m.freq === 'weekly' && (
                     <View style={{ marginTop: 12 }}>
-                      <Text style={styles.subtle}>Giorni della settimana</Text>
+                      <Text style={styles.subtle}>{t('modal.weekdaysPick')}</Text>
                       <View style={[styles.daysWrap, useCompactWeekdays && styles.daysWrapCompact]}>
-                        {['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].map((d, i) => {
+                        {(['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'] as const).map((dowKey, i) => {
                           const sundayIndex = (i + 1) % 7; // map Mon->1 ... Sun->0
                           const selected = m.daysOfWeek.includes(sundayIndex);
                           return (
@@ -2246,7 +2266,7 @@ export default function ModalScreen() {
                                 selected ? styles.dayPillOn : styles.dayPillOff,
                               ]}
                             >
-                              <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{d}</Text>
+                              <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{t(`weekdaysShort.${dowKey}`)}</Text>
                             </TouchableOpacity>
                           );
                         })}
@@ -2256,7 +2276,7 @@ export default function ModalScreen() {
 
                   {m.freq === 'monthly' && (
                     <View style={{ marginTop: 12 }}>
-                      <Text style={styles.subtle}>Giorni del mese</Text>
+                      <Text style={styles.subtle}>{t('modal.monthDaysPick')}</Text>
                       <View style={styles.monthlyDaysWrap}>
                         {Array.from({ length: 31 }).map((_, i) => (
                           <TouchableOpacity key={i} onPress={() => m.toggleMonthDay(i + 1)} style={[styles.monthlyDayPill, m.monthDays.includes(i + 1) ? styles.dayPillOn : styles.dayPillOff]}>
@@ -2272,20 +2292,39 @@ export default function ModalScreen() {
                 <View style={{ marginTop: 16 }}>
                   <TouchableOpacity onPress={() => setRepeatEndOpen(v => !v)} style={[styles.sectionHeader, { flexDirection: 'column', alignItems: 'flex-start' }]}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={styles.sectionTitle}>Fine ripetizione</Text>
+                      <Text style={styles.sectionTitle}>{t('modal.repeatEnd')}</Text>
                       <Ionicons name={repeatEndOpen ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" style={{ marginLeft: 6 }} />
                     </View>
                     <View style={{ marginTop: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#ec4899', backgroundColor: 'rgba(236,72,153,0.12)' }}>
                       <Text style={{ color: '#ec4899', fontSize: 13, fontWeight: '600' }}>
-                        {m.repeatEndType === 'mai' ? 'Mai' : m.repeatEndType === 'durata' ? `Tra ${m.repeatEndCount} ${m.freq === 'daily' ? 'giorni' : m.freq === 'weekly' ? 'settimane' : m.freq === 'monthly' ? 'mesi' : 'anni'}` : m.repeatEndCustomDate ? (() => { const [y, mo, d] = m.repeatEndCustomDate!.split('-'); return `${parseInt(d)}.${parseInt(mo)}.${y.slice(2)}`; })() : 'Data personalizzata'}
+                        {m.repeatEndType === 'mai'
+                          ? t('modal.repeatNever')
+                          : m.repeatEndType === 'durata'
+                            ? t('modal.repeatAfterCount', {
+                                count: m.repeatEndCount,
+                                unit:
+                                  m.freq === 'daily'
+                                    ? t('modal.unitDays')
+                                    : m.freq === 'weekly'
+                                      ? t('modal.unitWeeks')
+                                      : m.freq === 'monthly'
+                                        ? t('modal.unitMonths')
+                                        : t('modal.unitYears'),
+                              })
+                            : m.repeatEndCustomDate
+                              ? (() => {
+                                  const [y, mo, d] = m.repeatEndCustomDate!.split('-');
+                                  return t('modal.customDateBadge', { d: parseInt(d, 10), m: parseInt(mo, 10), y });
+                                })()
+                              : t('modal.repeatCustomDate')}
                       </Text>
                     </View>
                   </TouchableOpacity>
                   {repeatEndOpen && <View style={{ marginTop: 12, backgroundColor: '#0f172a', borderRadius: 16, borderWidth: 1, borderColor: '#334155', overflow: 'hidden' }}>
                     {([
-                      { label: 'Mai', value: 'mai' as const },
-                      { label: 'Tra', value: 'durata' as const },
-                      { label: 'Data personalizzata', value: 'personalizzata' as const },
+                      { label: t('modal.repeatNever'), value: 'mai' as const },
+                      { label: t('modal.repeatAfter'), value: 'durata' as const },
+                      { label: t('modal.repeatCustomDate'), value: 'personalizzata' as const },
                     ]).map((opt, idx, arr) => {
                       const isSelected = m.repeatEndType === opt.value;
                       const hasSubPicker = isSelected && opt.value !== 'mai' && repeatSubOpen;
@@ -2303,7 +2342,15 @@ export default function ModalScreen() {
                     {m.repeatEndType === 'durata' && repeatSubOpen && (
                       <RepeatEndDurationPicker
                         count={m.repeatEndCount}
-                        unitLabel={m.freq === 'daily' ? 'giorni' : m.freq === 'weekly' ? 'settimane' : m.freq === 'monthly' ? 'mesi' : 'anni'}
+                        unitLabel={
+                          m.freq === 'daily'
+                            ? t('modal.unitDays')
+                            : m.freq === 'weekly'
+                              ? t('modal.unitWeeks')
+                              : m.freq === 'monthly'
+                                ? t('modal.unitMonths')
+                                : t('modal.unitYears')
+                        }
                         onCountChange={m.setRepeatEndCount}
                       />
                     )}
@@ -2319,14 +2366,14 @@ export default function ModalScreen() {
 
               {m.tipo !== 'avviso' && (
                 <>
-                  <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>Orario</Text></View>
+                  <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>{t('modal.timeLabel')}</Text></View>
                   <View style={styles.row}>
                     <TouchableOpacity onPress={() => m.setModeWithConfirmation('allDay')} style={[styles.chip, m.mode === 'allDay' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.mode === 'allDay' ? styles.chipActiveText : styles.chipGhostText}>Tutto il giorno</Text>
+                      <Text style={m.mode === 'allDay' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.allDay')}</Text>
                     </TouchableOpacity>
                     {m.tipo !== 'salute' && (
                       <TouchableOpacity onPress={() => m.setModeWithConfirmation('timed')} style={[styles.chip, m.mode === 'timed' ? styles.chipActive : styles.chipGhost]}>
-                        <Text style={m.mode === 'timed' ? styles.chipActiveText : styles.chipGhostText}>Orario specifico</Text>
+                        <Text style={m.mode === 'timed' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.specificTime')}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -2335,14 +2382,14 @@ export default function ModalScreen() {
 
               {(m.tipo === 'avviso' || m.mode === 'timed') && (
                 <View style={{ marginTop: 12 }}>
-                  <Text style={styles.subtle}>Orario</Text>
+                  <Text style={styles.subtle}>{t('modal.timeLabel')}</Text>
                   {m.freq === 'weekly' && m.daysOfWeek.length > 1 && (
                     <View style={{ marginBottom: 12 }}>
-                      <Text style={[styles.subtle, { textAlign: 'center' }]}>Giorni selezionati</Text>
+                      <Text style={[styles.subtle, { textAlign: 'center' }]}>{t('modal.selectedDays')}</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                         {([1,2,3,4,5,6,0] as number[]).filter(d => m.daysOfWeek.includes(d)).map(d => {
-                          const names = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
-                          const label = names[d].slice(0, 3);
+                          const shortKeys = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'] as const;
+                          const label = t(`weekdaysShort.${shortKeys[d]}`);
                           const active = m.selectedDow === d;
                           return (
                             <TouchableOpacity key={d} onPress={() => m.setSelectedDow(d)} style={[styles.chip, active ? styles.chipActive : styles.chipGhost]}>
@@ -2355,7 +2402,7 @@ export default function ModalScreen() {
                   )}
                   {m.freq === 'monthly' && m.monthDays.length > 1 && (
                     <View style={{ marginBottom: 12 }}>
-                      <Text style={[styles.subtle, { textAlign: 'center' }]}>Giorni del mese selezionati</Text>
+                      <Text style={[styles.subtle, { textAlign: 'center' }]}>{t('modal.selectedMonthDays')}</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                         {[...m.monthDays].sort((a,b)=>a-b).map(d => {
                           const label = String(d);
@@ -2372,7 +2419,7 @@ export default function ModalScreen() {
                   <View style={styles.timeColumn}>
                     <View style={styles.timeSection}>
                       <View style={{ position: 'relative', justifyContent: 'center', alignItems: 'center', minHeight: 24 }}>
-                        <Text style={styles.timeSectionTitle}>Inizio</Text>
+                        <Text style={styles.timeSectionTitle}>{t('modal.timeStart')}</Text>
                         {m.weekCustomTimeOverride && (
                           <TouchableOpacity
                             onPress={() => {
@@ -2395,7 +2442,7 @@ export default function ModalScreen() {
                             <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>
                               {(() => {
                                 const { year, day, month } = parseYmdSafe(m.weekCustomTimeOverride.ymd);
-                                return `Custom ${day}.${month}.${String(year).slice(-2)}`;
+                                return t('modal.customDateBadge', { d: day, m: month, y: String(year).slice(-2) });
                               })()}
                             </Text>
                           </TouchableOpacity>
@@ -2403,7 +2450,7 @@ export default function ModalScreen() {
                       </View>
                     <View style={styles.timePicker}>
                         <View style={styles.timeControls}>
-                          <Text style={styles.timeLabel}>Ore</Text>
+                          <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                           <View style={styles.timeStepperRow}>
                             <HoldableStepperButton onPress={() => {
                               const curS = m.currentStartMin;
@@ -2423,7 +2470,7 @@ export default function ModalScreen() {
                           </View>
                         </View>
                         <View style={styles.timeControls}>
-                          <Text style={styles.timeLabel}>Min</Text>
+                          <Text style={styles.timeLabel}>{t('common.min')}</Text>
                           <View style={styles.timeStepperRow}>
                             <HoldableStepperButton
                               onPress={() => {
@@ -2460,10 +2507,10 @@ export default function ModalScreen() {
                     {m.tipo !== 'avviso' && (
                       <>
                         <View style={styles.timeSection}>
-                          <Text style={styles.timeSectionTitle}>Fine</Text>
+                          <Text style={styles.timeSectionTitle}>{t('modal.timeEnd')}</Text>
                           <View style={styles.timePicker}>
                             <View style={styles.timeControls}>
-                              <Text style={styles.timeLabel}>Ore</Text>
+                              <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                               <View style={styles.timeStepperRow}>
                                 <HoldableStepperButton onPress={() => {
                                   const curS = m.currentStartMin;
@@ -2491,7 +2538,7 @@ export default function ModalScreen() {
                               </View>
                             </View>
                             <View style={styles.timeControls}>
-                              <Text style={styles.timeLabel}>Min</Text>
+                              <Text style={styles.timeLabel}>{t('common.min')}</Text>
                               <View style={styles.timeStepperRow}>
                                 <HoldableStepperButton
                                   onPress={() => {
@@ -2519,10 +2566,10 @@ export default function ModalScreen() {
                         </View>
                         <Text style={styles.duration}>{formatDuration((m.currentEndMin ?? (m.currentStartMin + 60)) - m.currentStartMin)}</Text>
                         <View style={styles.timeSection}>
-                      <Text style={styles.timeSectionTitle}>Ripetizioni</Text>
+                      <Text style={styles.timeSectionTitle}>{t('modal.repetitions')}</Text>
                       <View style={[styles.timePicker, { justifyContent: 'center' }]}>
                         <View style={[styles.timeControls, { flex: 0, minWidth: 160 }]}>
-                          <Text style={styles.timeLabel}>Volte al giorno</Text>
+                          <Text style={styles.timeLabel}>{t('modal.timesPerDay')}</Text>
                           <View style={styles.timeStepperRow}>
                             <HoldableStepperButton onPress={() => m.updateCurrentDailyOccurrences(Math.max(1, m.currentDailyOccurrences - 1))}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{m.currentDailyOccurrences}</Text>
@@ -2538,16 +2585,16 @@ export default function ModalScreen() {
                         return (
                           <View style={styles.timeSection}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <Text style={styles.timeSectionTitle}>Distacco</Text>
+                              <Text style={styles.timeSectionTitle}>{t('modal.gapTitle')}</Text>
                               {isCustom && (
                                 <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.18)', borderWidth: 1, borderColor: '#f59e0b' }}>
-                                  <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>Custom</Text>
+                                  <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>{t('common.custom')}</Text>
                                 </View>
                               )}
                             </View>
                             <View style={styles.timePicker}>
                               <View style={styles.timeControls}>
-                                <Text style={styles.timeLabel}>Ore</Text>
+                                <Text style={styles.timeLabel}>{t('common.ore')}</Text>
                                 <View style={styles.timeStepperRow}>
                                   <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g - 60)))}>−</HoldableStepperButton>
                                   <Text style={styles.timeValue}>{Math.floor(displayGap / 60)}</Text>
@@ -2555,7 +2602,7 @@ export default function ModalScreen() {
                                 </View>
                               </View>
                               <View style={styles.timeControls}>
-                                <Text style={styles.timeLabel}>Min</Text>
+                                <Text style={styles.timeLabel}>{t('common.min')}</Text>
                                 <View style={styles.timeStepperRow}>
                                   <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g - 5)))}>−</HoldableStepperButton>
                                   <Text style={styles.timeValue}>{displayGap % 60}</Text>
@@ -2565,7 +2612,7 @@ export default function ModalScreen() {
                             </View>
                             {isCustom && (
                               <Text style={[styles.subtle, { marginTop: 4, textAlign: 'center', fontSize: 11, color: '#f59e0b' }]}>
-                                Modifica per reimpostare un distacco uguale per tutte
+                                {t('modal.gapResetHint')}
                               </Text>
                             )}
                             <Text style={[styles.subtle, { marginTop: 6, textAlign: 'center', fontSize: 11 }]}>
@@ -2578,7 +2625,7 @@ export default function ModalScreen() {
                     )}
                   </View>
                   <Text style={[styles.subtle, { marginTop: 8, textAlign: 'center', fontSize: 12 }]}>
-                    La prima occorrenza usa l’orario di inizio sopra; le altre si calcolano col distacco, senza uscire dalla giornata logica.
+                    {t('modal.occurrenceHint')}
                   </Text>
                 </View>
               )}
@@ -2588,23 +2635,23 @@ export default function ModalScreen() {
           {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && m.tipo === 'task' && (
             <View style={{ marginTop: 20 }}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Automazioni posizione</Text>
+                <Text style={styles.sectionTitle}>{t('modal.sectionLocationAuto')}</Text>
               </View>
               {(!canAskLocationPermission() || locationStatus === 'denied' || locationStatus === 'none') && (
                 <Text style={styles.subtle}>
-                  Per usare le automazioni posizione devi abilitare la posizione per Tothemoon nelle impostazioni. Puoi continuare a usare la task normalmente.
+                  {t('modal.locationAutoDenied')}
                 </Text>
               )}
               {canAskLocationPermission() && locationStatus !== 'denied' && (
                 <>
                   {places.length === 0 ? (
                     <Text style={styles.subtle}>
-                      Nessun luogo ancora. Aggiungi luoghi dalla schermata Luoghi (icona mappa nel menu ⋯ delle task) per collegare questa task a un posto.
+                      {t('modal.locationAutoNoPlaces')}
                     </Text>
                   ) : (
                     <>
                       <Text style={[styles.subtle, { marginTop: 6 }]}>
-                        Collega questa task a un luogo. Regola: completa quando esci dal raggio del luogo scelto.
+                        {t('modal.locationAutoPick')}
                       </Text>
                       <ScrollView
                         horizontal
@@ -2621,7 +2668,7 @@ export default function ModalScreen() {
                           ]}
                         >
                           <Text style={selectedPlaceId === null ? styles.chipActiveText : styles.chipGhostText}>
-                            Nessuna automazione
+                            {t('modal.noAutomation')}
                           </Text>
                         </TouchableOpacity>
                         {places.map((p) => (

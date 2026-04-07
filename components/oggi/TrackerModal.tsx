@@ -1,8 +1,10 @@
 import { COLORS } from '@/components/modal/modalStyles';
 import { useHabits } from '@/lib/habits/Provider';
 import type { TrackerEntry } from '@/lib/habits/schema';
+import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -33,9 +35,9 @@ function getNowYmd(): string {
   }
 }
 
-function getNowHhmm(): string {
+function getNowHhmm(localeTag: string): string {
   try {
-    const parts = new Intl.DateTimeFormat('it-IT', {
+    const parts = new Intl.DateTimeFormat(localeTag, {
       timeZone: TZ,
       hour: '2-digit',
       minute: '2-digit',
@@ -73,10 +75,10 @@ function formatExtendedTime(hhmm: string): { display: string; nextDay: boolean }
   return { display: hhmm, nextDay: false };
 }
 
-function parseYmdDisplay(ymd: string): string {
+function parseYmdDisplay(ymd: string, localeTag: string): string {
   try {
     const d = new Date(ymd + 'T12:00:00.000Z');
-    return new Intl.DateTimeFormat('it-IT', {
+    return new Intl.DateTimeFormat(localeTag, {
       timeZone: TZ,
       day: 'numeric',
       month: 'long',
@@ -150,11 +152,13 @@ function TimeControl({
   value,
   onChange,
   maxMinutes = 1439,
+  nextDayLabel,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   maxMinutes?: number;
+  nextDayLabel: string;
 }) {
   const { display, nextDay } = formatExtendedTime(value);
   return (
@@ -164,7 +168,7 @@ function TimeControl({
         <HoldableStepBtn delta={-5} value={value} onChange={onChange} maxMinutes={maxMinutes}>−</HoldableStepBtn>
         <View style={{ alignItems: 'center' }}>
           <Text style={s.timeValue}>{display}</Text>
-          {nextDay && <Text style={s.nextDayLabel}>+1d</Text>}
+          {nextDay && <Text style={s.nextDayLabel}>{nextDayLabel}</Text>}
         </View>
         <HoldableStepBtn delta={5} value={value} onChange={onChange} maxMinutes={maxMinutes}>+</HoldableStepBtn>
       </View>
@@ -211,9 +215,11 @@ function HoldableDateBtn({ onStep, disabled, children }: { onStep: () => void; d
 function DateControl({
   value,
   onChange,
+  localeTag,
 }: {
   value: string;
   onChange: (v: string) => void;
+  localeTag: string;
 }) {
   const valueRef = React.useRef(value);
   React.useEffect(() => { valueRef.current = value; }, [value]);
@@ -238,7 +244,7 @@ function DateControl({
   return (
     <View style={s.dateControl}>
       <HoldableDateBtn onStep={subtractDay}>‹</HoldableDateBtn>
-      <Text style={s.dateValue}>{parseYmdDisplay(value)}</Text>
+      <Text style={s.dateValue}>{parseYmdDisplay(value, localeTag)}</Text>
       <HoldableDateBtn onStep={addDay} disabled={isToday}>›</HoldableDateBtn>
     </View>
   );
@@ -252,10 +258,12 @@ type Props = {
 };
 
 export default function TrackerModal({ visible, initialDate, editEntry, onClose }: Props) {
+  const { t } = useTranslation();
+  const fmt = useFormatLocale();
   const { addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople } = useHabits();
 
   const nowYmd = getNowYmd();
-  const nowHhmm = roundToFive(getNowHhmm());
+  const nowHhmm = roundToFive(getNowHhmm(fmt));
 
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(nowYmd);
@@ -280,7 +288,7 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
       setRating(editEntry.rating ?? null);
       setComment(editEntry.comment ?? '');
     } else {
-      const now = roundToFive(getNowHhmm());
+      const now = roundToFive(getNowHhmm(fmt));
       setTitle('');
       setDate(getNowYmd());
       setStartTime(addMinutes(now, -60));
@@ -292,7 +300,7 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
     }
     setPersonInput('');
     setShowPeopleSuggestions(false);
-  }, [visible, editEntry, initialDate]);
+  }, [visible, editEntry, initialDate, fmt]);
 
   const filteredPeople = savedTrackerPeople.filter(
     p => p.toLowerCase().includes(personInput.toLowerCase()) && !withPeople.includes(p)
@@ -335,10 +343,10 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
 
   const handleDelete = () => {
     if (!editEntry) return;
-    Alert.alert('Elimina', 'Eliminare questa voce?', [
-      { text: 'Annulla', style: 'cancel' },
+    Alert.alert(t('trackerModal.deleteEntryTitle'), t('trackerModal.deleteEntryMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Elimina',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
           deleteTrackerEntry(editEntry.id);
@@ -357,7 +365,7 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
         <View style={s.backdrop}>
           <View style={s.card}>
             <View style={s.headerRow}>
-              <Text style={s.cardTitle}>{editEntry ? 'Modifica Tracker' : 'Nuovo Tracker'}</Text>
+              <Text style={s.cardTitle}>{editEntry ? t('trackerModal.titleEdit') : t('trackerModal.titleNew')}</Text>
               <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close" size={24} color="#888" />
               </TouchableOpacity>
@@ -368,32 +376,43 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
                 style={s.input}
                 value={title}
                 onChangeText={setTitle}
-                placeholder="Nome attività (es. Studio)"
+                placeholder={t('trackerModal.activityPh')}
                 placeholderTextColor="#555"
                 maxLength={80}
               />
 
               <View style={s.section}>
-                <Text style={s.sectionLabel}>Giorno</Text>
-                <DateControl value={date} onChange={setDate} />
+                <Text style={s.sectionLabel}>{t('trackerModal.day')}</Text>
+                <DateControl value={date} onChange={setDate} localeTag={fmt} />
               </View>
 
               <View style={s.section}>
-                <Text style={s.sectionLabel}>Orario</Text>
+                <Text style={s.sectionLabel}>{t('trackerModal.time')}</Text>
                 <View style={s.timeRow}>
-                  <TimeControl label="Inizio" value={startTime} onChange={setStartTime} />
+                  <TimeControl
+                    label={t('trackerModal.start')}
+                    value={startTime}
+                    onChange={setStartTime}
+                    nextDayLabel={t('trackerModal.nextDay')}
+                  />
                   <View style={s.timeSep}>
                     <Text style={s.timeSepText}>→</Text>
                   </View>
-                  <TimeControl label="Fine" value={endTime} onChange={setEndTime} maxMinutes={2879} />
+                  <TimeControl
+                    label={t('trackerModal.end')}
+                    value={endTime}
+                    onChange={setEndTime}
+                    maxMinutes={2879}
+                    nextDayLabel={t('trackerModal.nextDay')}
+                  />
                 </View>
                 {timeInvalid && (
-                  <Text style={s.errorText}>L&apos;ora di fine deve essere dopo l&apos;inizio</Text>
+                  <Text style={s.errorText}>{t('trackerModal.timeInvalid')}</Text>
                 )}
               </View>
 
               <View style={s.section}>
-                <Text style={s.sectionLabel}>Colore</Text>
+                <Text style={s.sectionLabel}>{t('trackerModal.color')}</Text>
                 <View style={s.colorsRow}>
                   {COLORS.map(c => (
                     <TouchableOpacity
@@ -410,7 +429,7 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
               </View>
 
               <View style={s.section}>
-                <Text style={s.sectionLabel}>Con chi</Text>
+                <Text style={s.sectionLabel}>{t('trackerModal.withWho')}</Text>
                 <View style={s.peopleChips}>
                   {withPeople.map(p => (
                     <TouchableOpacity key={p} style={s.personChip} onPress={() => removePerson(p)}>
@@ -428,7 +447,7 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
                       setShowPeopleSuggestions(true);
                     }}
                     onFocus={() => setShowPeopleSuggestions(true)}
-                    placeholder="Aggiungi persona"
+                    placeholder={t('trackerModal.addPersonPh')}
                     placeholderTextColor="#555"
                     onSubmitEditing={() => addPerson(personInput)}
                     returnKeyType="done"
@@ -451,17 +470,17 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
               </View>
 
               <View style={s.section}>
-                <Text style={s.sectionLabel}>Valutazione</Text>
+                <Text style={s.sectionLabel}>{t('trackerModal.rating')}</Text>
                 <StarRating value={rating} onChange={v => setRating(prev => prev === v ? null : v)} />
               </View>
 
               <View style={s.section}>
-                <Text style={s.sectionLabel}>Note (opzionale)</Text>
+                <Text style={s.sectionLabel}>{t('trackerModal.notesOptional')}</Text>
                 <TextInput
                   style={[s.input, { minHeight: 60, textAlignVertical: 'top' }]}
                   value={comment}
                   onChangeText={setComment}
-                  placeholder="Aggiungi una nota..."
+                  placeholder={t('trackerModal.notesPh')}
                   placeholderTextColor="#555"
                   multiline
                 />
@@ -481,7 +500,7 @@ export default function TrackerModal({ visible, initialDate, editEntry, onClose 
                 onPress={handleSave}
                 disabled={titleInvalid || timeInvalid}
               >
-                <Text style={s.saveBtnText}>Salva</Text>
+                <Text style={s.saveBtnText}>{t('trackerModal.save')}</Text>
               </TouchableOpacity>
             </View>
           </View>

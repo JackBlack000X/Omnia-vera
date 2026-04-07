@@ -1,4 +1,6 @@
 import type { Habit } from '@/lib/habits/schema';
+import i18n from '@/lib/i18n/i18n';
+import { toBcp47 } from '@/lib/i18n/bcp47';
 import * as Calendar from 'expo-calendar';
 import { Platform } from 'react-native';
 
@@ -24,7 +26,7 @@ function formatYmd(date: Date): string {
 
 function dateToHHMM(d: Date): string {
   try {
-    const parts = new Intl.DateTimeFormat('it-IT', {
+    const parts = new Intl.DateTimeFormat(toBcp47(i18n.language), {
       timeZone: TZ,
       hour: '2-digit',
       minute: '2-digit',

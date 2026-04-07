@@ -1,3 +1,4 @@
+import i18n from '@/lib/i18n/i18n';
 import { isTravelLikeTipo } from '@/lib/habits/schema';
 import { LayoutInfo } from '@/lib/layoutEngine';
 import {
@@ -429,8 +430,8 @@ function DraggableEvent({
             return next;
           });
           Alert.alert(
-            'Spostamento non supportato',
-            'Questa modifica farebbe finire la task su due giorni diversi. Spostala meno o accorcia la durata.',
+            i18n.t('oggi.crossDayDragTitle'),
+            i18n.t('oggi.crossDayDragMessage'),
           );
           dragInitialTop.value = finalTop;
           dragY.value = 0;
@@ -472,12 +473,18 @@ function DraggableEvent({
           const recurringButtonsRaw = getRecurringDragButtons
             ? getRecurringDragButtons({ event, ymd: selectedYmd, startTime: persistedStartTime, endTime: persistedEndTime })
             : [
-                { text: 'Solo oggi', onPress: () => {
-                  setTimeOverrideRange(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
-                }},
-                { text: 'Da oggi in poi', onPress: () => {
-                  updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
-                }},
+                {
+                  text: i18n.t('oggi.onlyToday'),
+                  onPress: () => {
+                    setTimeOverrideRange(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
+                  },
+                },
+                {
+                  text: i18n.t('oggi.fromTodayOn'),
+                  onPress: () => {
+                    updateScheduleFromDate(resolveOggiHabitId(event), selectedYmd, persistedStartTime, persistedEndTime);
+                  },
+                },
               ];
           const recurringButtons = recurringButtonsRaw.map((button) => ({
             ...button,
@@ -494,11 +501,11 @@ function DraggableEvent({
             recurringButtons[0]?.onPress?.();
           } else {
             Alert.alert(
-              'Modifica attività ricorrente',
-              'Scegli come applicare questa modifica.',
+              i18n.t('oggi.recurringEditTitle'),
+              i18n.t('oggi.recurringEditMessage'),
               [
                 {
-                  text: 'Annulla',
+                  text: i18n.t('common.cancel'),
                   style: 'cancel',
                   onPress: () => {
                     restoreColumnRankState?.(previousRankSnapshot);

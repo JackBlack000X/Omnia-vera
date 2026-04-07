@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, InteractionManager, LayoutAnimation, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
@@ -86,6 +87,7 @@ const ChevronIcon = ({ isCollapsed, folderColor }: { isCollapsed: boolean; folde
 };
 
 export default function IndexScreen() {
+  const { t } = useTranslation();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -178,19 +180,20 @@ export default function IndexScreen() {
 
   const handleDuplicate = useCallback((habit: Habit) => {
     Alert.alert(
-      'Duplica task',
-      `Vuoi duplicare "${habit.text}"?`,
+      t('index.duplicateTitle'),
+      t('index.duplicateMessage', { name: habit.text }),
       [
-        { text: 'No', style: 'cancel' },
+        { text: t('common.no'), style: 'cancel' },
         {
-          text: 'Sì', onPress: () => {
+          text: t('common.yes'),
+          onPress: () => {
             duplicateHabit(habit.id);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
+          },
         },
       ]
     );
-  }, [duplicateHabit]);
+  }, [duplicateHabit, t]);
 
   const {
     habits,
@@ -419,7 +422,7 @@ export default function IndexScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={[styles.folderSeparatorText, { color: folderColor }]}>
-                  {typeof item.folderName === 'string' ? item.folderName : 'Tutte'}
+                  {typeof item.folderName === 'string' ? item.folderName : t('common.tutte')}
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -451,13 +454,13 @@ export default function IndexScreen() {
     }
 
     return renderDropCoverTaskCard(item.habit, `cover-task-${item.habit.id}`);
-  }, [collapsedFolderIds, folders, renderDropCoverTaskCard]);
+  }, [collapsedFolderIds, folders, renderDropCoverTaskCard, t]);
 
   const renderSectionItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<SectionItem>) => {
     if (item.type === 'folderBlock') {
       const folderMeta = folders.find(f => (f.name ?? '').trim() === (item.folderName ?? '').trim());
       const folderColor = folderMeta?.color ?? THEME.textMuted;
-      const label = typeof item.folderName === 'string' ? item.folderName : 'Tutte';
+      const label = typeof item.folderName === 'string' ? item.folderName : t('common.tutte');
       const isCollapsed = collapsedFolderIds.has(item.folderId);
       const overlapState = overlapHoverState;
       let hasTouchingNeighbor = false;
@@ -777,6 +780,7 @@ export default function IndexScreen() {
     handleSmartTaskCompleted,
     isPostDragRef,
     toggleHabitDone,
+    t,
   ]);
 
   return (
@@ -785,10 +789,10 @@ export default function IndexScreen() {
         <View style={styles.header}>
           <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-end' }}>
             <TouchableOpacity onPress={() => setActiveSection('tasks')}>
-              <Text style={[styles.title, activeSection !== 'tasks' && { color: '#888' }]}>Tasks</Text>
+              <Text style={[styles.title, activeSection !== 'tasks' && { color: '#888' }]}>{t('index.tasks')}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setActiveSection('tabelle')}>
-              <Text style={[styles.title, activeSection !== 'tabelle' && { color: '#888' }]}>Tabelle</Text>
+              <Text style={[styles.title, activeSection !== 'tabelle' && { color: '#888' }]}>{t('index.tables')}</Text>
             </TouchableOpacity>
           </View>
           <Text style={[styles.progressText, activeSection !== 'tasks' && { opacity: 0 }]}>{stats.pct}%</Text>
@@ -801,7 +805,9 @@ export default function IndexScreen() {
             <Text style={[styles.progressText, activeSection !== 'tasks' && { opacity: 0.3 }]}>{stats.pct}%</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setActiveSection('tabelle')}>
-            <Text style={[styles.progressText, { fontSize: 18, letterSpacing: 1 }, activeSection !== 'tabelle' && { opacity: 0.3 }]}>TABELLE</Text>
+            <Text style={[styles.progressText, { fontSize: 18, letterSpacing: 1 }, activeSection !== 'tabelle' && { opacity: 0.3 }]}>
+              {t('index.tables').toUpperCase()}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -965,7 +971,7 @@ export default function IndexScreen() {
                 style={styles.folderRow}
                 onPress={() => setActiveFolder(OGGI_TODAY_KEY)}
               >
-                <Text style={[styles.folderLabel, activeFolder === OGGI_TODAY_KEY && styles.folderLabelActive]}>Oggi</Text>
+                <Text style={[styles.folderLabel, activeFolder === OGGI_TODAY_KEY && styles.folderLabelActive]}>{t('index.folderToday')}</Text>
               </TouchableOpacity>
             ) : folderNameOrNull === DOMANI_TOMORROW_KEY ? (
               <TouchableOpacity
@@ -973,7 +979,7 @@ export default function IndexScreen() {
                 style={styles.folderRow}
                 onPress={() => setActiveFolder(DOMANI_TOMORROW_KEY)}
               >
-                <Text style={[styles.folderLabel, activeFolder === DOMANI_TOMORROW_KEY && styles.folderLabelActive]}>Domani</Text>
+                <Text style={[styles.folderLabel, activeFolder === DOMANI_TOMORROW_KEY && styles.folderLabelActive]}>{t('index.folderTomorrow')}</Text>
               </TouchableOpacity>
             ) : folderNameOrNull === null ? (
               <TouchableOpacity
@@ -982,7 +988,7 @@ export default function IndexScreen() {
                 onPress={() => setActiveFolder(null)}
               >
                 <Ionicons name="folder-open-outline" size={18} color={activeFolder === null ? THEME.text : THEME.textMuted} />
-                <Text style={[styles.folderLabel, activeFolder === null && styles.folderLabelActive]}>Tutte</Text>
+                <Text style={[styles.folderLabel, activeFolder === null && styles.folderLabelActive]}>{t('common.tutte')}</Text>
               </TouchableOpacity>
             ) : (() => {
               const f = folders.find(fd => (fd.name ?? '').trim() === folderNameOrNull);

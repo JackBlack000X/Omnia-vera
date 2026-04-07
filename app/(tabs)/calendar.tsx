@@ -3,14 +3,16 @@ import { getCalendarDays, getMonthName, getMonthYear } from '@/lib/date';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
+import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { useAppTheme } from '@/lib/theme-context';
 import { useRouter } from 'expo-router';
 import LottieView from 'lottie-react-native';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const DAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+const CALENDAR_UI_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 const STREAK_BORDER_COLOR = '#FFD700';
 const STREAK_BORDER_THICKNESS = 2;
 const STREAK_BORDER_INSET = 0.1;
@@ -102,10 +104,22 @@ type MonthViewProps = {
   onDayPress: (day: { date: Date; isCurrentMonth: boolean; ymd: string }) => void;
   isFirst: boolean;
   dayResetTime?: string;
+  weekHeaders: string[];
+  localeTag: string;
 };
 
 const MonthView = React.memo(function MonthView({
-  item, isCurrentMonthActive, logicalTodayYmd, habits, recentHistory, streakInfo, onDayPress, isFirst, dayResetTime
+  item,
+  isCurrentMonthActive,
+  logicalTodayYmd,
+  habits,
+  recentHistory,
+  streakInfo,
+  onDayPress,
+  isFirst,
+  dayResetTime,
+  weekHeaders,
+  localeTag,
 }: MonthViewProps) {
   const { year, month } = item;
   const days = useMemo(() => getCalendarDays(year, month), [year, month]);
@@ -139,7 +153,7 @@ const MonthView = React.memo(function MonthView({
               numberOfLines={1}
               adjustsFontSizeToFit
             >
-              {getMonthName(month)}
+              {getMonthName(month, undefined, localeTag)}
             </Text>
             <Text
               style={[styles.monthYear, styles.monthYearRight, isCurrentMonthActive && styles.monthYearActive]}
@@ -153,8 +167,8 @@ const MonthView = React.memo(function MonthView({
       </View>
       <View style={styles.calendar}>
         <View style={styles.weekHeader}>
-          {DAYS.map((day) => (
-            <View key={day} style={styles.dayHeaderContainer}>
+          {weekHeaders.map((day, i) => (
+            <View key={`${CALENDAR_UI_DAY_KEYS[i]}-${day}`} style={styles.dayHeaderContainer}>
               <Text style={styles.dayHeader}>{day}</Text>
             </View>
           ))}
@@ -268,10 +282,16 @@ function getNumWeeksInMonth(year: number, month: number): number {
 }
 
 export default function CalendarScreen() {
+  const { t } = useTranslation();
+  const fmt = useFormatLocale();
   const { habits, history, getDay, dayResetTime } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
+  const weekHeaders = useMemo(
+    () => CALENDAR_UI_DAY_KEYS.map((k) => t(`calendarUi.${k}`)),
+    [t]
+  );
   const logicalTodayYmd = useMemo(
     () => getDay(new Date()),
     [getDay]
@@ -464,8 +484,10 @@ export default function CalendarScreen() {
       onDayPress={handleDayPress}
       isFirst={index === 0}
       dayResetTime={dayResetTime}
+      weekHeaders={weekHeaders}
+      localeTag={fmt}
     />
-  ), [currentYear, currentMonth, logicalTodayYmd, habits, recentHistory, streakInfo, handleDayPress, dayResetTime]);
+  ), [currentYear, currentMonth, logicalTodayYmd, habits, recentHistory, streakInfo, handleDayPress, dayResetTime, weekHeaders, fmt]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -474,7 +496,7 @@ export default function CalendarScreen() {
           <View style={styles.headerText}>
             {activeTheme !== 'futuristic' && (
               <View style={styles.headerTitleRow}>
-                <Text style={styles.title}>Calendario</Text>
+                <Text style={styles.title}>{t('calendarScreen.title')}</Text>
                 <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButtonInline}>
                   <View style={styles.infoCircleSmall}>
                     <Text style={styles.infoTextSmall}>i</Text>
@@ -528,7 +550,7 @@ export default function CalendarScreen() {
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
             <View style={styles.legendModal}>
               <View style={styles.legendHeader}>
-                <Text style={styles.legendTitle}>Legenda</Text>
+                <Text style={styles.legendTitle}>{t('calendarScreen.legendTitle')}</Text>
                 <TouchableOpacity onPress={() => setShowLegend(false)} style={styles.closeButton}>
                   <Text style={styles.closeButtonText}>✕</Text>
                 </TouchableOpacity>
@@ -536,19 +558,19 @@ export default function CalendarScreen() {
               <View style={styles.legendItems}>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendCircle, { backgroundColor: 'rgba(0, 255, 0, 0.5)' }]} />
-                  <Text style={styles.legendText}>100% - Giorno perfetto</Text>
+                  <Text style={styles.legendText}>{t('calendarScreen.legendPerfect')}</Text>
                 </View>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendCircle, { backgroundColor: 'rgba(255, 140, 0, 0.5)' }]} />
-                  <Text style={styles.legendText}>75%+ - Buon progresso</Text>
+                  <Text style={styles.legendText}>{t('calendarScreen.legendGood')}</Text>
                 </View>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendCircle, { backgroundColor: 'rgba(255, 215, 0, 0.5)' }]} />
-                  <Text style={styles.legendText}>50%+ - Progresso medio</Text>
+                  <Text style={styles.legendText}>{t('calendarScreen.legendMedium')}</Text>
                 </View>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendCircle, { backgroundColor: 'rgba(255, 0, 0, 0.5)' }]} />
-                  <Text style={styles.legendText}>Sotto il 50%</Text>
+                  <Text style={styles.legendText}>{t('calendarScreen.legendLow')}</Text>
                 </View>
               </View>
             </View>

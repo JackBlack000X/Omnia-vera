@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Animated,
   Dimensions,
@@ -18,6 +19,7 @@ type Props = {
 };
 
 export default function IntroVideo({ onDone }: Props) {
+  const { t } = useTranslation();
   const [videoEnded, setVideoEnded] = useState(false);
 
   // Animated values
@@ -94,7 +96,7 @@ export default function IntroVideo({ onDone }: Props) {
               pressed && styles.enterButtonPressed,
             ]}
           >
-            <Text style={styles.enterText}>Enter</Text>
+            <Text style={styles.enterText}>{t('intro.enter')}</Text>
           </Pressable>
         </Animated.View>
       )}

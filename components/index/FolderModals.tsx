@@ -3,7 +3,8 @@ import { FOLDER_COLORS, FOLDER_ICONS, FolderFilters, FolderItem } from '@/lib/in
 import type { HabitTipo } from '@/lib/habits/schema';
 import { COLORS } from '@/components/modal/modalStyles';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { THEME } from '@/constants/theme';
 
@@ -27,24 +28,31 @@ export type FolderModalsProps = {
   performDeleteFolder: (folderName: string) => void;
 };
 
-const TIPO_OPTIONS: { value: HabitTipo; label: string; icon: string }[] = [
-  { value: 'task', label: 'Task', icon: 'checkbox-outline' },
-  { value: 'evento', label: 'Eventi', icon: 'calendar-outline' },
-  { value: 'abitudine', label: 'Abitudini', icon: 'repeat-outline' },
-  { value: 'viaggio', label: 'Viaggi', icon: 'airplane-outline' },
-  { value: 'vacanza', label: 'Vacanze', icon: 'sunny-outline' },
-  { value: 'salute', label: 'Salute', icon: 'heart-outline' },
-];
-
-const FREQ_OPTIONS: { value: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; label: string }[] = [
-  { value: 'single', label: 'Singola' },
-  { value: 'daily', label: 'Giornaliera' },
-  { value: 'weekly', label: 'Settimanale' },
-  { value: 'monthly', label: 'Mensile' },
-  { value: 'annual', label: 'Annuale' },
-];
-
 function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFilters: (f: FolderFilters) => void }) {
+  const { t } = useTranslation();
+  const tipoOptions = useMemo(
+    () =>
+      [
+        { value: 'task' as HabitTipo, label: t('modal.tipoTask'), icon: 'checkbox-outline' },
+        { value: 'evento' as HabitTipo, label: t('modal.tipoEvent'), icon: 'calendar-outline' },
+        { value: 'abitudine' as HabitTipo, label: t('modal.tipoHabit'), icon: 'repeat-outline' },
+        { value: 'viaggio' as HabitTipo, label: t('modal.tipoTravel'), icon: 'airplane-outline' },
+        { value: 'vacanza' as HabitTipo, label: t('modal.tipoVacation'), icon: 'sunny-outline' },
+        { value: 'salute' as HabitTipo, label: t('modal.tipoHealth'), icon: 'heart-outline' },
+      ] as const,
+    [t]
+  );
+  const freqOptions = useMemo(
+    () =>
+      [
+        { value: 'single' as const, label: t('modal.freqSingle') },
+        { value: 'daily' as const, label: t('modal.freqDaily') },
+        { value: 'weekly' as const, label: t('modal.freqWeekly') },
+        { value: 'monthly' as const, label: t('modal.freqMonthly') },
+        { value: 'annual' as const, label: t('modal.freqAnnual') },
+      ] as const,
+    [t]
+  );
   const [expanded, setExpanded] = useState(
     !!(filters.tipos?.length || filters.colors?.length || filters.frequencies?.length)
   );
@@ -75,7 +83,7 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Ionicons name="funnel-outline" size={16} color={hasActiveFilters ? '#3b82f6' : THEME.textMuted} />
           <Text style={[fStyles.filterHeaderText, hasActiveFilters && { color: '#3b82f6' }]}>
-            Filtri{hasActiveFilters ? ' (attivi)' : ''}
+            {hasActiveFilters ? t('folderModals.filtersActive') : t('folderModals.filters')}
           </Text>
         </View>
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={THEME.textMuted} />
@@ -83,9 +91,9 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
 
       {expanded && (
         <View style={fStyles.filterBody}>
-          <Text style={fStyles.filterLabel}>Tipo</Text>
+          <Text style={fStyles.filterLabel}>{t('modal.sectionType')}</Text>
           <View style={fStyles.chipRow}>
-            {TIPO_OPTIONS.map(opt => {
+            {tipoOptions.map(opt => {
               const active = filters.tipos?.includes(opt.value);
               return (
                 <TouchableOpacity
@@ -100,7 +108,7 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
             })}
           </View>
 
-          <Text style={fStyles.filterLabel}>Colore</Text>
+          <Text style={fStyles.filterLabel}>{t('modal.sectionColor')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={fStyles.colorFilterRow}>
             {COLORS.map(c => {
               const active = filters.colors?.includes(c);
@@ -121,9 +129,9 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
             })}
           </ScrollView>
 
-          <Text style={fStyles.filterLabel}>Frequenza</Text>
+          <Text style={fStyles.filterLabel}>{t('folderModals.freqLabel')}</Text>
           <View style={fStyles.chipRow}>
-            {FREQ_OPTIONS.map(opt => {
+            {freqOptions.map(opt => {
               const active = filters.frequencies?.includes(opt.value);
               return (
                 <TouchableOpacity
@@ -143,6 +151,7 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
 }
 
 export function FolderModals(props: FolderModalsProps) {
+  const { t } = useTranslation();
   const {
     createFolderVisible,
     setCreateFolderVisible,
@@ -178,20 +187,20 @@ export function FolderModals(props: FolderModalsProps) {
             <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
               <ScrollView style={{ maxHeight: '100%' }} bounces={false} showsVerticalScrollIndicator={false}>
               <View style={styles.createFolderCard}>
-                <Text style={styles.createFolderTitle}>Modifica cartella</Text>
+                <Text style={styles.createFolderTitle}>{t('folderModals.editTitle')}</Text>
 
-                <Text style={styles.createFolderLabel}>Nome</Text>
+                <Text style={styles.createFolderLabel}>{t('common.nome')}</Text>
                 <TextInput
                   value={newFolderName}
                   onChangeText={setNewFolderName}
-                  placeholder="Es. Lavoro, Sport..."
+                  placeholder={t('folderModals.namePh')}
                   placeholderTextColor="#6b7280"
                   style={styles.createFolderInput}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
 
-                <Text style={styles.createFolderLabel}>Colore</Text>
+                <Text style={styles.createFolderLabel}>{t('modal.sectionColor')}</Text>
                 <View style={styles.createFolderRow}>
                   {FOLDER_COLORS.map(c => (
                     <TouchableOpacity
@@ -206,7 +215,7 @@ export function FolderModals(props: FolderModalsProps) {
                   ))}
                 </View>
 
-                <Text style={styles.createFolderLabel}>Icona</Text>
+                <Text style={styles.createFolderLabel}>{t('folderModals.iconLabel')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.iconRow}>
                   {FOLDER_ICONS.map(i => (
                     <TouchableOpacity
@@ -227,34 +236,40 @@ export function FolderModals(props: FolderModalsProps) {
                 <TouchableOpacity
                   onPress={() => {
                     if (editingFolder) {
-                      Alert.alert('Elimina Cartella', `Vuoi eliminare la cartella "${editingFolder.name}"? (Le task torneranno in "Tutte")`, [
-                        { text: 'Annulla', style: 'cancel' },
-                        {
-                          text: 'Elimina', style: 'destructive', onPress: () => {
-                            performDeleteFolder(editingFolder.name);
-                            setEditFolderVisible(false);
-                            setEditingFolder(null);
-                          }
-                        }
-                      ]);
+                      Alert.alert(
+                        t('index.folderDeleteTitle'),
+                        t('index.folderDeleteMessage', { name: editingFolder.name, all: t('common.tutte') }),
+                        [
+                          { text: t('common.cancel'), style: 'cancel' },
+                          {
+                            text: t('common.delete'),
+                            style: 'destructive',
+                            onPress: () => {
+                              performDeleteFolder(editingFolder.name);
+                              setEditFolderVisible(false);
+                              setEditingFolder(null);
+                            },
+                          },
+                        ]
+                      );
                     }
                   }}
                   style={styles.editFolderDeleteBtn}
                 >
                   <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                  <Text style={styles.editFolderDeleteText}>Elimina cartella</Text>
+                  <Text style={styles.editFolderDeleteText}>{t('folderModals.deleteFolderRow')}</Text>
                 </TouchableOpacity>
 
                 <View style={styles.createFolderActions}>
                   <TouchableOpacity style={styles.createFolderBtnSecondary} onPress={() => { setEditFolderVisible(false); setEditingFolder(null); }}>
-                    <Text style={styles.createFolderBtnSecondaryText}>Annulla</Text>
+                    <Text style={styles.createFolderBtnSecondaryText}>{t('common.cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.createFolderBtnPrimary, { backgroundColor: newFolderName.trim() ? newFolderColor : '#4b5563' }]}
                     onPress={handleSaveEditFolder}
                     disabled={!newFolderName.trim()}
                   >
-                    <Text style={styles.createFolderBtnPrimaryText}>Salva</Text>
+                    <Text style={styles.createFolderBtnPrimaryText}>{t('common.save')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -277,20 +292,20 @@ export function FolderModals(props: FolderModalsProps) {
             <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
               <ScrollView style={{ maxHeight: '100%' }} bounces={false} showsVerticalScrollIndicator={false}>
               <View style={styles.createFolderCard}>
-                <Text style={styles.createFolderTitle}>Nuova cartella</Text>
+                <Text style={styles.createFolderTitle}>{t('folderModals.newTitle')}</Text>
 
-                <Text style={styles.createFolderLabel}>Nome</Text>
+                <Text style={styles.createFolderLabel}>{t('common.nome')}</Text>
                 <TextInput
                   value={newFolderName}
                   onChangeText={setNewFolderName}
-                  placeholder="Es. Lavoro, Sport..."
+                  placeholder={t('folderModals.namePh')}
                   placeholderTextColor="#6b7280"
                   style={styles.createFolderInput}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
 
-                <Text style={styles.createFolderLabel}>Colore</Text>
+                <Text style={styles.createFolderLabel}>{t('modal.sectionColor')}</Text>
                 <View style={styles.createFolderRow}>
                   {FOLDER_COLORS.map(c => (
                     <TouchableOpacity
@@ -305,7 +320,7 @@ export function FolderModals(props: FolderModalsProps) {
                   ))}
                 </View>
 
-                <Text style={styles.createFolderLabel}>Icona</Text>
+                <Text style={styles.createFolderLabel}>{t('folderModals.iconLabel')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.iconRow}>
                   {FOLDER_ICONS.map(i => (
                     <TouchableOpacity
@@ -325,14 +340,14 @@ export function FolderModals(props: FolderModalsProps) {
 
                 <View style={styles.createFolderActions}>
                   <TouchableOpacity style={styles.createFolderBtnSecondary} onPress={() => setCreateFolderVisible(false)}>
-                    <Text style={styles.createFolderBtnSecondaryText}>Annulla</Text>
+                    <Text style={styles.createFolderBtnSecondaryText}>{t('common.cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.createFolderBtnPrimary, { backgroundColor: newFolderName.trim() ? newFolderColor : '#4b5563' }]}
                     onPress={handleCreateFolder}
                     disabled={!newFolderName.trim()}
                   >
-                    <Text style={styles.createFolderBtnPrimaryText}>Crea</Text>
+                    <Text style={styles.createFolderBtnPrimaryText}>{t('folderModals.create')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>

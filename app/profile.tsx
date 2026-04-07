@@ -17,12 +17,28 @@ import {
 import { canAskLocationPermission, getLocationPermissionStatusAsync, requestLocationPermissionsAsync, type LocationPermissionStatus } from '@/lib/location';
 import { buildCsv } from '@/lib/csv';
 import { useHabits } from '@/lib/habits/Provider';
+import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
+import { useLocaleSettings } from '@/lib/i18n/LocaleProvider';
+import { SUPPORTED_LANGS, type AppLocalePreference } from '@/lib/i18n/resolveLocale';
 import { getFallbackCity, setFallbackCity, clearWeatherCache, searchCities, type CityInfo } from '@/lib/weather';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type ProfileSection = 'impostazioni' | 'statistiche';
@@ -37,13 +53,22 @@ function formatSleepMinutes(value: number): string {
   return `${minutes}m`;
 }
 
-function formatKm(value: number): string {
-  return `${value.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
-}
-
 export default function ProfileScreen() {
+  const { t } = useTranslation();
+  const { preference, setPreference } = useLocaleSettings();
+  const fmt = useFormatLocale();
   const { habits, history, setHabits } = useHabits();
   const router = useRouter();
+
+  const formatKm = (value: number) =>
+    `${value.toLocaleString(fmt, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${t('common.km')}`;
+
+  const localePreferenceOptions = useMemo((): AppLocalePreference[] => ['system', ...SUPPORTED_LANGS], []);
+  const [languageModalVisible, setLanguageModalVisible] = useState(false);
+  const currentLanguageLabel = useMemo(
+    () => (preference === 'system' ? t('localeNames.system') : t(`localeNames.${preference}`)),
+    [preference, t],
+  );
   const [feedbackText, setFeedbackText] = useState('');
   const [section, setSection] = useState<ProfileSection>('impostazioni');
   const [calendarImporting, setCalendarImporting] = useState(false);
@@ -150,11 +175,11 @@ export default function ProfileScreen() {
       }
     } catch {
       setHealthSnapshot(null);
-      setHealthError('Non sono riuscito a leggere i dati di Apple Salute. Controlla i permessi nelle impostazioni iPhone.');
+      setHealthError(t('profile.healthReadError'));
     } finally {
       setHealthLoading(false);
     }
-  }, []);
+  }, [t]);
 
   React.useEffect(() => {
     if (!canUseHealthKit()) return;
@@ -164,19 +189,19 @@ export default function ProfileScreen() {
   async function sendFeedback() {
     const trimmed = feedbackText.trim();
     if (!trimmed) {
-      Alert.alert('Feedback', 'Scrivi un messaggio prima di inviare.');
+      Alert.alert(t('profile.feedbackLabel'), t('profile.feedbackEmpty'));
       return;
     }
-    const subject = encodeURIComponent('Feedback Tothemoon App');
+    const subject = encodeURIComponent(t('profile.feedbackMailSubject'));
     const body = encodeURIComponent(trimmed);
     const mailto = `mailto:${APP_CONFIG.feedbackEmail}?subject=${subject}&body=${body}`;
     const canOpen = await Linking.canOpenURL(mailto);
     if (canOpen) {
       await Linking.openURL(mailto);
       setFeedbackText('');
-      Alert.alert('Grazie', 'Si aprirà la mail con il tuo messaggio. Invia l’email per inviare il feedback.');
+      Alert.alert(t('profile.feedbackThanks'), t('profile.feedbackMailOpen'));
     } else {
-      Alert.alert('Feedback', `Scrivi a ${APP_CONFIG.feedbackEmail} per inviare il tuo feedback.`);
+      Alert.alert(t('profile.feedbackLabel'), t('profile.feedbackMailFallback', { email: APP_CONFIG.feedbackEmail }));
     }
   }
 
@@ -190,23 +215,20 @@ export default function ProfileScreen() {
       URL.revokeObjectURL(url);
     } else {
       await Clipboard.setStringAsync(csv);
-      Alert.alert('CSV copiato', 'Contenuto copiato negli appunti.');
+      Alert.alert(t('profile.csvCopiedTitle'), t('profile.csvCopiedMessage'));
     }
   }
 
   async function importFromAppleCalendar() {
     if (!canAskCalendarPermission()) {
-      Alert.alert('Calendario', 'L\'import da calendario non è disponibile su questo dispositivo.');
+      Alert.alert(t('profile.appleCalendar'), t('profile.calendarUnavailable'));
       return;
     }
     setCalendarImporting(true);
     try {
       let status = await requestCalendarPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(
-          'Permesso negato',
-          'Per importare gli eventi devi consentire l\'accesso al calendario nelle Impostazioni del dispositivo.'
-        );
+        Alert.alert(t('profile.permissionDeniedTitle'), t('profile.calendarPermissionBody'));
         return;
       }
       const start = new Date();
@@ -216,13 +238,13 @@ export default function ProfileScreen() {
       const events = await getCalendarEventsAsync(start, end);
       const newHabits = calendarEventsToHabits(events, habits, habits.length);
       if (newHabits.length === 0) {
-        Alert.alert('Calendario', 'Nessun nuovo evento da importare nel periodo selezionato (ultimi 30 giorni + 1 anno).');
+        Alert.alert(t('profile.appleCalendar'), t('profile.calendarNoEvents'));
         return;
       }
       setHabits((prev) => [...prev, ...newHabits]);
-      Alert.alert('Calendario', `Importati ${newHabits.length} eventi dal Calendario Apple.`);
+      Alert.alert(t('profile.appleCalendar'), t('profile.calendarImported', { count: newHabits.length }));
     } catch {
-      Alert.alert('Errore', 'Impossibile importare gli eventi dal calendario.');
+      Alert.alert(t('profile.errorAlertTitle'), t('profile.calendarError'));
     } finally {
       setCalendarImporting(false);
     }
@@ -231,14 +253,14 @@ export default function ProfileScreen() {
   function getLocationStatusLabel(status: LocationPermissionStatus): string {
     switch (status) {
       case 'background':
-        return 'Stato: Attivo (background abilitato)';
+        return t('profile.locationStatusBackground');
       case 'foreground':
-        return 'Stato: Solo mentre usi l’app';
+        return t('profile.locationStatusForeground');
       case 'none':
-        return 'Stato: Non ancora richiesto';
+        return t('profile.locationStatusNone');
       case 'denied':
       default:
-        return 'Stato: Disattivato';
+        return t('profile.locationStatusDenied');
     }
   }
 
@@ -246,12 +268,12 @@ export default function ProfileScreen() {
     if (!canAskLocationPermission()) return;
     if (locationStatus === 'denied') {
       Alert.alert(
-        'Abilita posizione',
-        'Hai già rifiutato la posizione per Tothemoon. Vuoi aprire le impostazioni del dispositivo per abilitarla?',
+        t('profile.enableLocationTitle'),
+        t('profile.enableLocationBody'),
         [
-          { text: 'Annulla', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           {
-            text: 'Apri impostazioni',
+            text: t('profile.openSettings'),
             onPress: () => {
               Linking.openSettings().catch(() => {});
             },
@@ -270,12 +292,12 @@ export default function ProfileScreen() {
       setLocationStatus(result);
       if (result === 'denied') {
         Alert.alert(
-          'Posizione disattivata',
-          'Per usare le automazioni posizione devi abilitare la posizione per Tothemoon nelle impostazioni del dispositivo.',
+          t('profile.locationOffTitle'),
+          t('profile.locationOffBody'),
           [
-            { text: 'Annulla', style: 'cancel' },
+            { text: t('common.cancel'), style: 'cancel' },
             {
-              text: 'Apri impostazioni',
+              text: t('profile.openSettings'),
               onPress: () => {
                 Linking.openSettings().catch(() => {});
               },
@@ -295,11 +317,11 @@ export default function ProfileScreen() {
     try {
       const granted = await requestHealthAuthorizationAsync();
       if (!granted) {
-        setHealthError('Apple Salute non ha concesso l’accesso ai dati richiesti.');
+        setHealthError(t('profile.healthDenied'));
       }
       await refreshHealthState(granted);
     } catch {
-      setHealthError('Impossibile collegare Apple Salute in questo momento.');
+      setHealthError(t('profile.healthConnectError'));
       setHealthLoading(false);
     }
   }
@@ -307,16 +329,16 @@ export default function ProfileScreen() {
   function getHealthStatusLabel(state: HealthConnectionState): string {
     switch (state) {
       case 'ready':
-        return 'Stato: collegato';
+        return t('profile.healthStatusReady');
       case 'needsAuthorization':
-        return 'Stato: accesso non ancora autorizzato';
+        return t('profile.healthStatusNeedsAuth');
       case 'unavailable':
-        return 'Stato: Salute non disponibile su questo dispositivo';
+        return t('profile.healthStatusUnavailable');
       case 'unknown':
-        return 'Stato: verifica richiesta';
+        return t('profile.healthStatusUnknown');
       case 'unsupported':
       default:
-        return 'Stato: disponibile solo su iPhone';
+        return t('profile.healthStatusUnsupported');
     }
   }
 
@@ -326,11 +348,11 @@ export default function ProfileScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={28} color={THEME.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Profilo</Text>
+        <Text style={styles.title}>{t('profile.title')}</Text>
         <View style={styles.headerRight}>
           {section === 'statistiche' && (
             <TouchableOpacity onPress={exportCsv} style={styles.csvBtn}>
-              <Text style={styles.csvText}>CSV</Text>
+              <Text style={styles.csvText}>{t('profile.csv')}</Text>
             </TouchableOpacity>
           )}
           {section !== 'statistiche' && <View style={styles.headerSpacer} />}
@@ -344,7 +366,7 @@ export default function ProfileScreen() {
           activeOpacity={0.8}
         >
           <Ionicons name="settings-outline" size={20} color={section === 'impostazioni' ? '#fff' : THEME.textMuted} />
-          <Text style={[styles.tabText, section === 'impostazioni' && styles.tabTextActive]}>Impostazioni</Text>
+          <Text style={[styles.tabText, section === 'impostazioni' && styles.tabTextActive]}>{t('profile.tabSettings')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, section === 'statistiche' && styles.tabActive]}
@@ -352,17 +374,80 @@ export default function ProfileScreen() {
           activeOpacity={0.8}
         >
           <Ionicons name="stats-chart-outline" size={20} color={section === 'statistiche' ? '#fff' : THEME.textMuted} />
-          <Text style={[styles.tabText, section === 'statistiche' && styles.tabTextActive]}>Statistiche</Text>
+          <Text style={[styles.tabText, section === 'statistiche' && styles.tabTextActive]}>{t('profile.tabStats')}</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false}>
         {section === 'impostazioni' && (
           <>
+            <View style={styles.feedbackBox}>
+              <Text style={styles.feedbackLabel}>{t('profile.languageTitle')}</Text>
+              <Text style={styles.feedbackSublabel}>{t('profile.languageSub')}</Text>
+              <TouchableOpacity
+                style={styles.langPickerButton}
+                onPress={() => setLanguageModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.langPickerValue} numberOfLines={1}>
+                  {currentLanguageLabel}
+                </Text>
+                <Ionicons name="chevron-down" size={22} color={THEME.textMuted} />
+              </TouchableOpacity>
+
+              <Modal
+                visible={languageModalVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setLanguageModalVisible(false)}
+              >
+                <View style={styles.langModalRoot}>
+                  <TouchableOpacity
+                    style={styles.langModalBackdrop}
+                    activeOpacity={1}
+                    onPress={() => setLanguageModalVisible(false)}
+                  />
+                  <View style={styles.langModalSheet}>
+                    <Text style={styles.langModalHeading}>{t('profile.languageTitle')}</Text>
+                    <ScrollView
+                      style={styles.langModalScroll}
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {localePreferenceOptions.map((opt) => {
+                        const selected = preference === opt;
+                        const label = opt === 'system' ? t('localeNames.system') : t(`localeNames.${opt}`);
+                        return (
+                          <TouchableOpacity
+                            key={opt}
+                            style={[styles.langRow, selected && styles.langRowActive]}
+                            onPress={() => {
+                              void setPreference(opt);
+                              setLanguageModalVisible(false);
+                            }}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={styles.langRowText}>{label}</Text>
+                            {selected ? <Ionicons name="checkmark-circle" size={22} color={THEME.primary} /> : null}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                    <TouchableOpacity
+                      style={styles.langModalClose}
+                      onPress={() => setLanguageModalVisible(false)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.langModalCloseText}>{t('common.close')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Modal>
+            </View>
             {canAskCalendarPermission() && (
               <View style={styles.feedbackBox}>
-                <Text style={styles.feedbackLabel}>Calendario Apple</Text>
-                <Text style={styles.feedbackSublabel}>Importa eventi dal Calendario del dispositivo in Tothemoon</Text>
+                <Text style={styles.feedbackLabel}>{t('profile.appleCalendar')}</Text>
+                <Text style={styles.feedbackSublabel}>{t('profile.appleCalendarSub')}</Text>
                 <TouchableOpacity
                   style={[styles.sendFeedbackBtn, styles.calendarImportBtn]}
                   onPress={importFromAppleCalendar}
@@ -375,16 +460,16 @@ export default function ProfileScreen() {
                     <Ionicons name="calendar-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                   )}
                   <Text style={styles.sendFeedbackBtnText}>
-                    {calendarImporting ? 'Importazione...' : 'Trasferisci dati da Apple Calendario'}
+                    {calendarImporting ? t('profile.importingCalendar') : t('profile.importCalendar')}
                   </Text>
                 </TouchableOpacity>
               </View>
             )}
             {canAskLocationPermission() && (
               <View style={styles.feedbackBox}>
-                <Text style={styles.feedbackLabel}>Automazioni posizione</Text>
+                <Text style={styles.feedbackLabel}>{t('profile.locationAuto')}</Text>
                 <Text style={styles.feedbackSublabel}>
-                  Usa la posizione per completare automaticamente alcune task (es. Palestra) quando esci da luoghi salvati.
+                  {t('profile.locationAutoSub')}
                 </Text>
                 <Text style={[styles.feedbackSublabel, { marginBottom: 10 }]}>
                   {getLocationStatusLabel(locationStatus)}
@@ -402,8 +487,8 @@ export default function ProfileScreen() {
                   )}
                   <Text style={styles.sendFeedbackBtnText}>
                     {locationStatus === 'background'
-                      ? 'Gestisci dalle impostazioni di sistema'
-                      : 'Abilita posizione per le automazioni'}
+                      ? t('profile.locationBtnSettings')
+                      : t('profile.locationBtnEnable')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -412,9 +497,9 @@ export default function ProfileScreen() {
               <View style={styles.feedbackBox}>
                 <View style={styles.healthHeaderRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.feedbackLabel}>Apple Salute</Text>
+                    <Text style={styles.feedbackLabel}>{t('profile.healthTitle')}</Text>
                     <Text style={styles.feedbackSublabel}>
-                      Collega sonno, calorie attive, passi e km per preparare le abitudini basate su HealthKit.
+                      {t('profile.healthSub')}
                     </Text>
                     <Text style={[styles.feedbackSublabel, { marginBottom: 10 }]}>
                       {getHealthStatusLabel(healthState)}
@@ -435,34 +520,34 @@ export default function ProfileScreen() {
                 {healthLoading ? (
                   <View style={styles.healthLoadingRow}>
                     <ActivityIndicator color={THEME.primary} size="small" />
-                    <Text style={styles.healthLoadingText}>Aggiorno i dati Salute...</Text>
+                    <Text style={styles.healthLoadingText}>{t('profile.healthLoading')}</Text>
                   </View>
                 ) : healthState === 'ready' && healthSnapshot ? (
                   <>
                     <View style={styles.healthMetricsRow}>
                       <View style={styles.healthMetricCard}>
                         <Ionicons name="footsteps-outline" size={18} color={THEME.cyan} />
-                        <Text style={styles.healthMetricValue}>{healthSnapshot.stepsToday.toLocaleString('it-IT')}</Text>
-                        <Text style={styles.healthMetricLabel}>Passi oggi</Text>
+                        <Text style={styles.healthMetricValue}>{healthSnapshot.stepsToday.toLocaleString(fmt)}</Text>
+                        <Text style={styles.healthMetricLabel}>{t('profile.healthMetricSteps')}</Text>
                       </View>
                       <View style={styles.healthMetricCard}>
                         <Ionicons name="walk-outline" size={18} color="#84cc16" />
                         <Text style={styles.healthMetricValue}>{formatKm(healthSnapshot.walkingRunningDistanceKmToday)}</Text>
-                        <Text style={styles.healthMetricLabel}>Km oggi</Text>
+                        <Text style={styles.healthMetricLabel}>{t('profile.healthMetricDistance')}</Text>
                       </View>
                       <View style={styles.healthMetricCard}>
                         <Ionicons name="flame-outline" size={18} color={THEME.orange} />
-                        <Text style={styles.healthMetricValue}>{healthSnapshot.activeEnergyBurnedKcalToday.toLocaleString('it-IT')}</Text>
-                        <Text style={styles.healthMetricLabel}>Kcal attive</Text>
+                        <Text style={styles.healthMetricValue}>{healthSnapshot.activeEnergyBurnedKcalToday.toLocaleString(fmt)}</Text>
+                        <Text style={styles.healthMetricLabel}>{t('profile.healthMetricEnergy')}</Text>
                       </View>
                       <View style={styles.healthMetricCard}>
                         <Ionicons name="moon-outline" size={18} color={THEME.primary} />
                         <Text style={styles.healthMetricValue}>{formatSleepMinutes(healthSnapshot.sleepMinutesLastNight)}</Text>
-                        <Text style={styles.healthMetricLabel}>Ultima notte</Text>
+                        <Text style={styles.healthMetricLabel}>{t('profile.healthMetricSleepLast')}</Text>
                       </View>
                     </View>
                     <Text style={styles.healthFootnote}>
-                      Anteprima HealthKit pronta. Nel prossimo step possiamo agganciare questi dati alle singole abitudini.
+                      {t('profile.healthFootnote')}
                     </Text>
                   </>
                 ) : (
@@ -476,8 +561,8 @@ export default function ProfileScreen() {
                       <Ionicons name="heart-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                       <Text style={styles.sendFeedbackBtnText}>
                         {healthState === 'needsAuthorization' || healthState === 'unknown'
-                          ? 'Collega Apple Salute'
-                          : 'Riprova collegamento'}
+                          ? t('profile.healthConnect')
+                          : t('profile.healthRetry')}
                       </Text>
                     </TouchableOpacity>
                     {healthError && <Text style={styles.healthErrorText}>{healthError}</Text>}
@@ -486,9 +571,9 @@ export default function ProfileScreen() {
               </View>
             )}
             <View style={styles.feedbackBox}>
-              <Text style={styles.feedbackLabel}>Meteo</Text>
+              <Text style={styles.feedbackLabel}>{t('profile.weatherTitle')}</Text>
               <Text style={styles.feedbackSublabel}>
-                Posizione per le previsioni meteo nella vista Oggi.
+                {t('profile.weatherSub')}
               </Text>
               <TouchableOpacity
                 style={styles.weatherCurrentRow}
@@ -505,7 +590,7 @@ export default function ProfileScreen() {
                   <TextInput
                     ref={cityInputRef}
                     style={styles.weatherSearchInline}
-                    placeholder="Cerca città..."
+                    placeholder={t('profile.weatherSearchPh')}
                     placeholderTextColor={THEME.textMuted}
                     value={citySearch}
                     onChangeText={setCitySearch}
@@ -522,7 +607,7 @@ export default function ProfileScreen() {
                   />
                 ) : (
                   <Text style={styles.weatherCurrentText}>
-                    {weatherCity?.name ?? 'GPS (posizione attuale)'}
+                    {weatherCity?.name ?? t('profile.weatherGps')}
                   </Text>
                 )}
                 {(weatherCity || cityEditing) && (
@@ -567,11 +652,11 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.feedbackBox}>
-              <Text style={styles.feedbackLabel}>Feedback</Text>
-              <Text style={styles.feedbackSublabel}>Scrivi un messaggio allo sviluppatore</Text>
+              <Text style={styles.feedbackLabel}>{t('profile.feedbackSectionTitle')}</Text>
+              <Text style={styles.feedbackSublabel}>{t('profile.feedbackDevSub')}</Text>
               <TextInput
                 style={styles.feedbackInput}
-                placeholder="Scrivi qui il tuo messaggio..."
+                placeholder={t('profile.feedbackInputPh')}
                 placeholderTextColor={THEME.textMuted}
                 value={feedbackText}
                 onChangeText={setFeedbackText}
@@ -581,7 +666,7 @@ export default function ProfileScreen() {
               />
               <TouchableOpacity style={styles.sendFeedbackBtn} onPress={sendFeedback} activeOpacity={0.8}>
                 <Ionicons name="send" size={20} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={styles.sendFeedbackBtnText}>Invia alla mail</Text>
+                <Text style={styles.sendFeedbackBtnText}>{t('profile.sendMail')}</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -593,26 +678,26 @@ export default function ProfileScreen() {
               <View style={[styles.card, styles.cardHighlight]}>
                 <View style={styles.cardIconWrap}><Ionicons name="today-outline" size={24} color={THEME.cyan} /></View>
                 <Text style={styles.cardBig}>{todayCompleted}/{habits.length}</Text>
-                <Text style={styles.cardLabel}>Oggi</Text>
+                <Text style={styles.cardLabel}>{t('profile.cardLabelToday')}</Text>
               </View>
               <View style={styles.card}>
                 <View style={styles.cardIconWrap}><Ionicons name="calendar-outline" size={24} color={THEME.primary} /></View>
                 <Text style={styles.cardBig}>{averageCompletion}%</Text>
-                <Text style={styles.cardLabel}>Media settimana</Text>
+                <Text style={styles.cardLabel}>{t('profile.cardLabelWeekAvg')}</Text>
               </View>
               <View style={styles.card}>
                 <View style={styles.cardIconWrap}><Ionicons name="flame-outline" size={24} color={THEME.orange} /></View>
                 <Text style={styles.cardBig}>{activeDays}</Text>
-                <Text style={styles.cardLabel}>Giorni attivi</Text>
+                <Text style={styles.cardLabel}>{t('profile.cardLabelActiveDays')}</Text>
               </View>
               <View style={styles.card}>
                 <View style={styles.cardIconWrap}><Ionicons name="trophy-outline" size={24} color={THEME.warning} /></View>
                 <Text style={styles.cardBig}>{bestStreak}</Text>
-                <Text style={styles.cardLabel}>Serie migliore</Text>
+                <Text style={styles.cardLabel}>{t('profile.cardLabelBestStreak')}</Text>
               </View>
             </View>
 
-            <Text style={styles.blockTitle}>Abitudini più completate</Text>
+            <Text style={styles.blockTitle}>{t('profile.leaderboardTitle')}</Text>
             {leaderboard.slice(0, 10).map((l, idx) => (
               <View key={l.id} style={styles.leaderRow}>
                 <View style={[styles.leaderRank, idx === 0 && styles.leaderRankGold]}>
@@ -688,6 +773,53 @@ const styles = StyleSheet.create({
   healthFootnote: { color: THEME.textMuted, fontSize: 13, lineHeight: 19, marginTop: 12 },
   healthErrorText: { color: '#fca5a5', fontSize: 13, lineHeight: 18, marginTop: 10 },
   feedbackBox: { marginTop: 8 },
+  langPickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#334155',
+    gap: 10,
+  },
+  langPickerValue: { color: THEME.text, fontSize: 16, fontWeight: '600', flex: 1 },
+  langModalRoot: { flex: 1, justifyContent: 'flex-end' },
+  langModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  langModalSheet: {
+    backgroundColor: '#020617',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderColor: '#334155',
+    maxHeight: '72%',
+  },
+  langModalHeading: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 10 },
+  langModalScroll: { maxHeight: 340 },
+  langModalClose: { paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  langModalCloseText: { color: THEME.textMuted, fontSize: 16, fontWeight: '600' },
+  langRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#0f172a',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  langRowActive: { borderColor: THEME.primary },
+  langRowText: { color: THEME.text, fontSize: 16, fontWeight: '600' },
   calendarImportBtn: { marginBottom: 4 },
   feedbackLabel: { color: THEME.text, fontSize: 18, fontWeight: '700', marginBottom: 4 },
   feedbackSublabel: { color: THEME.textMuted, fontSize: 14, marginBottom: 14 },

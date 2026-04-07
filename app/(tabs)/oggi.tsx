@@ -19,12 +19,15 @@ import { calculateEventVerticalMetrics } from '@/lib/oggi/eventLayout';
 import { BASE_VERTICAL_OFFSET, isValidTimeString, isLightColor, LEFT_MARGIN, makeOccurrenceEventId, minutesToTime, OggiEvent, resolveOggiHabitId, toMinutes } from '@/lib/oggi/oggiHelpers';
 import { useTimelineSettings } from '@/lib/oggi/useTimelineSettings';
 import { useWeather } from '@/lib/oggi/useWeather';
+import { toBcp47 } from '@/lib/i18n/bcp47';
+import i18n from '@/lib/i18n/i18n';
 import { useAppTheme } from '@/lib/theme-context';
 import { FALLBACK_CITIES, fetchWeather, weatherCodeToColor, weatherCodeToIcon, WeatherDay } from '@/lib/weather';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, Dimensions, LayoutChangeEvent, Modal, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
@@ -106,14 +109,14 @@ const OGGI_DRAG_AUTOSCROLL_THRESHOLD = 0;
 const OGGI_DRAG_AUTOSCROLL_THRESHOLD_BOTTOM = 82;
 const OGGI_DRAG_AUTOSCROLL_BASE_SPEED = 4;
 const OGGI_DRAG_AUTOSCROLL_EXTRA_SPEED = 9;
-const RECURRING_DAY_NAMES = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
 const VACATION_ACCENT = '#facc15';
 
 // -- Helper Functions --
 
 function formatDateLong(date: Date, tz: string): string {
+  const locale = toBcp47(i18n.language);
   try {
-    return new Intl.DateTimeFormat('it-IT', {
+    return new Intl.DateTimeFormat(locale, {
       timeZone: tz,
       weekday: 'long',
       day: 'numeric',
@@ -121,7 +124,7 @@ function formatDateLong(date: Date, tz: string): string {
       year: 'numeric',
     }).format(date);
   } catch {
-    return date.toLocaleDateString('it-IT');
+    return date.toLocaleDateString(locale);
   }
 }
 
@@ -139,9 +142,10 @@ function diffDays(fromYmd: string, toYmd: string): number {
 }
 
 function formatDateLabelLong(ymd: string): string {
+  const locale = toBcp47(i18n.language);
   try {
     const d = new Date(ymd + 'T12:00:00.000Z');
-    return new Intl.DateTimeFormat('it-IT', {
+    return new Intl.DateTimeFormat(locale, {
       timeZone: 'Europe/Zurich',
       weekday: 'long',
       day: 'numeric',
@@ -179,6 +183,7 @@ function prevYmd(ymd: string): string {
 }
 
 export default function OggiScreen() {
+  const { t } = useTranslation();
   const { habits, history, getDay, getResetTimeForDay, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleFromDate, setHabits, reviewedDates, markDateReviewed, saveDayReview, dayResetTime, setDayResetTime, isLoaded, trackerEntries } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
@@ -527,8 +532,8 @@ export default function OggiScreen() {
     const habit = habits.find((h) => h.id === habitId);
     if (!habit) {
       return [
-        { text: 'Solo oggi', onPress: () => setTimeOverrideRange(habitId, ymd, startTime, endTime) },
-        { text: 'Da oggi in poi', onPress: () => updateScheduleFromDate(habitId, ymd, startTime, endTime) },
+        { text: t('oggi.onlyToday'), onPress: () => setTimeOverrideRange(habitId, ymd, startTime, endTime) },
+        { text: t('oggi.fromTodayOn'), onPress: () => updateScheduleFromDate(habitId, ymd, startTime, endTime) },
       ];
     }
 
@@ -538,15 +543,15 @@ export default function OggiScreen() {
     const dayOfMonth = targetDate.getDate();
     const periodButtonLabel =
       freq === 'weekly'
-        ? `Settimanale (${RECURRING_DAY_NAMES[weekday]})`
+        ? t('oggi.weeklyOnDay', { day: t(`weekdaysFull.${weekday}` as const) })
         : freq === 'monthly'
-          ? `Mensile (${dayOfMonth})`
+          ? t('oggi.monthlyOnDay', { day: dayOfMonth })
           : freq === 'annual'
-            ? 'Annuale'
+            ? t('oggi.annual')
             : null;
 
     const buttons: Array<{ text: string; onPress: () => void }> = [
-      { text: 'Solo oggi', onPress: () => setTimeOverrideRange(habitId, ymd, startTime, endTime) },
+      { text: t('oggi.onlyToday'), onPress: () => setTimeOverrideRange(habitId, ymd, startTime, endTime) },
     ];
 
     if (periodButtonLabel) {
@@ -564,7 +569,7 @@ export default function OggiScreen() {
       )
     ) {
       buttons.push({
-        text: 'Da oggi in poi',
+        text: t('oggi.fromTodayOn'),
         onPress: () => {
           if (freq === 'daily') {
             updateScheduleFromDate(habitId, ymd, startTime, endTime);
@@ -576,7 +581,7 @@ export default function OggiScreen() {
     }
 
     return buttons;
-  }, [habits, detectHabitFreq, setTimeOverrideRange, updateScheduleFromDate, applyRecurringScopedTimeChange, isUniformRecurringTime, hasAnyDaySpecificRecurringCustomization]);
+  }, [habits, detectHabitFreq, setTimeOverrideRange, updateScheduleFromDate, applyRecurringScopedTimeChange, isUniformRecurringTime, hasAnyDaySpecificRecurringCustomization, t]);
 
   const shouldOpenRecurringDragMenu = useCallback(({
     event,
@@ -1078,8 +1083,8 @@ export default function OggiScreen() {
         const pattern = deriveUniformPattern();
         if (!pattern) {
           Alert.alert(
-            'Solo oggi disponibile',
-            'Per una disposizione personalizzata delle ripetizioni, per ora puoi salvarla solo come eccezione del giorno.'
+            t('oggi.customLayoutOnlyTitle'),
+            t('oggi.customLayoutOnlyMessage'),
           );
           return;
         }
@@ -1175,18 +1180,19 @@ export default function OggiScreen() {
         clearPendingPosition();
       };
 
+      const wd = targetDate.getDay();
       const periodButtonLabel =
         freq === 'weekly'
-          ? `Settimanale (${RECURRING_DAY_NAMES[targetDate.getDay()]})`
+          ? t('oggi.weeklyOnDay', { day: t(`weekdaysFull.${wd}` as const) })
           : freq === 'monthly'
-            ? `Mensile (${targetDate.getDate()})`
+            ? t('oggi.monthlyOnDay', { day: targetDate.getDate() })
             : freq === 'annual'
-              ? 'Annuale'
+              ? t('oggi.annual')
               : null;
 
       const openRecurringScopeMenu = () => {
         const buttons: { text: string; onPress: () => void }[] = [
-          { text: 'Solo oggi', onPress: applyOnlyToday },
+          { text: t('oggi.onlyToday'), onPress: applyOnlyToday },
         ];
 
         if (periodButtonLabel) {
@@ -1198,18 +1204,18 @@ export default function OggiScreen() {
 
         if (!hasAnyDaySpecificRecurringCustomization(habit)) {
           buttons.push({
-            text: 'Da oggi in poi',
+            text: t('oggi.fromTodayOn'),
             onPress: () => applyScopedRecurringChange('future'),
           });
         }
 
         Alert.alert(
-          'Modifica attività ricorrente',
-          'Scegli come applicare questa modifica.',
+          t('oggi.recurringEditTitle'),
+          t('oggi.recurringEditMessage'),
           [
             ...buttons,
             {
-              text: 'Annulla',
+              text: t('common.cancel'),
               style: 'destructive',
               onPress: cancelPendingMove,
             },
@@ -1219,7 +1225,7 @@ export default function OggiScreen() {
 
       openRecurringScopeMenu();
     },
-    [habits, timedEvents, weekday, dayOfMonth, resolveDisplayTimeForEvent, setMultipleOccurrenceSlotOverrides, setPendingEventPositions, detectHabitFreq, setHabits, hasAnyDaySpecificRecurringCustomization, restoreColumnRankState, setRecentlyMovedEventId],
+    [habits, timedEvents, weekday, dayOfMonth, resolveDisplayTimeForEvent, setMultipleOccurrenceSlotOverrides, setPendingEventPositions, detectHabitFreq, setHabits, hasAnyDaySpecificRecurringCustomization, restoreColumnRankState, setRecentlyMovedEventId, t],
   );
 
 

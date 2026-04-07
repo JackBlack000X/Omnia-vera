@@ -3,6 +3,7 @@ import { Place, loadPlaces, savePlaces } from '@/lib/places';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -13,6 +14,7 @@ function generateId(): string {
 }
 
 export default function PlacesScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [places, setPlaces] = useState<Place[]>([]);
   const [editing, setEditing] = useState<Place | null>(null);
@@ -91,15 +93,15 @@ export default function PlacesScreen() {
     const radiusNum = Number(radius.replace(',', '.'));
 
     if (!trimmedName) {
-      Alert.alert('Luogo', 'Inserisci un nome per il luogo.');
+      Alert.alert(t('places.alertTitle'), t('places.nameRequired'));
       return;
     }
     if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
-      Alert.alert('Luogo', 'Inserisci coordinate valide (latitudine e longitudine).');
+      Alert.alert(t('places.alertTitle'), t('places.coordsInvalid'));
       return;
     }
     if (!Number.isFinite(radiusNum) || radiusNum <= 0) {
-      Alert.alert('Luogo', 'Inserisci un raggio valido (in metri).');
+      Alert.alert(t('places.alertTitle'), t('places.radiusInvalid'));
       return;
     }
 
@@ -127,7 +129,7 @@ export default function PlacesScreen() {
     try {
       const results = await Location.geocodeAsync(query);
       if (!results || results.length === 0) {
-        Alert.alert('Indirizzo', 'Indirizzo non trovato. Prova a essere più preciso.');
+        Alert.alert(t('places.addressTitle'), t('places.addressNotFound'));
         return;
       }
       const best = results[0];
@@ -135,18 +137,18 @@ export default function PlacesScreen() {
       setLng(String(best.longitude));
       setAddress(query);
     } catch {
-      Alert.alert('Indirizzo', 'Non riesco a cercare questo indirizzo.');
+      Alert.alert(t('places.addressTitle'), t('places.addressSearchError'));
     }
   }
 
   function confirmDelete(id: string) {
     Alert.alert(
-      'Elimina luogo',
-      'Vuoi eliminare questo luogo? Le automazioni che lo usano smetteranno di funzionare finché non scegli un altro luogo.',
+      t('places.deleteTitle'),
+      t('places.deleteMessage'),
       [
-        { text: 'Annulla', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Elimina',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: async () => {
             const next = places.filter(p => p.id !== id);
@@ -164,26 +166,26 @@ export default function PlacesScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={28} color={THEME.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Luoghi</Text>
+        <Text style={styles.title}>{t('places.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <View style={styles.formBox}>
-        <Text style={styles.sectionTitle}>{editing ? 'Modifica luogo' : 'Nuovo luogo'}</Text>
+        <Text style={styles.sectionTitle}>{editing ? t('places.editPlace') : t('places.newPlace')}</Text>
         <TextInput
           style={styles.input}
-          placeholder="Nome (es. Palestra)"
+          placeholder={t('places.namePh')}
           placeholderTextColor={THEME.textMuted}
           value={name}
           onChangeText={setName}
         />
         <View style={styles.row}>
           <View style={styles.coordColumn}>
-            <Text style={styles.label}>Cerca indirizzo</Text>
+            <Text style={styles.label}>{t('places.searchAddress')}</Text>
             <View style={styles.searchRow}>
               <TextInput
                 style={[styles.input, { flex: 1 }]}
-                placeholder="Via, città…"
+                placeholder={t('places.addressPh')}
                 placeholderTextColor={THEME.textMuted}
                 value={addressSearch}
                 onChangeText={setAddressSearch}
@@ -202,7 +204,7 @@ export default function PlacesScreen() {
         ) : null}
         <View style={styles.row}>
           <View style={styles.coordColumn}>
-            <Text style={styles.label}>Latitudine</Text>
+            <Text style={styles.label}>{t('places.lat')}</Text>
             <TextInput
               style={styles.input}
               placeholder="46.0"
@@ -213,7 +215,7 @@ export default function PlacesScreen() {
             />
           </View>
           <View style={styles.coordColumn}>
-            <Text style={styles.label}>Longitudine</Text>
+            <Text style={styles.label}>{t('places.lng')}</Text>
             <TextInput
               style={styles.input}
               placeholder="8.0"
@@ -226,7 +228,7 @@ export default function PlacesScreen() {
         </View>
         <View style={styles.row}>
           <View style={styles.coordColumn}>
-            <Text style={styles.label}>Raggio (metri)</Text>
+            <Text style={styles.label}>{t('places.radius')}</Text>
             <TextInput
               style={styles.input}
               placeholder="200"
@@ -240,20 +242,20 @@ export default function PlacesScreen() {
         <View style={styles.formButtons}>
           {editing && (
             <TouchableOpacity style={styles.secondaryBtn} onPress={startNew}>
-              <Text style={styles.secondaryBtnText}>Annulla modifica</Text>
+              <Text style={styles.secondaryBtnText}>{t('places.cancelEdit')}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.primaryBtn} onPress={handleSave}>
-            <Text style={styles.primaryBtnText}>{editing ? 'Salva' : 'Aggiungi'}</Text>
+            <Text style={styles.primaryBtnText}>{editing ? t('places.save') : t('places.add')}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <View style={styles.listBox}>
-        <Text style={styles.sectionTitle}>Luoghi salvati</Text>
+        <Text style={styles.sectionTitle}>{t('places.saved')}</Text>
         {places.length === 0 ? (
           <Text style={styles.emptyText}>
-            Nessun luogo ancora. Aggiungi la tua palestra, ufficio o altri posti importanti per usare le automazioni.
+            {t('places.empty')}
           </Text>
         ) : (
           <FlatList
@@ -265,7 +267,11 @@ export default function PlacesScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.placeName}>{item.name}</Text>
                   <Text style={styles.placeMeta}>
-                    {item.lat.toFixed(4)}, {item.lng.toFixed(4)} • raggio {Math.round(item.radiusMeters)} m
+                    {t('places.radiusMeta', {
+                      lat: item.lat.toFixed(4),
+                      lng: item.lng.toFixed(4),
+                      m: Math.round(item.radiusMeters),
+                    })}
                   </Text>
                 </View>
                 <View style={styles.placeActions}>
