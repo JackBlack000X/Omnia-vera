@@ -1,3 +1,4 @@
+import { buildStreakFireAnimation } from '@/constants/streakFire';
 import { getCalendarDays, getMonthName, getMonthYear } from '@/lib/date';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { useHabits } from '@/lib/habits/Provider';
@@ -20,6 +21,33 @@ const STREAK_EDGE_CLIP = DAY_BORDER_RADIUS - 1;
 
 /** Riferimento stabile: evita che la nativa riparsifici / resetti la Lottie a ogni re-render. */
 const STREAK_FLAME_LOTTIE_SOURCE = require('@/assets/animations/fire.json');
+const STREAK_DEFAULT_COLOR = '#F95F2D';
+const STREAK_GREEN_COLOR = '#1aff5b';
+const STREAK_BLUE_COLOR = '#2440F5';
+const STREAK_YELLOW_COLOR = '#FFD700';
+const STREAK_WHITE_COLOR = '#F5F5F5';
+const STREAK_BLACK_COLOR = '#9CA3AF';
+const STREAK_TEST_OVERRIDE: number | null = null;
+/** Compensa lo stretch originale (0.55); raddoppio poi −30% poi due −10% poi −5% velocità. */
+const STREAK_FLAME_SPEED = (1 / 0.55) * 1.35 * 2 * 0.7 * 0.9 * 0.9 * 0.95;
+
+function getStreakAccentColor(streak: number) {
+  if (streak >= 100) return STREAK_BLACK_COLOR;
+  if (streak >= 50) return STREAK_WHITE_COLOR;
+  if (streak >= 31) return STREAK_YELLOW_COLOR;
+  if (streak >= 20) return STREAK_BLUE_COLOR;
+  if (streak >= 10) return STREAK_GREEN_COLOR;
+  return STREAK_DEFAULT_COLOR;
+}
+
+function getStreakFirePaletteName(streak: number): 'green' | 'blue' | 'yellow' | 'white' | 'black' | null {
+  if (streak >= 100) return 'black';
+  if (streak >= 50) return 'white';
+  if (streak >= 31) return 'yellow';
+  if (streak >= 20) return 'blue';
+  if (streak >= 10) return 'green';
+  return null;
+}
 
 type CompletionLevel = 'perfect' | 'good' | 'medium' | 'low';
 
@@ -41,13 +69,19 @@ function getCompletionStyle(level: CompletionLevel, isPast: boolean): { backgrou
   }
 }
 
-const StreakFlameLottie = React.memo(function StreakFlameLottie() {
+const StreakFlameLottie = React.memo(function StreakFlameLottie({ streak }: { streak: number }) {
+  const flameSource = useMemo(
+    () => buildStreakFireAnimation(STREAK_FLAME_LOTTIE_SOURCE, getStreakFirePaletteName(streak)),
+    [streak],
+  );
+
   return (
     <View style={styles.streakFlameWrap} pointerEvents="none" collapsable={false}>
       <LottieView
-        source={STREAK_FLAME_LOTTIE_SOURCE}
+        source={flameSource}
         loop
         autoPlay
+        speed={STREAK_FLAME_SPEED}
         resizeMode="contain"
         renderMode="SOFTWARE"
         style={styles.streakFlameLottie}
@@ -402,6 +436,9 @@ export default function CalendarScreen() {
     return streak;
   }, [recentHistory, habits, logicalTodayYmd, dayResetTime]);
 
+  const streakBadgeValue = STREAK_TEST_OVERRIDE ?? currentPerfectStreak;
+  const streakBadgeColor = getStreakAccentColor(streakBadgeValue);
+
   const handleDayPress = useCallback((day: { date: Date; isCurrentMonth: boolean; ymd: string }) => {
     // Vai alla tab OGGI mostrando la timeline di quel giorno specifico
     router.push({ pathname: '/oggi', params: { ymd: day.ymd } });
@@ -439,9 +476,9 @@ export default function CalendarScreen() {
           </View>
           <View style={styles.headerRight}>
             <View style={styles.streakBadge}>
-              <Text style={styles.streakValue}>{currentPerfectStreak}</Text>
+              <Text style={[styles.streakValue, { color: streakBadgeColor }]}>{streakBadgeValue}</Text>
               <View style={styles.streakFlameSpacer} />
-              <StreakFlameLottie />
+              <StreakFlameLottie streak={streakBadgeValue} />
             </View>
             {activeTheme === 'futuristic' && (
               <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
