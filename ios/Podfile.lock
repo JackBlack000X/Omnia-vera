@@ -1,7 +1,7 @@
 PODS:
   - EXApplication (55.0.10):
     - ExpoModulesCore
-  - EXConstants (55.0.9):
+  - EXConstants (55.0.12):
     - ExpoModulesCore
   - EXJSONUtils (55.0.0)
   - EXManifests (55.0.11):
@@ -179,7 +179,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoAsset (55.0.10):
+  - ExpoAsset (55.0.13):
     - ExpoModulesCore
   - ExpoBlur (55.0.10):
     - ExpoModulesCore
@@ -214,6 +214,8 @@ PODS:
   - ExpoLinearGradient (55.0.9):
     - ExpoModulesCore
   - ExpoLinking (55.0.8):
+    - ExpoModulesCore
+  - ExpoLocalization (55.0.12):
     - ExpoModulesCore
   - ExpoLocation (55.1.4):
     - ExpoModulesCore
@@ -2644,6 +2646,7 @@ DEPENDENCIES:
   - ExpoKeepAwake (from `../node_modules/expo-keep-awake/ios`)
   - ExpoLinearGradient (from `../node_modules/expo-linear-gradient/ios`)
   - ExpoLinking (from `../node_modules/expo-linking/ios`)
+  - ExpoLocalization (from `../node_modules/expo-localization/ios`)
   - ExpoLocation (from `../node_modules/expo-location/ios`)
   - "ExpoLogBox (from `../node_modules/@expo/log-box`)"
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
@@ -2808,6 +2811,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-linear-gradient/ios"
   ExpoLinking:
     :path: "../node_modules/expo-linking/ios"
+  ExpoLocalization:
+    :path: "../node_modules/expo-localization/ios"
   ExpoLocation:
     :path: "../node_modules/expo-location/ios"
   ExpoLogBox:
@@ -3016,7 +3021,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   EXApplication: 83fdeb8d9e911c28c9dda8c71ae7a697278ce810
-  EXConstants: 898c24a310046c0e68335619d0f379099a52e199
+  EXConstants: 97e4a5b18e38331acce952f0e4a6817b0418408f
   EXJSONUtils: 0080c14b673cfa9a6be5e3fe429768ffe3d42dfb
   EXManifests: 46a2c1d8b795315028a17cd60b2e939d1e6bb086
   Expo: d425652228e12e472b46f0eca1032fcdebe55701
@@ -3024,7 +3029,7 @@ SPEC CHECKSUMS:
   expo-dev-launcher: f80749c4428bf747cae886f77ecad2b571a935ae
   expo-dev-menu: 8bbb103f33cf988acc637d5bea5a31e16b2d9a5f
   expo-dev-menu-interface: bf6f816d29b45bec038080790963c635e8d588c2
-  ExpoAsset: 4efd0227e808dfa84d286aa3663ded641ef73479
+  ExpoAsset: 3636e70a874487efd0a677f6c064dbc9fc8f174b
   ExpoBlur: 8508f5b62611b228eee65f242563ac70856eb4bd
   ExpoCalendar: 6d1cfe4f08dd057a722b812b30ccdb296ad8d0d1
   ExpoClipboard: fba6501fed478667b1cc888e999f82fb2838c685
@@ -3039,6 +3044,7 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: 7f3b28c361c37389b18841bb52a58003b39fcb33
   ExpoLinearGradient: 2e52067758a25f9b51e3fc3f4077851c0756c81c
   ExpoLinking: 65631933a0bedad33a592bfd2ab9fce0f14e5737
+  ExpoLocalization: 473986270d56c83f821d7ffde5c5b7689802e5cf
   ExpoLocation: fa2f518dc01243ed21e11b28d884d803eae741d2
   ExpoLogBox: 89b634d5a8a64c4a6a7caad8f9985a28463c7002
   ExpoModulesCore: 1c43431035ab7ea1492b0537bc4a60390480ea25
@@ -3053,7 +3059,7 @@ SPEC CHECKSUMS:
   ExpoWebBrowser: 04fdc3b0619d6708f931a9d0f8850903cc38d896
   EXUpdatesInterface: d48f288b92900bd95a27c6cf92a7b9aff826d49a
   FBLazyVector: 32e9ed0301d0fcbc1b2b341dd7fcbf291f51eb83
-  hermes-engine: 7c5638bb528538bf945ad568602a896b349cb93c
+  hermes-engine: 3a99fc376a55e3f39851083a7fffbdd510bfedca
   libavif: 5f8e715bea24debec477006f21ef9e95432e254d
   libdav1d: 23581a4d8ec811ff171ed5e2e05cd27bad64c39f
   libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
@@ -3068,7 +3074,7 @@ SPEC CHECKSUMS:
   React: f4edc7518ccb0b54a6f580d89dd91471844b4990
   React-callinvoker: 79ef4e3f1c021571f6d2dafbe45ca432b2f3a146
   React-Core: c19ad4660fd48bc8abc060d979f8ee37f1fc4a5a
-  React-Core-prebuilt: 95aebab6f6016dcd95880fa677a5da611c045fdd
+  React-Core-prebuilt: 071b53d5c490e8c417e62a595f602fce65b266f8
   React-CoreModules: f94ec3ee2bac588d033ad15a2377af746284f8c8
   React-cxxreact: de66364f2d5fb77d3da3cfa927b2fd960892c711
   React-debug: 4f6739c820d7da9c20f48caa985573b6a847e5f5
@@ -3133,7 +3139,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: d69159b417e8c9d82b8fe4d0a27def4c3e8f767f
   ReactCodegen: e67cb698a2107da1da9efa55174861d724666a3e
   ReactCommon: 8868269b67561136a7970be188b40738135af077
-  ReactNativeDependencies: c63ebc2930b8bd87f3620572abb9ea5cf5a7e949
+  ReactNativeDependencies: 0516e866c42e7e25aa55ab8ff4b513b9a2de12ca
   ReactNativeHealthkit: c1106ec34bde52359639f109fb49edcfcfbf3ec1
   ReactNativeWidgetExtension: 373e304d35c3ce95ae410baffe3064a2a381b1e3
   rn-group-preferences: dce8395b6e9f9211330eb032602833b62d419217

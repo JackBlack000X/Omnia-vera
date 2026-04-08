@@ -7,42 +7,42 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		06165915E11A2A7075EAACAB /* libPods-TothemoonWidgets.a in Frameworks */ = {isa = PBXBuildFile; fileRef = AFA8C4F250346228417DE6EF /* libPods-TothemoonWidgets.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		1A14F67BAF09470BAE7F90C8 /* TodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B39A1DD078C04288830CE066 /* TodayWidget.swift */; };
-		38209BD6EFBD4BA0A6A88887 /* WidgetCenterBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 8FF3F23FF879405A888F267D /* WidgetCenterBridge.m */; };
-		3AE2D7D45A7DDB1B545834B3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = CEE127322F0D929B26AE893F /* PrivacyInfo.xcprivacy */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		619C9C8DB428408292396A57 /* TothemoonWidgetCenterBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2507E31CCE8F4DCFA8939989 /* TothemoonWidgetCenterBridge.swift */; };
-		75D0DF186E5B4FEC8D19CFC8 /* TodayWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB3EEA6218194545820B0961 /* TodayWidgetIntent.swift */; };
-		87BB8B4FDC7F4E1EBC079B9F /* Attributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B48071466C4521853652CE /* Attributes.swift */; };
-		B442E885AF779CD5358B19E1 /* libPods-Tothemoon.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 28B76225BA54D7C7A89C96B9 /* libPods-Tothemoon.a */; };
+		52802DEC19E0C8EF1E05B89E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A4509FCD175246E23B9E149B /* PrivacyInfo.xcprivacy */; };
+		5F5D9C0B9C9A480590F81B10 /* TodayWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22E53B8A7A8640CC89682643 /* TodayWidgetIntent.swift */; };
+		600D3D1A84CD4F4F82F02C55 /* Attributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28675AF95756403CA4FF17CC /* Attributes.swift */; };
+		60B3DF2AB542D1FE4205A8F9 /* libPods-TothemoonWidgets.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 549CB4ED52E6C01C629F2C4D /* libPods-TothemoonWidgets.a */; };
+		70065BF011C54F28A53AF99E /* TodayWidgetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888A85F7B65C45259AD72E9D /* TodayWidgetModels.swift */; };
+		7C99B3A5824D495C98E4FD23 /* TothemoonAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B3F8C2EB7B4CF0B7715F90 /* TothemoonAppShortcuts.swift */; };
+		A0DA92E7DCE441A6AF3590E8 /* TodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2740C845CB4425B9EC70DC4 /* TodayWidget.swift */; };
+		B1E499CD6EA24CD88FD8D2B5 /* WidgetCenterBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 4EACA9ED56BE4F0C9B9F6B2E /* WidgetCenterBridge.m */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		C3126A5C22724789A4DA27F9 /* TodayWidgetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B791A883CE448E585AEACF2 /* TodayWidgetModels.swift */; };
-		C5A3DCF94A55458C5C6EDD69 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B9798B38D04592919FBC09 /* ExpoModulesProvider.swift */; };
-		EBB45EAC77DB458CBA1AA38B /* TothemoonAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 365AD6A7F7E54312A39CC102 /* TothemoonAppShortcuts.swift */; };
+		D10572FA966645E7B66B5A02 /* TothemoonWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B5B1D1B01C3647E2934821BB /* TothemoonWidgets.appex */; };
+		DF4B65D39A7148BEAB04774B /* TothemoonWidgetCenterBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18FC4B2B149A42E9B8810228 /* TothemoonWidgetCenterBridge.swift */; };
+		DF62D801F5E9BA27DBDBD5D8 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9409D6641BD62B2DF71FACCF /* ExpoModulesProvider.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
-		F4D5B51861744AB58E051F88 /* TothemoonWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A847ECFDCF4E45F8BC6CBE23 /* TothemoonWidgets.appex */; };
+		FD9693EF2A41B6B6BAD85A6E /* libPods-Tothemoon.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E3E29D03AFF3E1D1C5AB8C5A /* libPods-Tothemoon.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		FA9EE46746EF4545A877D283 /* PBXContainerItemProxy */ = {
+		7925FB571F2E4FFC929E1CAC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 9AE162F7561D4C2FB9B0A8FF;
+			remoteGlobalIDString = 6D2CA086CCF340CB91197A40;
 			remoteInfo = TothemoonWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		A226D031E12E4220A9F5AF6C /* Embed Foundation Extensions */ = {
+		7F177D127BC945E487139C70 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				F4D5B51861744AB58E051F88 /* TothemoonWidgets.appex in Embed Foundation Extensions */,
+				D10572FA966645E7B66B5A02 /* TothemoonWidgets.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -50,33 +50,34 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		0A8EAE1E3DF645439C4BF468 /* TothemoonWidgets.entitlements */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = TothemoonWidgets.entitlements; path = TothemoonWidgets.entitlements; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Tothemoon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tothemoon.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Tothemoon/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Tothemoon/Info.plist; sourceTree = "<group>"; };
-		2507E31CCE8F4DCFA8939989 /* TothemoonWidgetCenterBridge.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TothemoonWidgetCenterBridge.swift; path = Tothemoon/TothemoonWidgetCenterBridge.swift; sourceTree = "<group>"; };
-		28B76225BA54D7C7A89C96B9 /* libPods-Tothemoon.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Tothemoon.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		365AD6A7F7E54312A39CC102 /* TothemoonAppShortcuts.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TothemoonAppShortcuts.swift; path = Tothemoon/TothemoonAppShortcuts.swift; sourceTree = "<group>"; };
-		3B791A883CE448E585AEACF2 /* TodayWidgetModels.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TodayWidgetModels.swift; path = TodayWidgetModels.swift; sourceTree = "<group>"; };
-		59782CCE99D9A0BB0322767D /* Pods-TothemoonWidgets.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TothemoonWidgets.release.xcconfig"; path = "Target Support Files/Pods-TothemoonWidgets/Pods-TothemoonWidgets.release.xcconfig"; sourceTree = "<group>"; };
-		6A1A009A5427EEE2B3013BFF /* Pods-Tothemoon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Tothemoon.release.xcconfig"; path = "Target Support Files/Pods-Tothemoon/Pods-Tothemoon.release.xcconfig"; sourceTree = "<group>"; };
-		76B48071466C4521853652CE /* Attributes.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = Attributes.swift; path = Attributes.swift; sourceTree = "<group>"; };
-		8FF3F23FF879405A888F267D /* WidgetCenterBridge.m */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.objc; name = WidgetCenterBridge.m; path = Tothemoon/WidgetCenterBridge.m; sourceTree = "<group>"; };
-		91A82BDDB7C8B1C04D494A81 /* Pods-Tothemoon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Tothemoon.debug.xcconfig"; path = "Target Support Files/Pods-Tothemoon/Pods-Tothemoon.debug.xcconfig"; sourceTree = "<group>"; };
-		94573B3ABFE14A65B0216031 /* WidgetKit.framework */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
-		A847ECFDCF4E45F8BC6CBE23 /* TothemoonWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = undefined; name = TothemoonWidgets.appex; path = TothemoonWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		13D1A914FDC639DC9690DE20 /* Pods-Tothemoon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Tothemoon.release.xcconfig"; path = "Target Support Files/Pods-Tothemoon/Pods-Tothemoon.release.xcconfig"; sourceTree = "<group>"; };
+		18FC4B2B149A42E9B8810228 /* TothemoonWidgetCenterBridge.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TothemoonWidgetCenterBridge.swift; path = Tothemoon/TothemoonWidgetCenterBridge.swift; sourceTree = "<group>"; };
+		22D044A25C451354399BB6D4 /* Pods-Tothemoon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Tothemoon.debug.xcconfig"; path = "Target Support Files/Pods-Tothemoon/Pods-Tothemoon.debug.xcconfig"; sourceTree = "<group>"; };
+		22E53B8A7A8640CC89682643 /* TodayWidgetIntent.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TodayWidgetIntent.swift; path = TodayWidgetIntent.swift; sourceTree = "<group>"; };
+		28675AF95756403CA4FF17CC /* Attributes.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = Attributes.swift; path = Attributes.swift; sourceTree = "<group>"; };
+		2CE7C6CBE5C01D9CD74BF84F /* Pods-TothemoonWidgets.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TothemoonWidgets.debug.xcconfig"; path = "Target Support Files/Pods-TothemoonWidgets/Pods-TothemoonWidgets.debug.xcconfig"; sourceTree = "<group>"; };
+		4EACA9ED56BE4F0C9B9F6B2E /* WidgetCenterBridge.m */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.objc; name = WidgetCenterBridge.m; path = Tothemoon/WidgetCenterBridge.m; sourceTree = "<group>"; };
+		549CB4ED52E6C01C629F2C4D /* libPods-TothemoonWidgets.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-TothemoonWidgets.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		610F59074DBE4A2BAB5BC172 /* SwiftUI.framework */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		888A85F7B65C45259AD72E9D /* TodayWidgetModels.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TodayWidgetModels.swift; path = TodayWidgetModels.swift; sourceTree = "<group>"; };
+		9409D6641BD62B2DF71FACCF /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Tothemoon/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		A4509FCD175246E23B9E149B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = Tothemoon/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A49BE197DDF5426EB25E2D32 /* Info.plist */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; name = Info.plist; path = Info.plist; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Tothemoon/SplashScreen.storyboard; sourceTree = "<group>"; };
-		AC6BA25F6A3C4007B4B49D77 /* SwiftUI.framework */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
-		AFA8C4F250346228417DE6EF /* libPods-TothemoonWidgets.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-TothemoonWidgets.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		B39A1DD078C04288830CE066 /* TodayWidget.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TodayWidget.swift; path = TodayWidget.swift; sourceTree = "<group>"; };
-		B8B9798B38D04592919FBC09 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Tothemoon/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		B4690E3979C34E42A4F30534 /* WidgetKit.framework */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		B5B1D1B01C3647E2934821BB /* TothemoonWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = undefined; name = TothemoonWidgets.appex; path = TothemoonWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		BB3EEA6218194545820B0961 /* TodayWidgetIntent.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TodayWidgetIntent.swift; path = TodayWidgetIntent.swift; sourceTree = "<group>"; };
-		CEE127322F0D929B26AE893F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = Tothemoon/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		D50997009E99DF87684E7E48 /* Pods-TothemoonWidgets.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TothemoonWidgets.debug.xcconfig"; path = "Target Support Files/Pods-TothemoonWidgets/Pods-TothemoonWidgets.debug.xcconfig"; sourceTree = "<group>"; };
+		D2740C845CB4425B9EC70DC4 /* TodayWidget.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TodayWidget.swift; path = TodayWidget.swift; sourceTree = "<group>"; };
+		DBB3767D5F6A431B9620FDC6 /* TothemoonWidgets.entitlements */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = TothemoonWidgets.entitlements; path = TothemoonWidgets.entitlements; sourceTree = "<group>"; };
+		E3E29D03AFF3E1D1C5AB8C5A /* libPods-Tothemoon.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Tothemoon.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4B3F8C2EB7B4CF0B7715F90 /* TothemoonAppShortcuts.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = TothemoonAppShortcuts.swift; path = Tothemoon/TothemoonAppShortcuts.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Tothemoon/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* Tothemoon-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Tothemoon-Bridging-Header.h"; path = "Tothemoon/Tothemoon-Bridging-Header.h"; sourceTree = "<group>"; };
+		F4825B6A7FE0F5BA23985B12 /* Pods-TothemoonWidgets.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TothemoonWidgets.release.xcconfig"; path = "Target Support Files/Pods-TothemoonWidgets/Pods-TothemoonWidgets.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,15 +85,15 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B442E885AF779CD5358B19E1 /* libPods-Tothemoon.a in Frameworks */,
+				FD9693EF2A41B6B6BAD85A6E /* libPods-Tothemoon.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		FDA00AD9B4354A1F9B1FA552 /* Frameworks */ = {
+		7D9C78F677F04D4BB621233F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				06165915E11A2A7075EAACAB /* libPods-TothemoonWidgets.a in Frameworks */,
+				60B3DF2AB542D1FE4205A8F9 /* libPods-TothemoonWidgets.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -108,18 +109,18 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				8FF3F23FF879405A888F267D /* WidgetCenterBridge.m */,
-				2507E31CCE8F4DCFA8939989 /* TothemoonWidgetCenterBridge.swift */,
-				365AD6A7F7E54312A39CC102 /* TothemoonAppShortcuts.swift */,
-				CEE127322F0D929B26AE893F /* PrivacyInfo.xcprivacy */,
+				4EACA9ED56BE4F0C9B9F6B2E /* WidgetCenterBridge.m */,
+				18FC4B2B149A42E9B8810228 /* TothemoonWidgetCenterBridge.swift */,
+				E4B3F8C2EB7B4CF0B7715F90 /* TothemoonAppShortcuts.swift */,
+				A4509FCD175246E23B9E149B /* PrivacyInfo.xcprivacy */,
 			);
 			name = Tothemoon;
 			sourceTree = "<group>";
 		};
-		256336247F47DC0A9B1D8E5A /* Tothemoon */ = {
+		19785C1318B140E75CDE9C0D /* Tothemoon */ = {
 			isa = PBXGroup;
 			children = (
-				B8B9798B38D04592919FBC09 /* ExpoModulesProvider.swift */,
+				9409D6641BD62B2DF71FACCF /* ExpoModulesProvider.swift */,
 			);
 			name = Tothemoon;
 			sourceTree = "<group>";
@@ -128,12 +129,24 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				94573B3ABFE14A65B0216031 /* WidgetKit.framework */,
-				AC6BA25F6A3C4007B4B49D77 /* SwiftUI.framework */,
-				28B76225BA54D7C7A89C96B9 /* libPods-Tothemoon.a */,
-				AFA8C4F250346228417DE6EF /* libPods-TothemoonWidgets.a */,
+				B4690E3979C34E42A4F30534 /* WidgetKit.framework */,
+				610F59074DBE4A2BAB5BC172 /* SwiftUI.framework */,
+				E3E29D03AFF3E1D1C5AB8C5A /* libPods-Tothemoon.a */,
+				549CB4ED52E6C01C629F2C4D /* libPods-TothemoonWidgets.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		6DFBA9D6ECF4FC16157A2A7D /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				22D044A25C451354399BB6D4 /* Pods-Tothemoon.debug.xcconfig */,
+				13D1A914FDC639DC9690DE20 /* Pods-Tothemoon.release.xcconfig */,
+				2CE7C6CBE5C01D9CD74BF84F /* Pods-TothemoonWidgets.debug.xcconfig */,
+				F4825B6A7FE0F5BA23985B12 /* Pods-TothemoonWidgets.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -150,9 +163,9 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				DEE66D8663604698BDF1DC05 /* TothemoonWidgets */,
-				E5926209E7D3E73A26FA1322 /* Pods */,
-				E49E229628BC907FB45FFA07 /* ExpoModulesProviders */,
+				B586204DA7854BCAB842B6F3 /* TothemoonWidgets */,
+				6DFBA9D6ECF4FC16157A2A7D /* Pods */,
+				E49436B211D1C27DED4CB66D /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -163,9 +176,23 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* Tothemoon.app */,
-				A847ECFDCF4E45F8BC6CBE23 /* TothemoonWidgets.appex */,
+				B5B1D1B01C3647E2934821BB /* TothemoonWidgets.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B586204DA7854BCAB842B6F3 /* TothemoonWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				28675AF95756403CA4FF17CC /* Attributes.swift */,
+				D2740C845CB4425B9EC70DC4 /* TodayWidget.swift */,
+				22E53B8A7A8640CC89682643 /* TodayWidgetIntent.swift */,
+				888A85F7B65C45259AD72E9D /* TodayWidgetModels.swift */,
+				A49BE197DDF5426EB25E2D32 /* Info.plist */,
+				DBB3767D5F6A431B9620FDC6 /* TothemoonWidgets.entitlements */,
+			);
+			name = TothemoonWidgets;
+			path = TothemoonWidgets;
 			sourceTree = "<group>";
 		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
@@ -177,37 +204,12 @@
 			path = Tothemoon/Supporting;
 			sourceTree = "<group>";
 		};
-		DEE66D8663604698BDF1DC05 /* TothemoonWidgets */ = {
+		E49436B211D1C27DED4CB66D /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				76B48071466C4521853652CE /* Attributes.swift */,
-				B39A1DD078C04288830CE066 /* TodayWidget.swift */,
-				BB3EEA6218194545820B0961 /* TodayWidgetIntent.swift */,
-				3B791A883CE448E585AEACF2 /* TodayWidgetModels.swift */,
-				0A8EAE1E3DF645439C4BF468 /* TothemoonWidgets.entitlements */,
-			);
-			name = TothemoonWidgets;
-			path = TothemoonWidgets;
-			sourceTree = "<group>";
-		};
-		E49E229628BC907FB45FFA07 /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				256336247F47DC0A9B1D8E5A /* Tothemoon */,
+				19785C1318B140E75CDE9C0D /* Tothemoon */,
 			);
 			name = ExpoModulesProviders;
-			sourceTree = "<group>";
-		};
-		E5926209E7D3E73A26FA1322 /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				91A82BDDB7C8B1C04D494A81 /* Pods-Tothemoon.debug.xcconfig */,
-				6A1A009A5427EEE2B3013BFF /* Pods-Tothemoon.release.xcconfig */,
-				D50997009E99DF87684E7E48 /* Pods-TothemoonWidgets.debug.xcconfig */,
-				59782CCE99D9A0BB0322767D /* Pods-TothemoonWidgets.release.xcconfig */,
-			);
-			name = Pods;
-			path = Pods;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -218,34 +220,34 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "Tothemoon" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				B10A34B507918AF53493E3D7 /* [Expo] Configure project */,
+				C5BEB30F43F4A8B9267781F7 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				D25C8FCF343B42FE91D63A3F /* [Expo Dev Launcher] Strip Local Network Keys for Release */,
-				A226D031E12E4220A9F5AF6C /* Embed Foundation Extensions */,
-				908C1BFC52CB8FFAD61D7C4D /* [CP] Embed Pods Frameworks */,
+				53701521649F4770AEBC91EF /* [Expo Dev Launcher] Strip Local Network Keys for Release */,
+				7F177D127BC945E487139C70 /* Embed Foundation Extensions */,
+				41769C61D97AEAEE2F596768 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				401D1AAB50DF4F47A8B32C58 /* PBXTargetDependency */,
+				D3491A6C23344DBFA6A0D401 /* PBXTargetDependency */,
 			);
 			name = Tothemoon;
 			productName = Tothemoon;
 			productReference = 13B07F961A680F5B00A75B9A /* Tothemoon.app */;
 			productType = "com.apple.product-type.application";
 		};
-		9AE162F7561D4C2FB9B0A8FF /* TothemoonWidgets */ = {
+		6D2CA086CCF340CB91197A40 /* TothemoonWidgets */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D3A346991F384088BC213C96 /* Build configuration list for PBXNativeTarget "TothemoonWidgets" */;
+			buildConfigurationList = D6CF55A68A7E4E209C78B2B8 /* Build configuration list for PBXNativeTarget "TothemoonWidgets" */;
 			buildPhases = (
-				7C3FFEFF97EF7C841D0C61F5 /* [CP] Check Pods Manifest.lock */,
-				311774B58491403EBF0003F1 /* Sources */,
-				FDA00AD9B4354A1F9B1FA552 /* Frameworks */,
-				CE4784D3BF684D8C9BAE7CF0 /* Resources */,
+				D61D2544EBE4390246DEF6F5 /* [CP] Check Pods Manifest.lock */,
+				86E0A79728384224A668CCD3 /* Sources */,
+				7D9C78F677F04D4BB621233F /* Frameworks */,
+				7D59FBEF33DA47A8ADB490F0 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -253,7 +255,7 @@
 			);
 			name = TothemoonWidgets;
 			productName = TothemoonWidgets;
-			productReference = A847ECFDCF4E45F8BC6CBE23 /* TothemoonWidgets.appex */;
+			productReference = B5B1D1B01C3647E2934821BB /* TothemoonWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -267,7 +269,7 @@
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1250;
 					};
-					9AE162F7561D4C2FB9B0A8FF = {
+					6D2CA086CCF340CB91197A40 = {
 						LastSwiftMigration = 1250;
 					};
 				};
@@ -286,7 +288,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* Tothemoon */,
-				9AE162F7561D4C2FB9B0A8FF /* TothemoonWidgets */,
+				6D2CA086CCF340CB91197A40 /* TothemoonWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -299,11 +301,11 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				3AE2D7D45A7DDB1B545834B3 /* PrivacyInfo.xcprivacy in Resources */,
+				52802DEC19E0C8EF1E05B89E /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CE4784D3BF684D8C9BAE7CF0 /* Resources */ = {
+		7D59FBEF33DA47A8ADB490F0 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -352,77 +354,7 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		7C3FFEFF97EF7C841D0C61F5 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-TothemoonWidgets-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-Tothemoon/Pods-Tothemoon-resources.sh",
-				"${PODS_CONFIGURATION_BUILD_DIR}/EXApplication/ExpoApplication_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/EXConstants.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/ExpoConstants_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoDevice/ExpoDevice_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoFileSystem/ExpoFileSystem_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoNotifications/ExpoNotifications_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoSystemUI/ExpoSystemUI_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoTaskManager/ExpoTaskManager_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/RNCAsyncStorage/RNCAsyncStorage_resources.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/React-Core/React-Core_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/React-cxxreact/React-cxxreact_privacy.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/SDWebImage/SDWebImage.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/expo-dev-launcher/EXDevLauncher.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/expo-dev-menu/EXDevMenu.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/lottie-ios/LottiePrivacyInfo.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/lottie-react-native/Lottie_React_Native_Privacy.bundle",
-			);
-			name = "[CP] Copy Pods Resources";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoApplication_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXConstants.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoConstants_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoDevice_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoFileSystem_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoNotifications_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoSystemUI_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoTaskManager_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/RNCAsyncStorage_resources.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/React-Core_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/React-cxxreact_privacy.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SDWebImage.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXDevLauncher.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXDevMenu.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/LottiePrivacyInfo.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Lottie_React_Native_Privacy.bundle",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Tothemoon/Pods-Tothemoon-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		908C1BFC52CB8FFAD61D7C4D /* [CP] Embed Pods Frameworks */ = {
+		41769C61D97AEAEE2F596768 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -444,7 +376,71 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Tothemoon/Pods-Tothemoon-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		B10A34B507918AF53493E3D7 /* [Expo] Configure project */ = {
+		53701521649F4770AEBC91EF /* [Expo Dev Launcher] Strip Local Network Keys for Release */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[Expo Dev Launcher] Strip Local Network Keys for Release";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Strip dev-launcher-specific local network permission keys from non-Debug builds\n# This only removes _expo._tcp Bonjour services and the dev-launcher usage description.\n# Other Bonjour services and custom descriptions are preserved for production use.\n\nif [ \"$CONFIGURATION\" != \"Debug\" ]; then\n  PLIST_PATH=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n  if [ -f \"$PLIST_PATH\" ]; then\n    # Check if NSBonjourServices exists\n    if /usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" >/dev/null 2>&1; then\n      # Get the count of services\n      COUNT=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null | grep \"^    \" | wc -l | tr -d ' ')\n\n      # Remove _expo._tcp\n      for ((i=COUNT-1; i>=0; i--)); do\n        SERVICE=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices:$i\" \"$PLIST_PATH\" 2>/dev/null || echo \"\")\n        if echo \"$SERVICE\" | grep -q \"_expo._tcp\"; then\n          /usr/libexec/PlistBuddy -c \"Delete :NSBonjourServices:$i\" \"$PLIST_PATH\" 2>/dev/null || true\n        fi\n      done\n\n      # If the array is now empty, remove it entirely\n      REMAINING=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null | grep \"^    \" | wc -l | tr -d ' ')\n      if [ \"$REMAINING\" -eq \"0\" ]; then\n        /usr/libexec/PlistBuddy -c \"Delete :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null || true\n      fi\n    fi\n\n    # Only delete the description if it matches the dev-launcher default text\n    DESC=$(/usr/libexec/PlistBuddy -c \"Print :NSLocalNetworkUsageDescription\" \"$PLIST_PATH\" 2>/dev/null || echo \"\")\n    if echo \"$DESC\" | grep -q \"Expo Dev Launcher\"; then\n      /usr/libexec/PlistBuddy -c \"Delete :NSLocalNetworkUsageDescription\" \"$PLIST_PATH\" 2>/dev/null || true\n    fi\n  fi\nfi\n";
+		};
+		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Tothemoon/Pods-Tothemoon-resources.sh",
+				"${PODS_CONFIGURATION_BUILD_DIR}/EXApplication/ExpoApplication_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/EXConstants.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/ExpoConstants_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoDevice/ExpoDevice_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoFileSystem/ExpoFileSystem_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoLocalization/ExpoLocalization_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoNotifications/ExpoNotifications_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoSystemUI/ExpoSystemUI_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoTaskManager/ExpoTaskManager_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/RNCAsyncStorage/RNCAsyncStorage_resources.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/React-Core/React-Core_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/React-cxxreact/React-cxxreact_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/SDWebImage/SDWebImage.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/expo-dev-launcher/EXDevLauncher.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/expo-dev-menu/EXDevMenu.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/lottie-ios/LottiePrivacyInfo.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/lottie-react-native/Lottie_React_Native_Privacy.bundle",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoApplication_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXConstants.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoConstants_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoDevice_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoFileSystem_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoLocalization_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoNotifications_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoSystemUI_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoTaskManager_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/RNCAsyncStorage_resources.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/React-Core_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/React-cxxreact_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SDWebImage.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXDevLauncher.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXDevMenu.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/LottiePrivacyInfo.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Lottie_React_Native_Privacy.bundle",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Tothemoon/Pods-Tothemoon-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		C5BEB30F43F4A8B9267781F7 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -468,19 +464,27 @@
 			shellPath = /bin/sh;
 			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-Tothemoon/expo-configure-project.sh\"\n";
 		};
-		D25C8FCF343B42FE91D63A3F /* [Expo Dev Launcher] Strip Local Network Keys for Release */ = {
+		D61D2544EBE4390246DEF6F5 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
-			inputPaths = (
+			inputFileListPaths = (
 			);
-			name = "[Expo Dev Launcher] Strip Local Network Keys for Release";
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
 			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-TothemoonWidgets-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Strip dev-launcher-specific local network permission keys from non-Debug builds\n# This only removes _expo._tcp Bonjour services and the dev-launcher usage description.\n# Other Bonjour services and custom descriptions are preserved for production use.\n\nif [ \"$CONFIGURATION\" != \"Debug\" ]; then\n  PLIST_PATH=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n  if [ -f \"$PLIST_PATH\" ]; then\n    # Check if NSBonjourServices exists\n    if /usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" >/dev/null 2>&1; then\n      # Get the count of services\n      COUNT=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null | grep \"^    \" | wc -l | tr -d ' ')\n\n      # Remove _expo._tcp\n      for ((i=COUNT-1; i>=0; i--)); do\n        SERVICE=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices:$i\" \"$PLIST_PATH\" 2>/dev/null || echo \"\")\n        if echo \"$SERVICE\" | grep -q \"_expo._tcp\"; then\n          /usr/libexec/PlistBuddy -c \"Delete :NSBonjourServices:$i\" \"$PLIST_PATH\" 2>/dev/null || true\n        fi\n      done\n\n      # If the array is now empty, remove it entirely\n      REMAINING=$(/usr/libexec/PlistBuddy -c \"Print :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null | grep \"^    \" | wc -l | tr -d ' ')\n      if [ \"$REMAINING\" -eq \"0\" ]; then\n        /usr/libexec/PlistBuddy -c \"Delete :NSBonjourServices\" \"$PLIST_PATH\" 2>/dev/null || true\n      fi\n    fi\n\n    # Only delete the description if it matches the dev-launcher default text\n    DESC=$(/usr/libexec/PlistBuddy -c \"Print :NSLocalNetworkUsageDescription\" \"$PLIST_PATH\" 2>/dev/null || echo \"\")\n    if echo \"$DESC\" | grep -q \"Expo Dev Launcher\"; then\n      /usr/libexec/PlistBuddy -c \"Delete :NSLocalNetworkUsageDescription\" \"$PLIST_PATH\" 2>/dev/null || true\n    fi\n  fi\nfi\n";
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -490,38 +494,59 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				38209BD6EFBD4BA0A6A88887 /* WidgetCenterBridge.m in Sources */,
-				619C9C8DB428408292396A57 /* TothemoonWidgetCenterBridge.swift in Sources */,
-				EBB45EAC77DB458CBA1AA38B /* TothemoonAppShortcuts.swift in Sources */,
-				C5A3DCF94A55458C5C6EDD69 /* ExpoModulesProvider.swift in Sources */,
+				B1E499CD6EA24CD88FD8D2B5 /* WidgetCenterBridge.m in Sources */,
+				DF4B65D39A7148BEAB04774B /* TothemoonWidgetCenterBridge.swift in Sources */,
+				7C99B3A5824D495C98E4FD23 /* TothemoonAppShortcuts.swift in Sources */,
+				DF62D801F5E9BA27DBDBD5D8 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		311774B58491403EBF0003F1 /* Sources */ = {
+		86E0A79728384224A668CCD3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				87BB8B4FDC7F4E1EBC079B9F /* Attributes.swift in Sources */,
-				1A14F67BAF09470BAE7F90C8 /* TodayWidget.swift in Sources */,
-				75D0DF186E5B4FEC8D19CFC8 /* TodayWidgetIntent.swift in Sources */,
-				C3126A5C22724789A4DA27F9 /* TodayWidgetModels.swift in Sources */,
+				600D3D1A84CD4F4F82F02C55 /* Attributes.swift in Sources */,
+				A0DA92E7DCE441A6AF3590E8 /* TodayWidget.swift in Sources */,
+				5F5D9C0B9C9A480590F81B10 /* TodayWidgetIntent.swift in Sources */,
+				70065BF011C54F28A53AF99E /* TodayWidgetModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		401D1AAB50DF4F47A8B32C58 /* PBXTargetDependency */ = {
+		D3491A6C23344DBFA6A0D401 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 9AE162F7561D4C2FB9B0A8FF /* TothemoonWidgets */;
-			targetProxy = FA9EE46746EF4545A877D283 /* PBXContainerItemProxy */;
+			target = 6D2CA086CCF340CB91197A40 /* TothemoonWidgets */;
+			targetProxy = 7925FB571F2E4FFC929E1CAC /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		1194D85CCB1F4504A86DC811 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F4825B6A7FE0F5BA23985B12 /* Pods-TothemoonWidgets.release.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TothemoonWidgets/TothemoonWidgets.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TothemoonWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TothemoonWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				MARKETING_VERSION = 1.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
+				PRODUCT_BUNDLE_IDENTIFIER = com.jackblack000x.habitchecknative.TothemoonWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 91A82BDDB7C8B1C04D494A81 /* Pods-Tothemoon.debug.xcconfig */;
+			baseConfigurationReference = 22D044A25C451354399BB6D4 /* Pods-Tothemoon.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -557,7 +582,7 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 6A1A009A5427EEE2B3013BFF /* Pods-Tothemoon.release.xcconfig */;
+			baseConfigurationReference = 13D1A914FDC639DC9690DE20 /* Pods-Tothemoon.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -582,27 +607,6 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
-			};
-			name = Release;
-		};
-		7D4542FDA7164D7A93AFC57E /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 59782CCE99D9A0BB0322767D /* Pods-TothemoonWidgets.release.xcconfig */;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = TothemoonWidgets/TothemoonWidgets.entitlements;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = TothemoonWidgets/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = TothemoonWidgets;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
-				MARKETING_VERSION = 1.0.0;
-				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.jackblack000x.habitchecknative.TothemoonWidgets;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -728,9 +732,9 @@
 			};
 			name = Release;
 		};
-		F8A01B112F954977B0E7EF6D /* Debug */ = {
+		D2E1D8164A194C9CA4C17AAD /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = D50997009E99DF87684E7E48 /* Pods-TothemoonWidgets.debug.xcconfig */;
+			baseConfigurationReference = 2CE7C6CBE5C01D9CD74BF84F /* Pods-TothemoonWidgets.debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = TothemoonWidgets/TothemoonWidgets.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
@@ -770,11 +774,11 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		D3A346991F384088BC213C96 /* Build configuration list for PBXNativeTarget "TothemoonWidgets" */ = {
+		D6CF55A68A7E4E209C78B2B8 /* Build configuration list for PBXNativeTarget "TothemoonWidgets" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				F8A01B112F954977B0E7EF6D /* Debug */,
-				7D4542FDA7164D7A93AFC57E /* Release */,
+				D2E1D8164A194C9CA4C17AAD /* Debug */,
+				1194D85CCB1F4504A86DC811 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
