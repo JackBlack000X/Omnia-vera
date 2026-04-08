@@ -11,15 +11,19 @@ import { isHabitFullyDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
 import { resolveSmartTaskFeedback, type SmartTaskFeedback } from '@/lib/smartTask';
 import { useAppTheme } from '@/lib/theme-context';
+import { MenuView } from '@react-native-menu/menu';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActionSheetIOS, Alert, InteractionManager, LayoutAnimation, Platform, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, InteractionManager, LayoutAnimation, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+/** Soglia in px per mostrare i puntini “c’è altro da scorrere” sulla barra cartelle */
+const FOLDER_BAR_SCROLL_SLACK = 6;
 
 const TASKS_DRAG_AUTOSCROLL_THRESHOLD = 108;
 const TASKS_DRAG_AUTOSCROLL_SPEED = 72;
@@ -279,53 +283,48 @@ export default function IndexScreen() {
     menuTomorrow,
   } = useIndexLogic();
 
-  const showDayScopeMenu = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const tomorrowLabel = t('index.folderTomorrow');
-    const todayLabel = t('index.folderToday');
-    const cancelLabel = t('common.cancel');
-    const pickDomani = () => setActiveFolder(DOMANI_TOMORROW_KEY);
-    const pickOggi = () => setActiveFolder(OGGI_TODAY_KEY);
+  const lastFolderBarScrollXRef = useRef(0);
+  const [folderBarOverflowLines, setFolderBarOverflowLines] = useState({ left: false, right: false });
 
-    if (activeFolder === DOMANI_TOMORROW_KEY) {
-      if (Platform.OS === 'ios') {
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            options: [todayLabel, cancelLabel],
-            cancelButtonIndex: 1,
-            title: tomorrowLabel,
-          },
-          (buttonIndex) => {
-            if (buttonIndex === 0) pickOggi();
-          }
-        );
-      } else {
-        Alert.alert(tomorrowLabel, undefined, [
-          { text: todayLabel, onPress: pickOggi },
-          { text: cancelLabel, style: 'cancel' },
-        ]);
+  const updateFolderBarOverflowDots = useCallback(
+    (contentW: number, layoutW: number, scrollX: number) => {
+      const lw = layoutW > 0 ? layoutW : foldersScrollViewportWidthRef.current;
+      if (lw <= 0 || contentW <= 0) {
+        setFolderBarOverflowLines((p) => (p.left || p.right ? { left: false, right: false } : p));
+        return;
       }
-      return;
-    }
+      const overflows = contentW > lw + FOLDER_BAR_SCROLL_SLACK;
+      if (!overflows) {
+        setFolderBarOverflowLines((p) => (p.left || p.right ? { left: false, right: false } : p));
+        return;
+      }
+      const right = scrollX + lw < contentW - FOLDER_BAR_SCROLL_SLACK;
+      const left = scrollX > FOLDER_BAR_SCROLL_SLACK;
+      setFolderBarOverflowLines((p) => {
+        if (p.left === left && p.right === right) return p;
+        return { left, right };
+      });
+    },
+    [foldersScrollViewportWidthRef]
+  );
 
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [tomorrowLabel, cancelLabel],
-          cancelButtonIndex: 1,
-          title: todayLabel,
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 0) pickDomani();
-        }
-      );
-    } else {
-      Alert.alert(todayLabel, undefined, [
-        { text: tomorrowLabel, onPress: pickDomani },
-        { text: cancelLabel, style: 'cancel' },
-      ]);
-    }
-  }, [activeFolder, setActiveFolder, t]);
+  React.useEffect(() => {
+    updateFolderBarOverflowDots(
+      foldersContentWidthRef.current,
+      foldersScrollViewportWidthRef.current,
+      lastFolderBarScrollXRef.current
+    );
+  }, [
+    folderTabsOrder,
+    updateFolderBarOverflowDots,
+    foldersContentWidthRef,
+    foldersScrollViewportWidthRef,
+  ]);
+
+  const handleSelectDayScope = useCallback((scope: typeof OGGI_TODAY_KEY | typeof DOMANI_TOMORROW_KEY) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActiveFolder(scope);
+  }, [setActiveFolder]);
 
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
   const lastFolderTapRef = useRef<{ id: string; time: number } | null>(null);
@@ -1011,8 +1010,14 @@ export default function IndexScreen() {
         <View
           style={styles.foldersScrollHost}
           onLayout={(e) => {
-            foldersScrollViewportWidthRef.current = e.nativeEvent.layout.width;
+            const lw = e.nativeEvent.layout.width;
+            foldersScrollViewportWidthRef.current = lw;
             updateFoldersScrollEnabled();
+            updateFolderBarOverflowDots(
+              foldersContentWidthRef.current,
+              lw,
+              lastFolderBarScrollXRef.current
+            );
           }}
         >
           <ScrollView
@@ -1024,7 +1029,22 @@ export default function IndexScreen() {
             onContentSizeChange={(contentWidth) => {
               foldersContentWidthRef.current = contentWidth;
               updateFoldersScrollEnabled();
+              updateFolderBarOverflowDots(
+                contentWidth,
+                foldersScrollViewportWidthRef.current,
+                lastFolderBarScrollXRef.current
+              );
             }}
+            onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+              const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+              lastFolderBarScrollXRef.current = contentOffset.x;
+              const layoutW =
+                layoutMeasurement.width > 0
+                  ? layoutMeasurement.width
+                  : foldersScrollViewportWidthRef.current;
+              updateFolderBarOverflowDots(contentSize.width, layoutW, contentOffset.x);
+            }}
+            scrollEventThrottle={16}
           >
             {folderTabsOrder.map((folderNameOrNull, i) =>
               folderNameOrNull === null ? (
@@ -1067,39 +1087,61 @@ export default function IndexScreen() {
             )}
 
             <TouchableOpacity style={styles.folderAddBtn} onPress={handleAddFolder}>
-              <Ionicons name="add" size={18} color={THEME.textMuted} />
+              <Ionicons name="add" size={18} color={THEME.green} />
             </TouchableOpacity>
           </ScrollView>
+          {folderBarOverflowLines.right ? (
+            <View
+              style={[styles.folderBarOverflowLine, styles.folderBarOverflowLineRight]}
+              pointerEvents="none"
+            />
+          ) : null}
+          {folderBarOverflowLines.left ? (
+            <View
+              style={[styles.folderBarOverflowLine, styles.folderBarOverflowLineLeft]}
+              pointerEvents="none"
+            />
+          ) : null}
         </View>
 
         <View style={styles.todayTabAnchor}>
-          <TouchableOpacity
-            style={styles.todayTabRow}
-            onPress={() => setActiveFolder(OGGI_TODAY_KEY)}
-            onLongPress={showDayScopeMenu}
-            delayLongPress={350}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text
-              style={[
-                styles.folderLabel,
-                (activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY) && styles.folderLabelActive,
-              ]}
-              numberOfLines={1}
-            >
-              {activeFolder === DOMANI_TOMORROW_KEY ? t('index.folderTomorrow') : t('index.folderToday')}
-            </Text>
-            <Ionicons
-              name="chevron-down"
-              size={14}
-              color={
-                activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY
-                  ? THEME.text
-                  : THEME.textMuted
+          <MenuView
+            shouldOpenOnLongPress={false}
+            onPressAction={({ nativeEvent }) => {
+              if (nativeEvent.event === OGGI_TODAY_KEY) {
+                handleSelectDayScope(OGGI_TODAY_KEY);
+                return;
               }
-            />
-          </TouchableOpacity>
+              if (nativeEvent.event === DOMANI_TOMORROW_KEY) {
+                handleSelectDayScope(DOMANI_TOMORROW_KEY);
+              }
+            }}
+            actions={[
+              { id: OGGI_TODAY_KEY, title: t('index.folderToday') },
+              { id: DOMANI_TOMORROW_KEY, title: t('index.folderTomorrow') },
+            ]}
+          >
+            <View style={styles.todayTabRow}>
+              <Text
+                style={[
+                  styles.folderLabel,
+                  (activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY) && styles.folderLabelActive,
+                ]}
+                numberOfLines={1}
+              >
+                {activeFolder === DOMANI_TOMORROW_KEY ? t('index.folderTomorrow') : t('index.folderToday')}
+              </Text>
+              <Ionicons
+                name="chevron-down"
+                size={14}
+                color={
+                  activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY
+                    ? THEME.text
+                    : THEME.textMuted
+                }
+              />
+            </View>
+          </MenuView>
         </View>
         </View>
       </View>

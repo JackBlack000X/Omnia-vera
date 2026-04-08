@@ -110,6 +110,23 @@ export const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     overflow: 'hidden' as const,
+    position: 'relative' as const,
+  },
+  /** Indicatore overflow: linea verticale sul bordo della zona scroll */
+  folderBarOverflowLine: {
+    position: 'absolute',
+    top: 9,
+    bottom: 9,
+    width: 2,
+    borderRadius: 1,
+    backgroundColor: THEME.green,
+    zIndex: 4,
+  },
+  folderBarOverflowLineRight: {
+    right: 0,
+  },
+  folderBarOverflowLineLeft: {
+    left: 0,
   },
   foldersScrollView: {
     flexGrow: 1,
