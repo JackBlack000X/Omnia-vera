@@ -30,8 +30,13 @@ struct TodayWidgetRowView: View {
     item.targetCount > 1 ? "plus" : "checkmark"
   }
 
+  private var displayTitle: String {
+    let trimmed = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "Senza titolo" : trimmed
+  }
+
   var body: some View {
-    HStack(spacing: compact ? 10 : 12) {
+    HStack(alignment: .top, spacing: compact ? 10 : 12) {
       Circle()
         .fill(Color(hex: item.color) ?? Color.white.opacity(0.7))
         .frame(width: compact ? 10 : 12, height: compact ? 10 : 12)
@@ -39,31 +44,38 @@ struct TodayWidgetRowView: View {
           Circle()
             .stroke(Color.white.opacity(0.18), lineWidth: 1)
         )
+        .padding(.top, 2)
 
       VStack(alignment: .leading, spacing: 5) {
-        Text(item.title)
+        Text(displayTitle)
           .font(.system(size: compact ? 13 : 14, weight: .semibold))
-          .lineLimit(1)
           .foregroundStyle(.white)
+          .lineLimit(compact ? 2 : 2)
+          .multilineTextAlignment(.leading)
+          .minimumScaleFactor(0.82)
+          .fixedSize(horizontal: false, vertical: true)
 
         HStack(spacing: 6) {
           Text("\(item.currentCount)/\(item.targetCount)")
             .font(.system(size: 11, weight: .bold))
+            .monospacedDigit()
             .foregroundStyle(item.isComplete ? Color(red: 0.45, green: 0.98, blue: 0.68) : Color.white.opacity(0.8))
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(Color.white.opacity(0.10))
             .clipShape(Capsule())
+            .layoutPriority(1)
 
           if item.isComplete {
             Text("Fatto")
               .font(.system(size: 10, weight: .semibold))
               .foregroundStyle(Color(red: 0.45, green: 0.98, blue: 0.68))
+              .lineLimit(1)
           }
         }
       }
-
-      Spacer(minLength: 8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .layoutPriority(1)
 
       if item.canIncrement {
         if #available(iOSApplicationExtension 17.0, *) {

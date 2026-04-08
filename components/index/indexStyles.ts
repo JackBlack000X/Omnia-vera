@@ -21,6 +21,10 @@ export const styles = StyleSheet.create({
     color: THEME.text
   },
 
+  /** Raggruppa barra progresso + cartelle/Oggi e li sposta insieme verso l’alto */
+  tasksProgressAndFoldersWrap: {
+    marginTop: -10,
+  },
   progressSection: {
     marginBottom: 8
   },
@@ -98,13 +102,40 @@ export const styles = StyleSheet.create({
   },
   foldersContainer: {
     marginBottom: 4,
-    marginTop: -4,
+    marginTop: -14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  foldersScrollHost: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden' as const,
+  },
+  foldersScrollView: {
+    flexGrow: 1,
   },
   foldersScroll: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 2,
     gap: 12,
+    // Spazio dopo il + così, con molte cartelle, resta aria prima della colonna Oggi
+    paddingRight: 24,
+  },
+  todayTabAnchor: {
+    flexShrink: 0,
+    marginLeft: 12,
+    paddingLeft: 10,
+    paddingVertical: 2,
+    backgroundColor: '#000',
+    zIndex: 2,
+    elevation: 4,
+    maxWidth: '40%',
+  },
+  todayTabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   folderRow: {
     flexDirection: 'row',

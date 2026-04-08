@@ -99,3 +99,22 @@ test('buildTodayWidgetSnapshot builds progress and widget actions for visible ha
   assert.equal(snapshot.items[0]?.deeplink, 'habitchecknative://oggi?habitId=habit-water&date=2026-04-07');
   assert.equal(snapshot.openAppDeeplink, 'habitchecknative://oggi?date=2026-04-07');
 });
+
+test('buildTodayWidgetSnapshot uses fallback title when habit text is empty', () => {
+  const habits = [
+    makeHabit({ id: 'habit-empty', text: '   ', order: 0 }),
+    makeHabit({ id: 'habit-named', text: 'Ok', order: 1 }),
+  ];
+
+  const snapshot = buildTodayWidgetSnapshot({
+    habits,
+    history: makeHistory({}),
+    logicalDate: '2026-04-07',
+    dayResetTime: '02:00',
+    maxVisibleItems: 3,
+    urlPrefix: 'habitchecknative://',
+  });
+
+  const emptyTitleItem = snapshot.items.find((item) => item.id === 'habit-empty');
+  assert.equal(emptyTitleItem?.title, 'Senza titolo');
+});

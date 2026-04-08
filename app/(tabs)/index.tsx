@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, InteractionManager, LayoutAnimation, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActionSheetIOS, Alert, InteractionManager, LayoutAnimation, Platform, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -225,6 +225,7 @@ export default function IndexScreen() {
     setNewFolderFilters,
     foldersScrollEnabled,
     foldersContainerWidthRef,
+    foldersScrollViewportWidthRef,
     foldersContentWidthRef,
     pendingDisplayRef,
     isMergeHoverSV,
@@ -277,6 +278,54 @@ export default function IndexScreen() {
     menuToday,
     menuTomorrow,
   } = useIndexLogic();
+
+  const showDayScopeMenu = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const tomorrowLabel = t('index.folderTomorrow');
+    const todayLabel = t('index.folderToday');
+    const cancelLabel = t('common.cancel');
+    const pickDomani = () => setActiveFolder(DOMANI_TOMORROW_KEY);
+    const pickOggi = () => setActiveFolder(OGGI_TODAY_KEY);
+
+    if (activeFolder === DOMANI_TOMORROW_KEY) {
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: [todayLabel, cancelLabel],
+            cancelButtonIndex: 1,
+            title: tomorrowLabel,
+          },
+          (buttonIndex) => {
+            if (buttonIndex === 0) pickOggi();
+          }
+        );
+      } else {
+        Alert.alert(tomorrowLabel, undefined, [
+          { text: todayLabel, onPress: pickOggi },
+          { text: cancelLabel, style: 'cancel' },
+        ]);
+      }
+      return;
+    }
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [tomorrowLabel, cancelLabel],
+          cancelButtonIndex: 1,
+          title: todayLabel,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) pickDomani();
+        }
+      );
+    } else {
+      Alert.alert(todayLabel, undefined, [
+        { text: tomorrowLabel, onPress: pickDomani },
+        { text: cancelLabel, style: 'cancel' },
+      ]);
+    }
+  }, [activeFolder, setActiveFolder, t]);
 
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
   const lastFolderTapRef = useRef<{ id: string; time: number } | null>(null);
@@ -814,7 +863,8 @@ export default function IndexScreen() {
 
       {activeSection === 'tabelle' && <TabelleView />}
 
-      {activeSection === 'tasks' && <><View style={styles.progressSection}>
+      {activeSection === 'tasks' && <><View style={styles.tasksProgressAndFoldersWrap}>
+        <View style={styles.progressSection}>
         <View style={styles.progressBarContainer}>
           <View style={[
             styles.progressBarBg,
@@ -839,8 +889,9 @@ export default function IndexScreen() {
                     key: 'sort', icon: 'swap-vertical-outline' as const, onPress: () => {
                       setOptionsMenuVisible(false);
                       const folderNameNow = activeFolder?.trim() ?? null;
-                      const isOggi = folderNameNow === OGGI_TODAY_KEY;
-                      const baseFallback: typeof sortMode = isOggi ? sortMode : 'creation';
+                      const isDayVirtualTab =
+                        folderNameNow === OGGI_TODAY_KEY || folderNameNow === DOMANI_TOMORROW_KEY;
+                      const baseFallback: typeof sortMode = isDayVirtualTab ? sortMode : 'creation';
                       const current: typeof sortMode =
                         folderNameNow !== null
                           ? (sortModeByFolder[folderNameNow] ?? baseFallback)
@@ -862,7 +913,10 @@ export default function IndexScreen() {
                         alphabetical: 'Ordine alfabetico',
                         custom: 'Ordine libero (Trascina)',
                       };
-                      const isRealFolder = folderNameNow !== null && folderNameNow !== OGGI_TODAY_KEY;
+                      const isRealFolder =
+                        folderNameNow !== null &&
+                        folderNameNow !== OGGI_TODAY_KEY &&
+                        folderNameNow !== DOMANI_TOMORROW_KEY;
                       const options: any[] = [
                         { text: 'Annulla', style: 'cancel' },
                         { text: sel('Data di creazione', 'creation'), onPress: () => setCurrent('creation') },
@@ -945,85 +999,109 @@ export default function IndexScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+        </View>
 
-      <View
+        <View
         style={styles.foldersContainer}
         onLayout={(e) => {
           foldersContainerWidthRef.current = e.nativeEvent.layout.width;
           updateFoldersScrollEnabled();
         }}
       >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          scrollEnabled={foldersScrollEnabled}
-          contentContainerStyle={styles.foldersScroll}
-          onContentSizeChange={(contentWidth) => {
-            foldersContentWidthRef.current = contentWidth;
+        <View
+          style={styles.foldersScrollHost}
+          onLayout={(e) => {
+            foldersScrollViewportWidthRef.current = e.nativeEvent.layout.width;
             updateFoldersScrollEnabled();
           }}
         >
-          {folderTabsOrder.map((folderNameOrNull, i) =>
-            folderNameOrNull === OGGI_TODAY_KEY ? (
-              <TouchableOpacity
-                key="oggi"
-                style={styles.folderRow}
-                onPress={() => setActiveFolder(OGGI_TODAY_KEY)}
-              >
-                <Text style={[styles.folderLabel, activeFolder === OGGI_TODAY_KEY && styles.folderLabelActive]}>{t('index.folderToday')}</Text>
-              </TouchableOpacity>
-            ) : folderNameOrNull === DOMANI_TOMORROW_KEY ? (
-              <TouchableOpacity
-                key="domani"
-                style={styles.folderRow}
-                onPress={() => setActiveFolder(DOMANI_TOMORROW_KEY)}
-              >
-                <Text style={[styles.folderLabel, activeFolder === DOMANI_TOMORROW_KEY && styles.folderLabelActive]}>{t('index.folderTomorrow')}</Text>
-              </TouchableOpacity>
-            ) : folderNameOrNull === null ? (
-              <TouchableOpacity
-                key="tutte"
-                style={styles.folderRow}
-                onPress={() => setActiveFolder(null)}
-              >
-                <Ionicons name="folder-open-outline" size={18} color={activeFolder === null ? THEME.text : THEME.textMuted} />
-                <Text style={[styles.folderLabel, activeFolder === null && styles.folderLabelActive]}>{t('common.tutte')}</Text>
-              </TouchableOpacity>
-            ) : (() => {
-              const f = folders.find(fd => (fd.name ?? '').trim() === folderNameOrNull);
-              if (!f) return null;
-              return (
+          <ScrollView
+            horizontal
+            style={styles.foldersScrollView}
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={foldersScrollEnabled}
+            contentContainerStyle={styles.foldersScroll}
+            onContentSizeChange={(contentWidth) => {
+              foldersContentWidthRef.current = contentWidth;
+              updateFoldersScrollEnabled();
+            }}
+          >
+            {folderTabsOrder.map((folderNameOrNull, i) =>
+              folderNameOrNull === null ? (
                 <TouchableOpacity
-                  key={typeof f.id === 'string' ? f.id : `folder-${i}-${f.name}`}
+                  key="tutte"
                   style={styles.folderRow}
-                  onPress={() => {
-                    const id = typeof f.id === 'string' ? f.id : f.name;
-                    const now = Date.now();
-                    if (lastFolderTapRef.current?.id === id && now - lastFolderTapRef.current.time < 400) {
-                      lastFolderTapRef.current = null;
-                      handleLongPressFolder(f);
-                    } else {
-                      lastFolderTapRef.current = { id, time: now };
-                      setActiveFolder(f.name);
-                    }
-                  }}
-                  onLongPress={() => handleLongPressFolder(f)}
-                  delayLongPress={200}
+                  onPress={() => setActiveFolder(null)}
                 >
-                  <Ionicons name={(f.icon ?? 'folder-outline') as any} size={18} color={activeFolder === f.name ? f.color : THEME.textMuted} />
-                  <Text style={[styles.folderLabel, activeFolder === f.name && { color: f.color }]}>
-                    {typeof f.name === 'string' ? f.name : String(f.name ?? '')}
-                  </Text>
+                  <Ionicons name="folder-open-outline" size={18} color={activeFolder === null ? THEME.text : THEME.textMuted} />
+                  <Text style={[styles.folderLabel, activeFolder === null && styles.folderLabelActive]}>{t('common.tutte')}</Text>
                 </TouchableOpacity>
-              );
-            })()
-          )}
+              ) : (() => {
+                const f = folders.find(fd => (fd.name ?? '').trim() === folderNameOrNull);
+                if (!f) return null;
+                return (
+                  <TouchableOpacity
+                    key={`ft-${i}-${(f.name ?? '').trim() || f.id}`}
+                    style={styles.folderRow}
+                    onPress={() => {
+                      const id = typeof f.id === 'string' ? f.id : f.name;
+                      const now = Date.now();
+                      if (lastFolderTapRef.current?.id === id && now - lastFolderTapRef.current.time < 400) {
+                        lastFolderTapRef.current = null;
+                        handleLongPressFolder(f);
+                      } else {
+                        lastFolderTapRef.current = { id, time: now };
+                        setActiveFolder(f.name);
+                      }
+                    }}
+                    onLongPress={() => handleLongPressFolder(f)}
+                    delayLongPress={200}
+                  >
+                    <Ionicons name={(f.icon ?? 'folder-outline') as any} size={18} color={activeFolder === f.name ? f.color : THEME.textMuted} />
+                    <Text style={[styles.folderLabel, activeFolder === f.name && { color: f.color }]}>
+                      {typeof f.name === 'string' ? f.name : String(f.name ?? '')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()
+            )}
 
-          <TouchableOpacity style={styles.folderAddBtn} onPress={handleAddFolder}>
-            <Ionicons name="add" size={18} color={THEME.textMuted} />
+            <TouchableOpacity style={styles.folderAddBtn} onPress={handleAddFolder}>
+              <Ionicons name="add" size={18} color={THEME.textMuted} />
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        <View style={styles.todayTabAnchor}>
+          <TouchableOpacity
+            style={styles.todayTabRow}
+            onPress={() => setActiveFolder(OGGI_TODAY_KEY)}
+            onLongPress={showDayScopeMenu}
+            delayLongPress={350}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text
+              style={[
+                styles.folderLabel,
+                (activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY) && styles.folderLabelActive,
+              ]}
+              numberOfLines={1}
+            >
+              {activeFolder === DOMANI_TOMORROW_KEY ? t('index.folderTomorrow') : t('index.folderToday')}
+            </Text>
+            <Ionicons
+              name="chevron-down"
+              size={14}
+              color={
+                activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY
+                  ? THEME.text
+                  : THEME.textMuted
+              }
+            />
           </TouchableOpacity>
-        </ScrollView>
+        </View>
+        </View>
       </View>
 
       {habits.length === 0 ? (

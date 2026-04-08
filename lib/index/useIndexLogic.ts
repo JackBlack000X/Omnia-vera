@@ -123,6 +123,8 @@ export function useIndexLogic() {
   const [newFolderFilters, setNewFolderFilters] = useState<FolderFilters>({});
   const [foldersScrollEnabled, setFoldersScrollEnabled] = useState(false);
   const foldersContainerWidthRef = useRef(0);
+  /** Larghezza dello ScrollView cartelle (esclusa pill Oggi/Domani a destra), per abilitare lo scroll orizzontale */
+  const foldersScrollViewportWidthRef = useRef(0);
   const foldersContentWidthRef = useRef(0);
   const dragEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDisplayRef = useRef<SectionItem[] | null>(null);
@@ -221,7 +223,10 @@ export function useIndexLogic() {
 
   const updateFoldersScrollEnabled = useCallback(() => {
     const cw = foldersContentWidthRef.current;
-    const tw = foldersContainerWidthRef.current;
+    const tw =
+      foldersScrollViewportWidthRef.current > 0
+        ? foldersScrollViewportWidthRef.current
+        : foldersContainerWidthRef.current;
     setFoldersScrollEnabled(tw > 0 && cw > tw);
   }, []);
 
@@ -792,7 +797,11 @@ export function useIndexLogic() {
     let resolvedOrder: (string | null)[];
     if (sectionOrder && sectionOrder.length > 0) {
       resolvedOrder = sectionOrder
-        .filter(n => n === null || (folderNames.has(n) && n !== OGGI_TODAY_KEY));
+        .filter(
+          n =>
+            n === null ||
+            (folderNames.has(n) && n !== OGGI_TODAY_KEY && n !== DOMANI_TOMORROW_KEY)
+        );
       const orderSet = new Set(resolvedOrder);
       for (const f of folders) {
         const name = (f.name ?? '').trim();
@@ -960,7 +969,11 @@ export function useIndexLogic() {
     const folderNames = new Set(folders.map(f => (f.name ?? '').trim()));
     let base: (string | null)[];
     if (sectionOrder && sectionOrder.length > 0) {
-      const order = sectionOrder.filter(n => n === null || folderNames.has(n));
+      const order = sectionOrder.filter(
+        n =>
+          n === null ||
+          (folderNames.has(n) && n !== OGGI_TODAY_KEY && n !== DOMANI_TOMORROW_KEY)
+      );
       const orderSet = new Set(order);
       for (const f of folders) {
         const name = (f.name ?? '').trim();
@@ -973,7 +986,15 @@ export function useIndexLogic() {
     } else {
       base = [null, ...folders.map(f => (f.name ?? '').trim())];
     }
-    return [OGGI_TODAY_KEY, DOMANI_TOMORROW_KEY, ...base];
+    const seen = new Set<string>();
+    const deduped: (string | null)[] = [];
+    for (const entry of base) {
+      const dedupeKey = entry === null ? '\0tutte' : entry;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      deduped.push(entry);
+    }
+    return deduped;
   }, [sectionOrder, folders]);
 
   const commitDragEnd = useCallback(() => {
@@ -1631,6 +1652,7 @@ export function useIndexLogic() {
     setNewFolderFilters,
     foldersScrollEnabled,
     foldersContainerWidthRef,
+    foldersScrollViewportWidthRef,
     foldersContentWidthRef,
     pendingDisplayRef,
     isPostDragRef,

@@ -76,10 +76,13 @@ export function buildTodayWidgetSnapshot({
         logicalDate,
       };
 
+      const rawTitle = typeof habit.text === 'string' ? habit.text.trim() : '';
+      const title = rawTitle.length > 0 ? rawTitle : 'Senza titolo';
+
       return {
         sortOrder: habit.order ?? 0,
         id: habit.id,
-        title: habit.text,
+        title,
         color: habit.color ?? null,
         currentCount,
         targetCount,
