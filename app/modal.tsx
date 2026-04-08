@@ -2456,8 +2456,7 @@ export default function ModalScreen() {
                               const curS = m.currentStartMin;
                               const curE = m.currentEndMin;
                               const newStartMin = Math.max(0, curS - 60);
-                              const newEndMin = curE != null && curE - curS === 60 ? newStartMin + 60 : curE;
-                              m.updateCurrentTimeRange(newStartMin, newEndMin);
+                              m.updateCurrentTimeRange(newStartMin, curE);
                             }}>−</HoldableStepperButton>
                             <Text style={styles.timeValue}>{Math.floor(m.currentStartMin / 60)}</Text>
                             <HoldableStepperButton onPress={() => {
