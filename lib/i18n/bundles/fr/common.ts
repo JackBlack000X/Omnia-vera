@@ -282,6 +282,7 @@ export const commonFr = {
     tasks: 'Tâches',
     tables: 'Tableaux',
     folderToday: 'Aujourd’hui',
+    folderYesterday: 'Hier',
     folderTomorrow: 'Demain',
     moveToFolderTitle: 'Déplacer vers le dossier',
     moveToFolderMessage: 'Où déplacer « {{name}} » ?',

@@ -4,7 +4,7 @@ import { FolderModals } from '@/components/index/FolderModals';
 import { styles } from '@/components/index/indexStyles';
 import TabelleView from '@/components/index/TabelleView';
 import { THEME } from '@/constants/theme';
-import { DOMANI_TOMORROW_KEY, OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
+import { DOMANI_TOMORROW_KEY, IERI_YESTERDAY_KEY, OGGI_TODAY_KEY, SectionItem, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { useIndexLogic } from '@/lib/index/useIndexLogic';
 import { useHabits } from '@/lib/habits/Provider';
 import { isHabitFullyDoneForDay } from '@/lib/habits/occurrences';
@@ -281,6 +281,7 @@ export default function IndexScreen() {
     collapsedFolderIds,
     menuToday,
     menuTomorrow,
+    menuYesterday,
   } = useIndexLogic();
 
   const lastFolderBarScrollXRef = useRef(0);
@@ -321,10 +322,13 @@ export default function IndexScreen() {
     foldersScrollViewportWidthRef,
   ]);
 
-  const handleSelectDayScope = useCallback((scope: typeof OGGI_TODAY_KEY | typeof DOMANI_TOMORROW_KEY) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setActiveFolder(scope);
-  }, [setActiveFolder]);
+  const handleSelectDayScope = useCallback(
+    (scope: typeof OGGI_TODAY_KEY | typeof DOMANI_TOMORROW_KEY | typeof IERI_YESTERDAY_KEY) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setActiveFolder(scope);
+    },
+    [setActiveFolder]
+  );
 
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
   const lastFolderTapRef = useRef<{ id: string; time: number } | null>(null);
@@ -889,7 +893,9 @@ export default function IndexScreen() {
                       setOptionsMenuVisible(false);
                       const folderNameNow = activeFolder?.trim() ?? null;
                       const isDayVirtualTab =
-                        folderNameNow === OGGI_TODAY_KEY || folderNameNow === DOMANI_TOMORROW_KEY;
+                        folderNameNow === OGGI_TODAY_KEY ||
+                        folderNameNow === DOMANI_TOMORROW_KEY ||
+                        folderNameNow === IERI_YESTERDAY_KEY;
                       const baseFallback: typeof sortMode = isDayVirtualTab ? sortMode : 'creation';
                       const current: typeof sortMode =
                         folderNameNow !== null
@@ -915,7 +921,8 @@ export default function IndexScreen() {
                       const isRealFolder =
                         folderNameNow !== null &&
                         folderNameNow !== OGGI_TODAY_KEY &&
-                        folderNameNow !== DOMANI_TOMORROW_KEY;
+                        folderNameNow !== DOMANI_TOMORROW_KEY &&
+                        folderNameNow !== IERI_YESTERDAY_KEY;
                       const options: any[] = [
                         { text: 'Annulla', style: 'cancel' },
                         { text: sel('Data di creazione', 'creation'), onPress: () => setCurrent('creation') },
@@ -1108,6 +1115,10 @@ export default function IndexScreen() {
           <MenuView
             shouldOpenOnLongPress={false}
             onPressAction={({ nativeEvent }) => {
+              if (nativeEvent.event === IERI_YESTERDAY_KEY) {
+                handleSelectDayScope(IERI_YESTERDAY_KEY);
+                return;
+              }
               if (nativeEvent.event === OGGI_TODAY_KEY) {
                 handleSelectDayScope(OGGI_TODAY_KEY);
                 return;
@@ -1117,29 +1128,40 @@ export default function IndexScreen() {
               }
             }}
             actions={[
-              { id: OGGI_TODAY_KEY, title: t('index.folderToday') },
-              { id: DOMANI_TOMORROW_KEY, title: t('index.folderTomorrow') },
+              {
+                id: IERI_YESTERDAY_KEY,
+                title: t('index.folderYesterday'),
+                preferredElementSize: 'small',
+              },
+              {
+                id: OGGI_TODAY_KEY,
+                title: t('index.folderToday'),
+                preferredElementSize: 'small',
+              },
+              {
+                id: DOMANI_TOMORROW_KEY,
+                title: t('index.folderTomorrow'),
+                preferredElementSize: 'small',
+              },
             ]}
           >
             <View style={styles.todayTabRow}>
               <Text
                 style={[
                   styles.folderLabel,
-                  (activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY) && styles.folderLabelActive,
+                  (activeFolder === OGGI_TODAY_KEY ||
+                    activeFolder === DOMANI_TOMORROW_KEY ||
+                    activeFolder === IERI_YESTERDAY_KEY) &&
+                    styles.folderLabelActive,
                 ]}
                 numberOfLines={1}
               >
-                {activeFolder === DOMANI_TOMORROW_KEY ? t('index.folderTomorrow') : t('index.folderToday')}
+                {activeFolder === DOMANI_TOMORROW_KEY
+                  ? t('index.folderTomorrow')
+                  : activeFolder === IERI_YESTERDAY_KEY
+                    ? t('index.folderYesterday')
+                    : t('index.folderToday')}
               </Text>
-              <Ionicons
-                name="chevron-down"
-                size={14}
-                color={
-                  activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY
-                    ? THEME.text
-                    : THEME.textMuted
-                }
-              />
             </View>
           </MenuView>
         </View>
@@ -1344,7 +1366,12 @@ export default function IndexScreen() {
             params: {
               type: 'new',
               folder: (activeFolder && activeFolder !== TUTTE_KEY) ? activeFolder : undefined,
-              ymd: activeFolder === DOMANI_TOMORROW_KEY ? menuTomorrow : menuToday,
+              ymd:
+                activeFolder === DOMANI_TOMORROW_KEY
+                  ? menuTomorrow
+                  : activeFolder === IERI_YESTERDAY_KEY
+                    ? menuYesterday
+                    : menuToday,
             }
           }}
           asChild

@@ -282,6 +282,7 @@ export const commonDe = {
     tasks: 'Aufgaben',
     tables: 'Tabellen',
     folderToday: 'Heute',
+    folderYesterday: 'Gestern',
     folderTomorrow: 'Morgen',
     moveToFolderTitle: 'In Ordner verschieben',
     moveToFolderMessage: 'Wohin soll „{{name}}“ verschoben werden?',

@@ -1,7 +1,7 @@
 PODS:
   - EXApplication (55.0.10):
     - ExpoModulesCore
-  - EXConstants (55.0.12):
+  - EXConstants (55.0.9):
     - ExpoModulesCore
   - EXJSONUtils (55.0.0)
   - EXManifests (55.0.11):
@@ -179,7 +179,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoAsset (55.0.13):
+  - ExpoAsset (55.0.10):
     - ExpoModulesCore
   - ExpoBlur (55.0.10):
     - ExpoModulesCore
@@ -1779,6 +1779,28 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-menu (2.0.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - react-native-safe-area-context (5.6.2):
     - hermes-engine
     - RCTRequired
@@ -2702,6 +2724,7 @@ DEPENDENCIES:
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - react-native-maps (from `../node_modules/react-native-maps`)
+  - "react-native-menu (from `../node_modules/@react-native-menu/menu`)"
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - "react-native-skia (from `../node_modules/@shopify/react-native-skia`)"
   - "react-native-slider (from `../node_modules/@react-native-community/slider`)"
@@ -2922,6 +2945,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
   react-native-maps:
     :path: "../node_modules/react-native-maps"
+  react-native-menu:
+    :path: "../node_modules/@react-native-menu/menu"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   react-native-skia:
@@ -3021,7 +3046,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   EXApplication: 83fdeb8d9e911c28c9dda8c71ae7a697278ce810
-  EXConstants: 97e4a5b18e38331acce952f0e4a6817b0418408f
+  EXConstants: 898c24a310046c0e68335619d0f379099a52e199
   EXJSONUtils: 0080c14b673cfa9a6be5e3fe429768ffe3d42dfb
   EXManifests: 46a2c1d8b795315028a17cd60b2e939d1e6bb086
   Expo: d425652228e12e472b46f0eca1032fcdebe55701
@@ -3029,7 +3054,7 @@ SPEC CHECKSUMS:
   expo-dev-launcher: f80749c4428bf747cae886f77ecad2b571a935ae
   expo-dev-menu: 8bbb103f33cf988acc637d5bea5a31e16b2d9a5f
   expo-dev-menu-interface: bf6f816d29b45bec038080790963c635e8d588c2
-  ExpoAsset: 3636e70a874487efd0a677f6c064dbc9fc8f174b
+  ExpoAsset: 4efd0227e808dfa84d286aa3663ded641ef73479
   ExpoBlur: 8508f5b62611b228eee65f242563ac70856eb4bd
   ExpoCalendar: 6d1cfe4f08dd057a722b812b30ccdb296ad8d0d1
   ExpoClipboard: fba6501fed478667b1cc888e999f82fb2838c685
@@ -3103,6 +3128,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: 8f8cbeb5bedb521cce0897a71274e3a72b5236a1
   React-microtasksnativemodule: bef4a47c7efd42421de52201e6d76a73cf6c816e
   react-native-maps: 3c765513d6993ab5f330fb170ebb57caf2f2048d
+  react-native-menu: 2de122c54dc10056932c0c0f73b82adfa4231faf
   react-native-safe-area-context: 37e680fc4cace3c0030ee46e8987d24f5d3bdab2
   react-native-skia: b1ba694c208db8a184ea55fe086a76b4ef0b2493
   react-native-slider: 8b9a218d1a3e526146a170cb6133be9cda23e70e

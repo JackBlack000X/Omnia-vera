@@ -282,6 +282,7 @@ export const commonEs = {
     tasks: 'Tareas',
     tables: 'Tablas',
     folderToday: 'Hoy',
+    folderYesterday: 'Ayer',
     folderTomorrow: 'Mañana',
     moveToFolderTitle: 'Mover a carpeta',
     moveToFolderMessage: '¿Dónde quieres mover «{{name}}»?',

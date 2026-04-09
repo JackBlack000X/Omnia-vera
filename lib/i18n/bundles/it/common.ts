@@ -282,6 +282,7 @@ export const commonIt = {
     tasks: 'Task',
     tables: 'Tabelle',
     folderToday: 'Oggi',
+    folderYesterday: 'Ieri',
     folderTomorrow: 'Domani',
     moveToFolderTitle: 'Sposta in cartella',
     moveToFolderMessage: 'Dove vuoi spostare "{{name}}"?',

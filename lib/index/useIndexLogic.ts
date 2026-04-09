@@ -10,6 +10,7 @@ import {
     FolderBlockItem,
     FolderFilters,
     FolderItem,
+    IERI_YESTERDAY_KEY,
     MultiDragBlockItem,
     OGGI_TODAY_KEY,
     SectionItem,
@@ -83,6 +84,12 @@ function cloneSelectedFolderFilters(filters: FolderFilters | undefined): FolderF
 function nextYmd(ymd: string): string {
   const d = new Date(ymd + 'T12:00:00.000Z');
   d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function prevYmd(ymd: string): string {
+  const d = new Date(ymd + 'T12:00:00.000Z');
+  d.setUTCDate(d.getUTCDate() - 1);
   return d.toISOString().slice(0, 10);
 }
 
@@ -162,8 +169,10 @@ export function useIndexLogic() {
   // Giorno di calendario in Zurich (può differire da today quando dayResetTime > 00:00 e siamo prima del reset)
   const calendarToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const tomorrow = useMemo(() => nextYmd(calendarToday), [calendarToday]);
+  const yesterday = useMemo(() => prevYmd(calendarToday), [calendarToday]);
   const menuToday = today;
   const menuTomorrow = tomorrow;
+  const menuYesterday = yesterday;
 
   const prevSectionedListRef = useRef<SectionItem[]>([]);
 
@@ -624,6 +633,8 @@ export function useIndexLogic() {
         ? (sortModeByFolder[OGGI_TODAY_KEY] ?? sortMode)
         : activeFolder === DOMANI_TOMORROW_KEY
           ? (sortModeByFolder[DOMANI_TOMORROW_KEY] ?? sortMode)
+          : activeFolder === IERI_YESTERDAY_KEY
+            ? (sortModeByFolder[IERI_YESTERDAY_KEY] ?? sortMode)
         : (sortModeByFolder[activeFolder.trim()] ?? 'creation');
 
   const sortHabitsWithMode = useCallback((list: Habit[], mode: SortModeType) => {
@@ -660,7 +671,12 @@ export function useIndexLogic() {
       });
     }
     if (mode === 'time') {
-      const referenceYmd = activeFolder === DOMANI_TOMORROW_KEY ? tomorrow : today;
+      const referenceYmd =
+        activeFolder === DOMANI_TOMORROW_KEY
+          ? tomorrow
+          : activeFolder === IERI_YESTERDAY_KEY
+            ? yesterday
+            : today;
       const getStartTime = (h: Habit) => {
         const override = h.timeOverrides?.[referenceYmd];
         const isAllDayMarker = override === '00:00';
@@ -691,7 +707,7 @@ export function useIndexLogic() {
       });
     }
     return list;
-  }, [activeFolder, today, tomorrow]);
+  }, [activeFolder, today, tomorrow, yesterday]);
 
   const sortHabitsList = useCallback(
     (list: Habit[]) => sortHabitsWithMode(list, effectiveSortMode),
@@ -727,6 +743,11 @@ export function useIndexLogic() {
       .filter((h) => !singleHabitsHiddenAfterReset.has(h.id));
   }, [habits, tomorrow, singleHabitsHiddenAfterReset, dayResetTime]);
 
+  const habitsAppearingYesterday = useMemo(() => {
+    return getHabitsAppearingOnDate(habits, yesterday, dayResetTime)
+      .filter((h) => !singleHabitsHiddenAfterReset.has(h.id));
+  }, [habits, yesterday, singleHabitsHiddenAfterReset, dayResetTime]);
+
   const sortedHabits = useMemo(() => {
     let list: Habit[];
     if (activeFolder === OGGI_TODAY_KEY) {
@@ -750,6 +771,8 @@ export function useIndexLogic() {
       }
     } else if (activeFolder === DOMANI_TOMORROW_KEY) {
       list = habitsAppearingTomorrow;
+    } else if (activeFolder === IERI_YESTERDAY_KEY) {
+      list = habitsAppearingYesterday;
     } else if (activeFolder) {
       const target = activeFolder.trim();
       const folderDef = folders.find(f => (f.name ?? '').trim() === target);
@@ -767,13 +790,14 @@ export function useIndexLogic() {
       list = habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
     }
     return sortHabitsList(list);
-  }, [habits, habitsAppearingToday, habitsAppearingTomorrow, sortMode, today, activeFolder, folders, applyFolderFilters, sortHabitsList, singleHabitsHiddenAfterReset, effectiveSortMode, oggiCustomOrder]);
+  }, [habits, habitsAppearingToday, habitsAppearingTomorrow, habitsAppearingYesterday, sortMode, today, activeFolder, folders, applyFolderFilters, sortHabitsList, singleHabitsHiddenAfterReset, effectiveSortMode, oggiCustomOrder]);
 
   const sectionedList = useMemo((): SectionItem[] => {
     const isOggiView = activeFolder === OGGI_TODAY_KEY;
     const isDomaniView = activeFolder === DOMANI_TOMORROW_KEY;
+    const isIeriView = activeFolder === IERI_YESTERDAY_KEY;
     const isFolderStructureView =
-      (activeFolder === null || isOggiView || isDomaniView) && effectiveSortMode === 'folder';
+      (activeFolder === null || isOggiView || isDomaniView || isIeriView) && effectiveSortMode === 'folder';
 
     if (!isFolderStructureView) {
       return sortedHabits.map(h => ({ type: 'task' as const, habit: h }));
@@ -783,6 +807,8 @@ export function useIndexLogic() {
       ? habitsAppearingToday.filter(h => !singleHabitsHiddenAfterReset.has(h.id))
       : isDomaniView
         ? habitsAppearingTomorrow
+        : isIeriView
+          ? habitsAppearingYesterday
       : habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
     const folderEntries = folders
       .map(f => ({ name: (f.name ?? '').trim(), folder: f }))
@@ -800,7 +826,7 @@ export function useIndexLogic() {
         .filter(
           n =>
             n === null ||
-            (folderNames.has(n) && n !== OGGI_TODAY_KEY && n !== DOMANI_TOMORROW_KEY)
+            (folderNames.has(n) && n !== OGGI_TODAY_KEY && n !== DOMANI_TOMORROW_KEY && n !== IERI_YESTERDAY_KEY)
         );
       const orderSet = new Set(resolvedOrder);
       for (const f of folders) {
@@ -851,7 +877,7 @@ export function useIndexLogic() {
     for (let i = 0; i < orderList.length; i++) {
       const folderName = orderList[i];
       const tasks = byFolder.get(folderName) ?? [];
-      if ((isOggiView || isDomaniView) && tasks.length === 0) continue;
+      if ((isOggiView || isDomaniView || isIeriView) && tasks.length === 0) continue;
       const folderId = folderName === null ? TUTTE_KEY : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
       const folderSortMode: SortModeType =
         folderName === null ? (sortModeByFolder[TUTTE_KEY] ?? 'creation') : (sortModeByFolder[folderName] ?? 'creation');
@@ -885,7 +911,7 @@ export function useIndexLogic() {
 
     prevSectionedListRef.current = finalized;
     return finalized;
-  }, [habits, habitsAppearingToday, habitsAppearingTomorrow, folders, activeFolder, sortMode, sortModeByFolder, sortedHabits, sortHabitsWithMode, sectionOrder, singleHabitsHiddenAfterReset]);
+  }, [habits, habitsAppearingToday, habitsAppearingTomorrow, habitsAppearingYesterday, folders, activeFolder, sortMode, sortModeByFolder, sortedHabits, sortHabitsWithMode, sectionOrder, singleHabitsHiddenAfterReset]);
 
   useEffect(() => {
     // Keep the UI thread synchronously updated with which active indices correspond to empty/collapsed folders
@@ -933,11 +959,14 @@ export function useIndexLogic() {
     if (activeFolder === DOMANI_TOMORROW_KEY) {
       return { mode: 'day', date: tomorrow };
     }
+    if (activeFolder === IERI_YESTERDAY_KEY) {
+      return { mode: 'day', date: yesterday };
+    }
     if (isSingleOccurrenceHabit(habit)) {
       return { mode: 'day', date: getSingleOccurrenceDate(habit) ?? today };
     }
     return { mode: 'aggregate' };
-  }, [activeFolder, today, tomorrow]);
+  }, [activeFolder, today, tomorrow, yesterday]);
 
   const getHabitCompletionState = useCallback((habit: Habit) => {
     const target = resolveHabitCompletionTarget(habit);
@@ -963,7 +992,7 @@ export function useIndexLogic() {
   }, [resolveHabitCompletionTarget, toggleAggregateDone, toggleDoneForDate]);
 
   const isFolderModeWithSections =
-    (activeFolder === null || activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY) && effectiveSortMode === 'folder';
+    (activeFolder === null || activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY || activeFolder === IERI_YESTERDAY_KEY) && effectiveSortMode === 'folder';
 
   const folderTabsOrder = useMemo(() => {
     const folderNames = new Set(folders.map(f => (f.name ?? '').trim()));
@@ -972,7 +1001,7 @@ export function useIndexLogic() {
       const order = sectionOrder.filter(
         n =>
           n === null ||
-          (folderNames.has(n) && n !== OGGI_TODAY_KEY && n !== DOMANI_TOMORROW_KEY)
+          (folderNames.has(n) && n !== OGGI_TODAY_KEY && n !== DOMANI_TOMORROW_KEY && n !== IERI_YESTERDAY_KEY)
       );
       const orderSet = new Set(order);
       for (const f of folders) {
@@ -1686,8 +1715,10 @@ export function useIndexLogic() {
     collapsedFolderIds,
     today,
     tomorrow,
+    yesterday,
     menuToday,
     menuTomorrow,
+    menuYesterday,
     // computed
     stats,
     effectiveSortMode,

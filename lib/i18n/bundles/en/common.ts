@@ -282,6 +282,7 @@ export const commonEn = {
     tasks: 'Tasks',
     tables: 'Tables',
     folderToday: 'Today',
+    folderYesterday: 'Yesterday',
     folderTomorrow: 'Tomorrow',
     moveToFolderTitle: 'Move to folder',
     moveToFolderMessage: 'Where do you want to move "{{name}}"?',
