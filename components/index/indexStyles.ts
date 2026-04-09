@@ -115,8 +115,8 @@ export const styles = StyleSheet.create({
   /** Indicatore overflow: linea verticale sul bordo della zona scroll */
   folderBarOverflowLine: {
     position: 'absolute',
-    top: 9,
-    bottom: 9,
+    top: 7,
+    bottom: 7,
     width: 2,
     borderRadius: 1,
     backgroundColor: THEME.green,

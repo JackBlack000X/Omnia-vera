@@ -1,5 +1,6 @@
 import SmartTaskFeedbackModal from '@/components/SmartTaskFeedbackModal';
 import { HabitItem } from '@/components/HabitItem';
+import { MorphingFolderAddIcon, MORPHING_FOLDER_ADD_FIRST_PIXEL_OFFSET } from '@/components/index/MorphingFolderAddIcon';
 import { FolderModals } from '@/components/index/FolderModals';
 import { styles } from '@/components/index/indexStyles';
 import TabelleView from '@/components/index/TabelleView';
@@ -24,6 +25,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 /** Soglia in px per mostrare i puntini “c’è altro da scorrere” sulla barra cartelle */
 const FOLDER_BAR_SCROLL_SLACK = 6;
+const FOLDER_ADD_MORPH_LEAD = 12;
+const FOLDER_ADD_LINE_BASE_HEIGHT = 26;
+const FOLDER_ADD_LINE_BASE_TOP = 6;
+const FOLDER_ADD_LINE_FINAL_HEIGHT = 2;
+const FOLDER_ADD_SHRINK_END_EARLY_PX = 2;
 
 const TASKS_DRAG_AUTOSCROLL_THRESHOLD = 108;
 const TASKS_DRAG_AUTOSCROLL_SPEED = 72;
@@ -287,7 +293,26 @@ export default function IndexScreen() {
   const lastFolderBarScrollXRef = useRef(0);
   const allTabRightEdgeRef = useRef(0);
   const addButtonRightEdgeRef = useRef(0);
+  const addButtonLeftEdgeRef = useRef(0);
+  const addButtonWidthRef = useRef(0);
   const [folderBarOverflowLines, setFolderBarOverflowLines] = useState({ left: false, right: false });
+  const [folderAddMorphProgress, setFolderAddMorphProgress] = useState(0);
+
+  const updateFolderAddMorphProgress = useCallback((contentW: number, layoutW: number, scrollX: number) => {
+    const lw = layoutW > 0 ? layoutW : foldersScrollViewportWidthRef.current;
+    const buttonLeft = addButtonLeftEdgeRef.current;
+    const buttonWidth = addButtonWidthRef.current;
+    if (lw <= 0 || contentW <= 0 || buttonWidth <= 0 || buttonLeft <= 0) {
+      setFolderAddMorphProgress(0);
+      return;
+    }
+
+    const viewportRight = scrollX + lw;
+    const revealStart = buttonLeft - FOLDER_ADD_MORPH_LEAD;
+    const revealEnd = addButtonRightEdgeRef.current > 0 ? addButtonRightEdgeRef.current : buttonLeft + buttonWidth;
+    const raw = (viewportRight - revealStart) / Math.max(1, revealEnd - revealStart);
+    setFolderAddMorphProgress(Math.max(0, Math.min(1, raw)));
+  }, [foldersScrollViewportWidthRef]);
 
   const updateFolderBarOverflowDots = useCallback(
     (contentW: number, layoutW: number, scrollX: number) => {
@@ -323,12 +348,44 @@ export default function IndexScreen() {
       foldersScrollViewportWidthRef.current,
       lastFolderBarScrollXRef.current
     );
+    updateFolderAddMorphProgress(
+      foldersContentWidthRef.current,
+      foldersScrollViewportWidthRef.current,
+      lastFolderBarScrollXRef.current
+    );
   }, [
     folderTabsOrder,
     updateFolderBarOverflowDots,
+    updateFolderAddMorphProgress,
     foldersContentWidthRef,
     foldersScrollViewportWidthRef,
   ]);
+
+  const folderAddRightLineStyle = useMemo(() => {
+    const buttonWidth = addButtonWidthRef.current;
+    const shrinkStart = buttonWidth > 0
+      ? (FOLDER_ADD_MORPH_LEAD + MORPHING_FOLDER_ADD_FIRST_PIXEL_OFFSET - 2) / (buttonWidth + FOLDER_ADD_MORPH_LEAD)
+      : 0.5;
+    const shrinkEnd = buttonWidth > 0
+      ? 1 - (FOLDER_ADD_SHRINK_END_EARLY_PX / (buttonWidth + FOLDER_ADD_MORPH_LEAD))
+      : 1;
+    const shrinkProgress = Math.max(
+      0,
+      Math.min(1, (folderAddMorphProgress - shrinkStart) / Math.max(0.0001, shrinkEnd - shrinkStart))
+    );
+    const shrinkPhase = shrinkProgress;
+    const nextHeight =
+      FOLDER_ADD_LINE_BASE_HEIGHT - (FOLDER_ADD_LINE_BASE_HEIGHT - FOLDER_ADD_LINE_FINAL_HEIGHT) * shrinkPhase;
+    const nextTop = FOLDER_ADD_LINE_BASE_TOP + (FOLDER_ADD_LINE_BASE_HEIGHT - nextHeight) / 2;
+
+    return {
+      top: nextTop,
+      height: nextHeight,
+      opacity: 1,
+    };
+  }, [folderAddMorphProgress]);
+
+  const shouldShowMorphingRightLine = folderBarOverflowLines.right || folderAddRightLineStyle.height > 0.25;
 
   const handleSelectDayScope = useCallback(
     (scope: typeof OGGI_TODAY_KEY | typeof DOMANI_TOMORROW_KEY | typeof IERI_YESTERDAY_KEY) => {
@@ -1016,25 +1073,30 @@ export default function IndexScreen() {
         </View>
 
         <View
-        style={styles.foldersContainer}
-        onLayout={(e) => {
-          foldersContainerWidthRef.current = e.nativeEvent.layout.width;
-          updateFoldersScrollEnabled();
-        }}
-      >
-        <View
-          style={styles.foldersScrollHost}
-          onLayout={(e) => {
-            const lw = e.nativeEvent.layout.width;
-            foldersScrollViewportWidthRef.current = lw;
-            updateFoldersScrollEnabled();
-            updateFolderBarOverflowDots(
-              foldersContentWidthRef.current,
-              lw,
-              lastFolderBarScrollXRef.current
-            );
-          }}
-        >
+          style={styles.foldersContainer}
+            onLayout={(e) => {
+              foldersContainerWidthRef.current = e.nativeEvent.layout.width;
+              updateFoldersScrollEnabled();
+            }}
+          >
+          <View
+            style={styles.foldersScrollHost}
+            onLayout={(e) => {
+              const lw = e.nativeEvent.layout.width;
+              foldersScrollViewportWidthRef.current = lw;
+              updateFoldersScrollEnabled();
+              updateFolderBarOverflowDots(
+                foldersContentWidthRef.current,
+                lw,
+                lastFolderBarScrollXRef.current
+              );
+              updateFolderAddMorphProgress(
+                foldersContentWidthRef.current,
+                lw,
+                lastFolderBarScrollXRef.current
+              );
+            }}
+          >
           <ScrollView
             horizontal
             style={styles.foldersScrollView}
@@ -1049,6 +1111,11 @@ export default function IndexScreen() {
                 foldersScrollViewportWidthRef.current,
                 lastFolderBarScrollXRef.current
               );
+              updateFolderAddMorphProgress(
+                contentWidth,
+                foldersScrollViewportWidthRef.current,
+                lastFolderBarScrollXRef.current
+              );
             }}
             onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
               const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
@@ -1058,6 +1125,7 @@ export default function IndexScreen() {
                   ? layoutMeasurement.width
                   : foldersScrollViewportWidthRef.current;
               updateFolderBarOverflowDots(contentSize.width, layoutW, contentOffset.x);
+              updateFolderAddMorphProgress(contentSize.width, layoutW, contentOffset.x);
             }}
             scrollEventThrottle={16}
           >
@@ -1112,8 +1180,15 @@ export default function IndexScreen() {
             <TouchableOpacity
               style={styles.folderAddBtn}
               onLayout={(e) => {
+                addButtonLeftEdgeRef.current = e.nativeEvent.layout.x;
                 addButtonRightEdgeRef.current = e.nativeEvent.layout.x + e.nativeEvent.layout.width;
+                addButtonWidthRef.current = e.nativeEvent.layout.width;
                 updateFolderBarOverflowDots(
+                  foldersContentWidthRef.current,
+                  foldersScrollViewportWidthRef.current,
+                  lastFolderBarScrollXRef.current
+                );
+                updateFolderAddMorphProgress(
                   foldersContentWidthRef.current,
                   foldersScrollViewportWidthRef.current,
                   lastFolderBarScrollXRef.current
@@ -1121,12 +1196,21 @@ export default function IndexScreen() {
               }}
               onPress={handleAddFolder}
             >
-              <Ionicons name="add" size={18} color={THEME.green} />
+              <MorphingFolderAddIcon progress={folderAddMorphProgress} />
             </TouchableOpacity>
           </ScrollView>
-          {folderBarOverflowLines.right ? (
+          {shouldShowMorphingRightLine ? (
             <View
-              style={[styles.folderBarOverflowLine, styles.folderBarOverflowLineRight]}
+              style={[
+                styles.folderBarOverflowLine,
+                styles.folderBarOverflowLineRight,
+                {
+                  bottom: undefined,
+                  top: folderAddRightLineStyle.top,
+                  height: folderAddRightLineStyle.height,
+                  opacity: folderAddRightLineStyle.opacity,
+                }
+              ]}
               pointerEvents="none"
             />
           ) : null}
