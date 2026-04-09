@@ -26,7 +26,7 @@ const SCREEN_W = Dimensions.get('window').width;
 const CARD_W = (SCREEN_W - 32 - 12) / 2;
 
 const C = {
-  canvas: '#102816',
+  canvas: '#000000',
   surface: '#0A0A0A',
   surfaceAlt: '#111111',
   border: 'rgba(255,255,255,0.12)',
@@ -661,7 +661,7 @@ const sheet = StyleSheet.create({
     paddingHorizontal: 24,
   },
   createCard: {
-    backgroundColor: '#16301b',
+    backgroundColor: '#111111',
     borderRadius: 18,
     padding: 18,
     borderWidth: StyleSheet.hairlineWidth,
@@ -706,7 +706,7 @@ const sheet = StyleSheet.create({
     justifyContent: 'center',
   },
   createButtonGhost: {
-    backgroundColor: '#223726',
+    backgroundColor: '#1A1A1A',
   },
   createButtonGhostText: {
     color: C.text,
