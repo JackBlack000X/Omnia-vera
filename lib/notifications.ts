@@ -11,9 +11,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function registerForPushNotificationsAsync() {
-  let token;
-
+export async function requestLocalNotificationPermissionsAsync() {
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
@@ -33,8 +31,6 @@ export async function registerForPushNotificationsAsync() {
     console.log('Failed to get permissions for notifications!');
     return;
   }
-
-  return token;
 }
 
 export async function scheduleHabitNotification(title: string, body: string, trigger: Notifications.NotificationTriggerInput) {

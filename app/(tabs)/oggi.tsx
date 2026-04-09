@@ -14,7 +14,7 @@ import {
   rangeOverlapsAny,
 } from '@/lib/habits/habitsForDate';
 import { calculateLayout, LayoutInfo } from '@/lib/layoutEngine';
-import { cancelAllScheduledNotifications, registerForPushNotificationsAsync, scheduleHabitNotification } from '@/lib/notifications';
+import { cancelAllScheduledNotifications, requestLocalNotificationPermissionsAsync, scheduleHabitNotification } from '@/lib/notifications';
 import { calculateEventVerticalMetrics } from '@/lib/oggi/eventLayout';
 import { BASE_VERTICAL_OFFSET, isValidTimeString, isLightColor, LEFT_MARGIN, makeOccurrenceEventId, minutesToTime, OggiEvent, resolveOggiHabitId, toMinutes } from '@/lib/oggi/oggiHelpers';
 import { useTimelineSettings } from '@/lib/oggi/useTimelineSettings';
@@ -295,7 +295,7 @@ export default function OggiScreen() {
   }, []);
 
   useEffect(() => {
-    registerForPushNotificationsAsync();
+    requestLocalNotificationPermissionsAsync();
   }, []);
 
   const selectedDayYmd = useMemo(() => formatCalendarYmd(currentDate), [currentDate]);
