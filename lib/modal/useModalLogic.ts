@@ -13,16 +13,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { Alert, ScrollView } from 'react-native';
 
-export function useModalLogic(params: { type: string; id?: string; folder?: string; ymd?: string; scrollRef: React.RefObject<ScrollView | null> }) {
+export function useModalLogic(params: { type: string; id?: string; folder?: string; ymd?: string; initialText?: string; lockTitle?: string; scrollRef: React.RefObject<ScrollView | null> }) {
   const { t } = useTranslation();
-  const { type, id, folder, ymd, scrollRef } = params;
+  const { type, id, folder, ymd, initialText, lockTitle, scrollRef } = params;
   const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
   const router = useRouter();
   const { installMonthStartYmd: minSelectableYmd, nonPastYmd: minNonPastYmd } = useAppDateBounds();
   const existing = useMemo(() => habits.find(h => h.id === id), [habits, id]);
   const VACATION_COLOR = '#4A148C';
 
-  const [text, setText] = useState(existing?.text ?? '');
+  const isTextLocked = type === 'new' && lockTitle === '1' && (initialText ?? '').trim().length > 0;
+  const [text, setText] = useState(existing?.text ?? initialText ?? '');
   const [color, setColor] = useState<string>(existing?.color ?? '#4A148C');
   const validFolder = (folder && folder !== '__oggi__' && folder !== '__tutte__') ? folder : null;
   const [selectedFolder, setSelectedFolder] = useState<string | null>(existing?.folder ?? validFolder ?? null);
@@ -111,7 +112,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   // New from Oggi/Domani = true. Existing: true if item has any schedule/override
   // (including all-day '00:00') so edit shows Frequenza/Giorno/Orario.
   const [taskHasTime, setTaskHasTime] = useState<boolean>(() => {
-    if (!existing) return type === 'new' && (folder === '__oggi__' || folder === '__domani__');
+    if (!existing) return type === 'new' && (folder === '__oggi__' || folder === '__domani__' || folder === '__ieri__' || Boolean(ymd));
     if (!supportsOptionalTime(inferredExistingTipo)) return false;
     const hasOverrides = existing.timeOverrides && Object.keys(existing.timeOverrides).length > 0;
     if (hasOverrides) return true;
@@ -1717,7 +1718,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             });
           } else if (freq === 'daily') {
             if (type === 'new') {
-              updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
+              updateScheduleFromDate(newHabitId, todayYmdForInit, time as string, endTime as string | null);
             }
             setHabits(prev => prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -1734,7 +1735,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             }));
           } else if (freq === 'weekly') {
             if (type === 'new') {
-              updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
+              updateScheduleFromDate(newHabitId, todayYmdForInit, time as string, endTime as string | null);
             }
             // Clear monthly days for weekly tasks
             setHabits(prev => prev.map(h => {
@@ -1804,7 +1805,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             }
           } else if (freq === 'monthly') {
             if (type === 'new') {
-              updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
+              updateScheduleFromDate(newHabitId, todayYmdForInit, time as string, endTime as string | null);
             }
             // Update monthly days and clear weekly days
             setHabits(prev => prev.map(h => {
@@ -1846,7 +1847,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             }
           } else if (freq === 'annual') {
             if (type === 'new') {
-              updateScheduleFromDate(newHabitId, getDay(new Date()), time as string, endTime as string | null);
+              updateScheduleFromDate(newHabitId, todayYmdForInit, time as string, endTime as string | null);
             }
             // Annual: set yearMonth/yearDay and clear weekly/monthly fields
             setHabits(prev => prev.map(h => {
@@ -2401,6 +2402,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     // State
     text,
     setText,
+    isTextLocked,
     color,
     setColor,
     selectedFolder,

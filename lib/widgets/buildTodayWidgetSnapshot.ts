@@ -41,6 +41,71 @@ type BuildTodayWidgetSnapshotArgs = {
   urlPrefix?: string;
 };
 
+function isValidTimeString(hhmm: string | null | undefined): hhmm is string {
+  if (typeof hhmm !== 'string') return false;
+  const match = /^(\d{2}):(\d{2})$/.exec(hhmm);
+  if (!match) return false;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (minutes < 0 || minutes > 59) return false;
+  if (hours < 0 || hours > 24) return false;
+  if (hours === 24 && minutes !== 0) return false;
+  return true;
+}
+
+function toMinutes(hhmm: string): number {
+  if (hhmm === '24:00') return 1440;
+  const [hours, minutes] = hhmm.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+function nextYmd(ymd: string): string {
+  const date = new Date(`${ymd}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function datePartsFromYmd(ymd: string): { weekday: number; dayOfMonth: number } {
+  const date = new Date(`${ymd}T12:00:00.000Z`);
+  return {
+    weekday: date.getUTCDay(),
+    dayOfMonth: date.getUTCDate(),
+  };
+}
+
+function getTaskStartMinutesForDate(habit: Habit, ymd: string): number | null {
+  const { weekday, dayOfMonth } = datePartsFromYmd(ymd);
+  const override = habit.timeOverrides?.[ymd];
+  if (override === '00:00') return null;
+
+  const rawOverrideStart =
+    typeof override === 'string' ? override : override?.start ?? null;
+  const overrideStart = isValidTimeString(rawOverrideStart) ? rawOverrideStart : null;
+
+  const weekly = habit.schedule?.weeklyTimes?.[weekday] ?? null;
+  const monthly = habit.schedule?.monthlyTimes?.[dayOfMonth] ?? null;
+  const start = overrideStart ?? weekly?.start ?? monthly?.start ?? habit.schedule?.time ?? null;
+
+  return start && isValidTimeString(start) ? toMinutes(start) : null;
+}
+
+function getArrivalSortValue(habit: Habit, logicalDate: string, dayResetTime: string): number {
+  const resetMinutes = dayResetTime !== '00:00' ? toMinutes(dayResetTime) : 0;
+  const todayStart = getTaskStartMinutesForDate(habit, logicalDate);
+
+  if (todayStart !== null && todayStart >= resetMinutes) {
+    return todayStart;
+  }
+
+  const tomorrow = nextYmd(logicalDate);
+  const tomorrowStart = getTaskStartMinutesForDate(habit, tomorrow);
+  if (tomorrowStart !== null && tomorrowStart < resetMinutes) {
+    return 1440 + tomorrowStart;
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
 function buildOggiPath(urlPrefix: string, params: Record<string, string | undefined>): string {
   const base = urlPrefix.endsWith('://')
     ? `${urlPrefix}oggi`
@@ -80,7 +145,9 @@ export function buildTodayWidgetSnapshot({
       const title = rawTitle.length > 0 ? rawTitle : 'Senza titolo';
 
       return {
+        arrivalSort: getArrivalSortValue(habit, logicalDate, dayResetTime),
         sortOrder: habit.order ?? 0,
+        createdAtMs: habit.createdAtMs ?? 0,
         id: habit.id,
         title,
         color: habit.color ?? null,
@@ -96,13 +163,13 @@ export function buildTodayWidgetSnapshot({
       };
     })
     .sort((left, right) => {
-      if (left.isComplete !== right.isComplete) {
-        return left.isComplete ? 1 : -1;
+      if (left.arrivalSort !== right.arrivalSort) {
+        return left.arrivalSort - right.arrivalSort;
       }
-      if (left.currentCount !== right.currentCount) {
-        return right.currentCount - left.currentCount;
+      if (left.sortOrder !== right.sortOrder) {
+        return left.sortOrder - right.sortOrder;
       }
-      return left.sortOrder - right.sortOrder;
+      return left.createdAtMs - right.createdAtMs;
     })
     .slice(0, maxVisibleItems);
 
@@ -118,6 +185,6 @@ export function buildTodayWidgetSnapshot({
       }).length,
       totalCount: visibleHabits.length,
     },
-    items: items.map(({ sortOrder: _sortOrder, ...item }) => item),
+    items: items.map(({ arrivalSort: _arrivalSort, sortOrder: _sortOrder, createdAtMs: _createdAtMs, ...item }) => item),
   };
 }

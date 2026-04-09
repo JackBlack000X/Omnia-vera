@@ -67,6 +67,15 @@ test('buildTodayWidgetSnapshot builds progress and widget actions for visible ha
     })),
     [
       {
+        id: 'habit-late',
+        currentCount: 0,
+        targetCount: 1,
+        isComplete: false,
+        canIncrement: true,
+        actionKind: 'toggleHabit',
+        actionDate: '2026-04-07',
+      },
+      {
         id: 'habit-water',
         currentCount: 2,
         targetCount: 3,
@@ -76,27 +85,18 @@ test('buildTodayWidgetSnapshot builds progress and widget actions for visible ha
         actionDate: '2026-04-07',
       },
       {
-        id: 'habit-read',
-        currentCount: 0,
+        id: 'habit-walk',
+        currentCount: 1,
         targetCount: 1,
-        isComplete: false,
-        canIncrement: true,
-        actionKind: 'toggleHabit',
-        actionDate: '2026-04-07',
-      },
-      {
-        id: 'habit-late',
-        currentCount: 0,
-        targetCount: 1,
-        isComplete: false,
-        canIncrement: true,
+        isComplete: true,
+        canIncrement: false,
         actionKind: 'toggleHabit',
         actionDate: '2026-04-07',
       },
     ],
   );
 
-  assert.equal(snapshot.items[0]?.deeplink, 'habitchecknative://oggi?habitId=habit-water&date=2026-04-07');
+  assert.equal(snapshot.items[0]?.deeplink, 'habitchecknative://oggi?habitId=habit-late&date=2026-04-07');
   assert.equal(snapshot.openAppDeeplink, 'habitchecknative://oggi?date=2026-04-07');
 });
 

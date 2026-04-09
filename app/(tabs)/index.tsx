@@ -371,7 +371,7 @@ export default function IndexScreen() {
     if (addButtonCenterY == null) return FOLDER_ADD_LINE_BASE_TOP;
     // +1 keeps the line center aligned with the rendered "+" center in the icon
     // (the icon itself has a small translateY in MorphingFolderAddIcon).
-    return addButtonCenterY + 1 - (FOLDER_ADD_LINE_BASE_HEIGHT / 2);
+    return addButtonCenterY - (FOLDER_ADD_LINE_BASE_HEIGHT / 2);
   }, [addButtonCenterY]);
 
   const folderAddRightLineStyle = useMemo(() => {
@@ -407,6 +407,39 @@ export default function IndexScreen() {
     },
     [setActiveFolder]
   );
+
+  const activeDayScope = useMemo<
+    typeof OGGI_TODAY_KEY | typeof DOMANI_TOMORROW_KEY | typeof IERI_YESTERDAY_KEY
+  >(() => {
+    if (activeFolder === DOMANI_TOMORROW_KEY) return DOMANI_TOMORROW_KEY;
+    if (activeFolder === IERI_YESTERDAY_KEY) return IERI_YESTERDAY_KEY;
+    return OGGI_TODAY_KEY;
+  }, [activeFolder]);
+
+  const handleTodayTabPress = useCallback(() => {
+    handleSelectDayScope(activeDayScope);
+  }, [activeDayScope, handleSelectDayScope]);
+
+  const todayTabActions = useMemo(() => ([
+    {
+      id: IERI_YESTERDAY_KEY,
+      title: t('index.folderYesterday'),
+      state: activeDayScope === IERI_YESTERDAY_KEY ? 'on' as const : 'off' as const,
+      preferredElementSize: 'small' as const,
+    },
+    {
+      id: OGGI_TODAY_KEY,
+      title: t('index.folderToday'),
+      state: activeDayScope === OGGI_TODAY_KEY ? 'on' as const : 'off' as const,
+      preferredElementSize: 'small' as const,
+    },
+    {
+      id: DOMANI_TOMORROW_KEY,
+      title: t('index.folderTomorrow'),
+      state: activeDayScope === DOMANI_TOMORROW_KEY ? 'on' as const : 'off' as const,
+      preferredElementSize: 'small' as const,
+    },
+  ]), [activeDayScope, t]);
 
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
   const lastFolderTapRef = useRef<{ id: string; time: number } | null>(null);
@@ -942,7 +975,14 @@ export default function IndexScreen() {
         </View>
       )}
 
-      {activeSection === 'tabelle' && <TabelleView />}
+      {activeSection === 'tabelle' && (
+        <TabelleView
+          activeFolder={activeFolder}
+          todayYmd={menuToday}
+          tomorrowYmd={menuTomorrow}
+          yesterdayYmd={menuYesterday}
+        />
+      )}
 
       {activeSection === 'tasks' && <><View style={styles.tasksProgressAndFoldersWrap}>
         <View style={styles.progressSection}>
@@ -1248,59 +1288,60 @@ export default function IndexScreen() {
         </View>
 
         <View style={styles.todayTabAnchor}>
-          <MenuView
-            style={styles.todayTabMenu}
-            shouldOpenOnLongPress={false}
-            onPressAction={({ nativeEvent }) => {
-              if (nativeEvent.event === IERI_YESTERDAY_KEY) {
-                handleSelectDayScope(IERI_YESTERDAY_KEY);
-                return;
-              }
-              if (nativeEvent.event === OGGI_TODAY_KEY) {
-                handleSelectDayScope(OGGI_TODAY_KEY);
-                return;
-              }
-              if (nativeEvent.event === DOMANI_TOMORROW_KEY) {
-                handleSelectDayScope(DOMANI_TOMORROW_KEY);
-              }
-            }}
-            actions={[
-              {
-                id: IERI_YESTERDAY_KEY,
-                title: t('index.folderYesterday'),
-                preferredElementSize: 'small',
-              },
-              {
-                id: OGGI_TODAY_KEY,
-                title: t('index.folderToday'),
-                preferredElementSize: 'small',
-              },
-              {
-                id: DOMANI_TOMORROW_KEY,
-                title: t('index.folderTomorrow'),
-                preferredElementSize: 'small',
-              },
-            ]}
-          >
-            <View style={styles.todayTabRow}>
-              <Text
-                style={[
-                  styles.folderLabel,
-                  (activeFolder === OGGI_TODAY_KEY ||
+          <View style={styles.todayTabRow}>
+            <Pressable onPress={handleTodayTabPress} style={styles.todayTabMenu}>
+              <View style={styles.todayTabRow}>
+                <Text
+                  style={[
+                    styles.folderLabel,
+                    (activeFolder === OGGI_TODAY_KEY ||
+                      activeFolder === DOMANI_TOMORROW_KEY ||
+                      activeFolder === IERI_YESTERDAY_KEY) &&
+                      styles.folderLabelActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {activeFolder === DOMANI_TOMORROW_KEY
+                    ? t('index.folderTomorrow')
+                    : activeFolder === IERI_YESTERDAY_KEY
+                      ? t('index.folderYesterday')
+                      : t('index.folderToday')}
+                </Text>
+              </View>
+            </Pressable>
+            <MenuView
+              style={[styles.todayTabMenu, { marginLeft: 4 }]}
+              shouldOpenOnLongPress={false}
+              onPressAction={({ nativeEvent }) => {
+                if (nativeEvent.event === IERI_YESTERDAY_KEY) {
+                  handleSelectDayScope(IERI_YESTERDAY_KEY);
+                  return;
+                }
+                if (nativeEvent.event === OGGI_TODAY_KEY) {
+                  handleSelectDayScope(OGGI_TODAY_KEY);
+                  return;
+                }
+                if (nativeEvent.event === DOMANI_TOMORROW_KEY) {
+                  handleSelectDayScope(DOMANI_TOMORROW_KEY);
+                }
+              }}
+              actions={todayTabActions}
+            >
+              <View style={styles.todayTabRow}>
+                <Ionicons
+                  name="chevron-down"
+                  size={icon16}
+                  color={
+                    activeFolder === OGGI_TODAY_KEY ||
                     activeFolder === DOMANI_TOMORROW_KEY ||
-                    activeFolder === IERI_YESTERDAY_KEY) &&
-                    styles.folderLabelActive,
-                ]}
-                numberOfLines={1}
-              >
-                {activeFolder === DOMANI_TOMORROW_KEY
-                  ? t('index.folderTomorrow')
-                  : activeFolder === IERI_YESTERDAY_KEY
-                    ? t('index.folderYesterday')
-                    : t('index.folderToday')}
-              </Text>
-            </View>
-          </MenuView>
+                    activeFolder === IERI_YESTERDAY_KEY
+                      ? THEME.text
+                      : THEME.textMuted
+                  }
+                />
+              </View>
+            </MenuView>
+          </View>
         </View>
         </View>
       </View>

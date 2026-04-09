@@ -1,19 +1,16 @@
 import { SKETCH_PLANNER } from '@/constants/sketchPlanner';
 import { useHabits } from '@/lib/habits/Provider';
 import type { UserTable } from '@/lib/habits/schema';
-import { Kalam_400Regular, Kalam_700Bold, useFonts } from '@expo-google-fonts/kalam';
+import { DOMANI_TOMORROW_KEY, IERI_YESTERDAY_KEY, OGGI_TODAY_KEY, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ActivityIndicator,
-  Animated,
   Alert,
   Dimensions,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -21,179 +18,153 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
 const SCREEN_W = Dimensions.get('window').width;
+const CARD_W = (SCREEN_W - 32 - 12) / 2;
 
-// ─── Design tokens (stile sketch planner: nero, griglia bianca, lime) ─────────
 const C = {
-  canvas:      '#000000',
-  headerBg:    '#000000',
-  cellBg:      '#000000',
-  gridLine:    '#FFFFFF',
-  accent:      SKETCH_PLANNER.highlight,
-  textPrimary: '#FFFFFF',
-  textMuted:   'rgba(255,255,255,0.45)',
-  textHeader:  '#FFFFFF',
-  surface:     '#0A0A0A',
+  canvas: '#102816',
+  surface: '#0A0A0A',
+  surfaceAlt: '#111111',
+  border: 'rgba(255,255,255,0.12)',
+  text: '#FFFFFF',
+  muted: 'rgba(255,255,255,0.48)',
+  cellOff: '#3A3A3E',
+  cellOn: '#30D158',
+} as const;
+
+const GRID = {
+  rowHeaderWidth: 38,
+  colWidth: 74,
+  colHeight: 28,
+  cellHeight: 28,
+  gap: 4,
+} as const;
+
+type CreateTarget = {
+  folder?: string;
+  ymd?: string;
 };
 
-const COL_W  = 100;
-const ROW_H  = 44;
-const HDR_W  = 44;   // row-header column width
-const HDR_H  = 44;   // column-header row height
-
-// ─── Sequence auto-detection ──────────────────────────────────────────────────
-function detectNext(vals: string[]): string {
-  const nonEmpty = vals.filter(v => v.trim() !== '');
-  if (nonEmpty.length === 0) return '';
-
-  // All numeric
-  const nums = nonEmpty.map(Number);
-  if (nonEmpty.every((v, i) => !isNaN(nums[i]) && v !== '')) {
-    if (nonEmpty.length === 1) return String(nums[0] + 1);
-    const diff = nums[nums.length - 1] - nums[nums.length - 2];
-    return String(nums[nums.length - 1] + diff);
-  }
-
-  // Single letter
-  if (nonEmpty.every(v => /^[A-Za-z]$/.test(v))) {
-    const code = nonEmpty[nonEmpty.length - 1].toUpperCase().charCodeAt(0);
-    return String.fromCharCode(code + 1);
-  }
-
-  // Prefix + number (e.g. "Giorno 1", "Q3")
-  const last = nonEmpty[nonEmpty.length - 1];
-  const m = last.match(/^(.*?)(\d+)(\D*)$/);
-  if (m) {
-    const nextNum = nonEmpty.length >= 2
-      ? (() => {
-          const prev = nonEmpty[nonEmpty.length - 2].match(/^(.*?)(\d+)(\D*)$/);
-          if (prev && prev[1] === m[1] && prev[3] === m[3]) {
-            return parseInt(m[2]) + (parseInt(m[2]) - parseInt(prev[2]));
-          }
-          return parseInt(m[2]) + 1;
-        })()
-      : parseInt(m[2]) + 1;
-    return `${m[1]}${nextNum}${m[3]}`;
-  }
-
-  return '';
+function normalizeChecked(table: UserTable): boolean[][] {
+  const rowCount = Array.isArray(table.cells) ? table.cells.length : 0;
+  const colCount = Array.isArray(table.headerRows?.[0]) ? table.headerRows[0].length : 0;
+  return Array.from({ length: rowCount }, (_, ri) =>
+    Array.from({ length: colCount }, (_, ci) => Boolean(table.checked?.[ri]?.[ci] ?? table.cells?.[ri]?.[ci]))
+  );
 }
 
-// ─── Table thumbnail (mini griglia sketch) ────────────────────────────────────
+function getColumnLabels(table: UserTable): string[] {
+  const row = table.headerRows?.[0];
+  if (Array.isArray(row)) return row;
+  const colCount = Array.isArray(table.cells?.[0]) ? table.cells[0].length : 0;
+  return Array.from({ length: colCount }, () => '');
+}
+
+function getCreateTarget(activeFolder: string | null | undefined, todayYmd: string, tomorrowYmd: string, yesterdayYmd: string): CreateTarget {
+  if (!activeFolder || activeFolder === TUTTE_KEY) return {};
+  if (activeFolder === DOMANI_TOMORROW_KEY) return { ymd: tomorrowYmd };
+  if (activeFolder === IERI_YESTERDAY_KEY) return { ymd: yesterdayYmd };
+  if (activeFolder === OGGI_TODAY_KEY) return { ymd: todayYmd };
+  return { folder: activeFolder, ymd: todayYmd };
+}
+
+function buildTaskTitle(columnLabel: string, rowNumber: number, colNumber: number): string {
+  const safeColumn = columnLabel.trim() || `Colonna ${colNumber}`;
+  return `Titolo ${safeColumn} ${rowNumber}`;
+}
+
 function TableThumbnail({ table }: { table: UserTable }) {
-  const cols = Math.min(table.headerRows[0]?.length ?? 0, 4);
-  const rows = Math.min(table.headerCols.length, 3);
-  const line = StyleSheet.hairlineWidth;
-  const cw = cols > 0 ? Math.floor(86 / (cols + 0.65)) : 22;
-  const ch = 10;
-  const rw = Math.max(10, Math.floor(cw * 0.5));
+  const cols = getColumnLabels(table).slice(0, 4);
+  const checked = normalizeChecked(table);
+  const rows = checked.slice(0, 3);
+  const accent = table.color;
+
   return (
-    <View style={{ borderWidth: line, borderColor: SKETCH_PLANNER.gridLine }}>
-      <View style={{ flexDirection: 'row' }}>
-        <View
-          style={{
-            width: rw,
-            height: ch,
-            backgroundColor: SKETCH_PLANNER.highlight,
-            borderRightWidth: line,
-            borderBottomWidth: line,
-            borderColor: SKETCH_PLANNER.gridLine,
-          }}
-        />
-        {Array.from({ length: cols }).map((_, i) => (
-          <View
-            key={i}
-            style={{
-              width: cw,
-              height: ch,
-              backgroundColor: SKETCH_PLANNER.background,
-              borderRightWidth: i === cols - 1 ? 0 : line,
-              borderBottomWidth: line,
-              borderColor: SKETCH_PLANNER.gridLine,
-            }}
-          />
+    <View style={{ gap: 3 }}>
+      <View style={{ flexDirection: 'row', gap: 3 }}>
+        <View style={{ width: 12, height: 12, backgroundColor: accent, borderRadius: 2 }} />
+        {cols.map((_, index) => (
+          <View key={index} style={{ width: 26, height: 12, backgroundColor: accent, borderRadius: 2 }} />
         ))}
       </View>
-      {Array.from({ length: rows }).map((_, ri) => (
-        <View key={ri} style={{ flexDirection: 'row' }}>
-          <View
-            style={{
-              width: rw,
-              height: ch,
-              backgroundColor: SKETCH_PLANNER.background,
-              borderRightWidth: line,
-              borderBottomWidth: ri === rows - 1 ? 0 : line,
-              borderColor: SKETCH_PLANNER.gridLine,
-            }}
-          />
-          {Array.from({ length: cols }).map((_, ci) => {
-            const val = table.cells[ri]?.[ci];
-            return (
-              <View
-                key={ci}
-                style={{
-                  width: cw,
-                  height: ch,
-                  backgroundColor: SKETCH_PLANNER.background,
-                  borderRightWidth: ci === cols - 1 ? 0 : line,
-                  borderBottomWidth: ri === rows - 1 ? 0 : line,
-                  borderColor: SKETCH_PLANNER.gridLine,
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                }}
-              >
-                {val ? (
-                  <View
-                    style={{
-                      width: '52%',
-                      height: 2,
-                      backgroundColor: 'rgba(255,255,255,0.28)',
-                      borderRadius: 1,
-                    }}
-                  />
-                ) : null}
-              </View>
-            );
-          })}
+      {rows.map((row, ri) => (
+        <View key={ri} style={{ flexDirection: 'row', gap: 3 }}>
+          <View style={{ width: 12, height: 12, backgroundColor: accent, borderRadius: 2 }} />
+          {row.map((isOn, ci) => (
+            <View
+              key={ci}
+              style={{
+                width: 26,
+                height: 12,
+                backgroundColor: isOn ? C.cellOn : C.cellOff,
+                borderRadius: 2,
+              }}
+            />
+          ))}
         </View>
       ))}
     </View>
   );
 }
 
-// ─── Home card ────────────────────────────────────────────────────────────────
-const CARD_W = (SCREEN_W - 32 - 12) / 2;
-
 function TableCard({ table, onPress, onLongPress }: { table: UserTable; onPress: () => void; onLongPress: () => void }) {
-  const accent = table.color;
+  const cols = getColumnLabels(table).length;
+  const rows = table.cells.length;
   return (
     <TouchableOpacity
-      style={[dc.card, { borderTopColor: accent }]}
+      style={[cards.card, { borderTopColor: table.color }]}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={500}
-      activeOpacity={0.75}
+      delayLongPress={450}
+      activeOpacity={0.82}
     >
-      <View style={dc.preview}>
+      <View style={cards.preview}>
         <TableThumbnail table={table} />
       </View>
-      <Text style={dc.name} numberOfLines={2}>{table.name}</Text>
-      <Text style={dc.meta}>{table.headerCols.length} rig · {table.headerRows[0]?.length ?? 0} col</Text>
+      <Text style={cards.name} numberOfLines={2}>{table.name}</Text>
+      <Text style={cards.meta}>{rows} righe · {cols} colonne</Text>
     </TouchableOpacity>
   );
 }
-const dc = StyleSheet.create({
-  card:    { width: CARD_W, backgroundColor: '#0A0A0A', borderRadius: 12, overflow: 'hidden', borderTopWidth: 3, borderLeftWidth: StyleSheet.hairlineWidth, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.12)', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
-  preview: { backgroundColor: '#000000', padding: 12, alignItems: 'center', justifyContent: 'center', minHeight: 88 },
-  name:    { color: '#FFF', fontSize: 13, fontWeight: '600', paddingHorizontal: 10, paddingTop: 8 },
-  meta:    { color: C.textMuted, fontSize: 11, paddingHorizontal: 10, paddingBottom: 10, marginTop: 2 },
+
+const cards = StyleSheet.create({
+  card: {
+    width: CARD_W,
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+    borderTopWidth: 4,
+    overflow: 'hidden',
+  },
+  preview: {
+    minHeight: 92,
+    backgroundColor: C.canvas,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+  },
+  name: {
+    color: C.text,
+    fontSize: 14,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingTop: 10,
+  },
+  meta: {
+    color: C.muted,
+    fontSize: 12,
+    paddingHorizontal: 10,
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
 });
 
-// ─── Create modal ─────────────────────────────────────────────────────────────
-const ACCENT_COLORS = ['#0A84FF','#30D158','#FF9F0A','#FF375F','#BF5AF2','#5E5CE6','#64D2FF','#FF6961'];
+const ACCENT_COLORS = ['#0A84FF', '#30D158', '#FF9F0A', '#FF375F', '#BF5AF2', '#5E5CE6', '#64D2FF', '#F7D154'];
 
 function CreateModal({ visible, onClose, onCreate }: {
   visible: boolean;
@@ -201,58 +172,92 @@ function CreateModal({ visible, onClose, onCreate }: {
   onCreate: (name: string, color: string, cols: number, rows: number) => void;
 }) {
   const { t } = useTranslation();
-  const [name, setName]   = useState('');
-  const [cols, setCols]   = useState(4);
-  const [rows, setRows]   = useState(5);
-  const [accent, setAccent] = useState(ACCENT_COLORS[0]);
+  const [name, setName] = useState('');
+  const [cols, setCols] = useState(4);
+  const [rows, setRows] = useState(5);
+  const [accent, setAccent] = useState(ACCENT_COLORS[1]);
 
-  const reset = () => { setName(''); setCols(4); setRows(5); setAccent(ACCENT_COLORS[0]); };
-  const close = () => { reset(); onClose(); };
+  const reset = useCallback(() => {
+    setName('');
+    setCols(4);
+    setRows(5);
+    setAccent(ACCENT_COLORS[1]);
+  }, []);
+
+  const close = useCallback(() => {
+    reset();
+    onClose();
+  }, [onClose, reset]);
+
   const canCreate = name.trim().length > 0;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <View style={cm.backdrop}>
-          <View style={cm.sheet}>
-            <View style={cm.handle} />
-            <View style={cm.hdr}>
-              <TouchableOpacity onPress={close}><Text style={cm.cancel}>{t('common.cancel')}</Text></TouchableOpacity>
-              <Text style={cm.title}>{t('tablesUi.newTableTitle')}</Text>
-              <TouchableOpacity disabled={!canCreate} onPress={() => { if (canCreate) { onCreate(name.trim(), accent, cols, rows); reset(); onClose(); } }}>
-                <Text style={[cm.done, !canCreate && { opacity: 0.3 }]}>{t('tablesUi.create')}</Text>
+        <View style={create.backdrop}>
+          <View style={create.sheet}>
+            <View style={create.handle} />
+            <View style={create.header}>
+              <TouchableOpacity onPress={close}><Text style={create.cancel}>{t('common.cancel')}</Text></TouchableOpacity>
+              <Text style={create.title}>{t('tablesUi.newTableTitle')}</Text>
+              <TouchableOpacity
+                disabled={!canCreate}
+                onPress={() => {
+                  if (!canCreate) return;
+                  onCreate(name.trim(), accent, cols, rows);
+                  reset();
+                  onClose();
+                }}
+              >
+                <Text style={[create.done, !canCreate && { opacity: 0.35 }]}>{t('tablesUi.create')}</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 32 }}>
-              <Text style={cm.label}>{t('tablesUi.nameLabel')}</Text>
-              <TextInput style={cm.input} value={name} onChangeText={setName} placeholder={t('tablesUi.namePh')} placeholderTextColor={C.textMuted} maxLength={60} autoFocus />
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 28 }}>
+              <Text style={create.label}>{t('tablesUi.nameLabel')}</Text>
+              <TextInput
+                style={create.input}
+                value={name}
+                onChangeText={setName}
+                placeholder={t('tablesUi.namePh')}
+                placeholderTextColor={C.muted}
+                autoFocus
+              />
 
-              <Text style={cm.label}>{t('tablesUi.colorLabel')}</Text>
-              <View style={cm.colors}>
-                {ACCENT_COLORS.map(c => (
-                  <TouchableOpacity key={c} onPress={() => setAccent(c)}>
-                    <View style={[cm.swatch, { backgroundColor: c }, accent === c && cm.swatchSel]} />
+              <Text style={create.label}>{t('tablesUi.colorLabel')}</Text>
+              <View style={create.colors}>
+                {ACCENT_COLORS.map((color) => (
+                  <TouchableOpacity key={color} onPress={() => setAccent(color)}>
+                    <View style={[create.swatch, { backgroundColor: color }, accent === color && create.swatchSelected]} />
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <Text style={cm.label}>{t('tablesUi.sizeLabel')}</Text>
-              <View style={cm.sizeRow}>
-                <View style={cm.sizeItem}>
-                  <Text style={cm.sizeLabel}>{t('tablesUi.columns')}</Text>
-                  <View style={cm.sizeStepper}>
-                    <TouchableOpacity onPress={() => setCols(c => Math.max(1, c - 1))} style={cm.stepBtn}><Text style={cm.stepTxt}>−</Text></TouchableOpacity>
-                    <Text style={cm.sizeVal}>{cols}</Text>
-                    <TouchableOpacity onPress={() => setCols(c => Math.min(26, c + 1))} style={cm.stepBtn}><Text style={cm.stepTxt}>+</Text></TouchableOpacity>
+              <Text style={create.label}>{t('tablesUi.sizeLabel')}</Text>
+              <View style={create.sizeRow}>
+                <View style={create.sizeCard}>
+                  <Text style={create.sizeText}>{t('tablesUi.columns')}</Text>
+                  <View style={create.stepper}>
+                    <TouchableOpacity style={create.stepButton} onPress={() => setCols((value) => Math.max(1, value - 1))}>
+                      <Text style={create.stepLabel}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={create.value}>{cols}</Text>
+                    <TouchableOpacity style={create.stepButton} onPress={() => setCols((value) => Math.min(10, value + 1))}>
+                      <Text style={create.stepLabel}>+</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-                <View style={cm.sizeItem}>
-                  <Text style={cm.sizeLabel}>{t('tablesUi.rowsLabel')}</Text>
-                  <View style={cm.sizeStepper}>
-                    <TouchableOpacity onPress={() => setRows(r => Math.max(1, r - 1))} style={cm.stepBtn}><Text style={cm.stepTxt}>−</Text></TouchableOpacity>
-                    <Text style={cm.sizeVal}>{rows}</Text>
-                    <TouchableOpacity onPress={() => setRows(r => Math.min(100, r + 1))} style={cm.stepBtn}><Text style={cm.stepTxt}>+</Text></TouchableOpacity>
+
+                <View style={create.sizeCard}>
+                  <Text style={create.sizeText}>{t('tablesUi.rowsLabel')}</Text>
+                  <View style={create.stepper}>
+                    <TouchableOpacity style={create.stepButton} onPress={() => setRows((value) => Math.max(1, value - 1))}>
+                      <Text style={create.stepLabel}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={create.value}>{rows}</Text>
+                    <TouchableOpacity style={create.stepButton} onPress={() => setRows((value) => Math.min(20, value + 1))}>
+                      <Text style={create.stepLabel}>+</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -263,630 +268,493 @@ function CreateModal({ visible, onClose, onCreate }: {
     </Modal>
   );
 }
-const cm = StyleSheet.create({
-  backdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  sheet:      { backgroundColor: '#000000', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 8, maxHeight: '85%' },
-  handle:     { width: 36, height: 5, borderRadius: 3, backgroundColor: '#48484A', alignSelf: 'center', marginBottom: 8 },
-  hdr:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
-  title:      { color: '#FFF', fontSize: 17, fontWeight: '600' },
-  cancel:     { color: C.textMuted, fontSize: 17 },
-  done:       { color: C.accent, fontSize: 17, fontWeight: '600' },
-  label:      { color: C.textMuted, fontSize: 11, fontWeight: '600', letterSpacing: 0.5, marginTop: 20, marginBottom: 8 },
-  input:      { backgroundColor: '#2C2C2E', color: '#FFF', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: '#48484A' },
-  colors:     { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  swatch:     { width: 32, height: 32, borderRadius: 16 },
-  swatchSel:  { borderWidth: 2.5, borderColor: '#fff' },
-  sizeRow:    { flexDirection: 'row', gap: 12 },
-  sizeItem:   { flex: 1, backgroundColor: '#2C2C2E', borderRadius: 12, padding: 14, alignItems: 'center', gap: 10 },
-  sizeLabel:  { color: C.textMuted, fontSize: 13, fontWeight: '500' },
-  sizeStepper:{ flexDirection: 'row', alignItems: 'center', gap: 16 },
-  sizeVal:    { color: '#FFF', fontSize: 22, fontWeight: '700', minWidth: 28, textAlign: 'center' },
-  stepBtn:    { width: 32, height: 32, borderRadius: 16, backgroundColor: '#3A3A3C', alignItems: 'center', justifyContent: 'center' },
-  stepTxt:    { color: '#FFF', fontSize: 20, fontWeight: '700', lineHeight: 24 },
+
+const create = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: C.canvas, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 8, maxHeight: '85%' },
+  handle: { width: 38, height: 5, borderRadius: 3, backgroundColor: '#4B4B4F', alignSelf: 'center', marginBottom: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  title: { color: C.text, fontSize: 17, fontWeight: '700' },
+  cancel: { color: C.muted, fontSize: 17 },
+  done: { color: SKETCH_PLANNER.highlight, fontSize: 17, fontWeight: '700' },
+  label: { color: C.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.7, marginTop: 18, marginBottom: 8 },
+  input: { backgroundColor: C.surfaceAlt, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 16 },
+  colors: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  swatch: { width: 32, height: 32, borderRadius: 16 },
+  swatchSelected: { borderWidth: 2.5, borderColor: '#FFFFFF' },
+  sizeRow: { flexDirection: 'row', gap: 12 },
+  sizeCard: { flex: 1, backgroundColor: C.surfaceAlt, borderRadius: 14, padding: 14, alignItems: 'center', gap: 10 },
+  sizeText: { color: C.muted, fontSize: 13, fontWeight: '600' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  stepButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#2D2D31', alignItems: 'center', justifyContent: 'center' },
+  stepLabel: { color: C.text, fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  value: { color: C.text, fontSize: 22, fontWeight: '800', minWidth: 28, textAlign: 'center' },
 });
 
-// ─── Spreadsheet view ─────────────────────────────────────────────────────────
-type CellPos = { row: number; col: number; area: 'header-row' | 'header-col' | 'body' };
-
-function SpreadsheetView({ table, onUpdate, onClose }: {
+function SpreadsheetView({
+  table,
+  onUpdate,
+  onClose,
+  createTarget,
+}: {
   table: UserTable;
-  onUpdate: (patch: Partial<UserTable>) => void;
+  onUpdate: (patch: Partial<Omit<UserTable, 'id' | 'createdAt'>>) => void;
   onClose: () => void;
+  createTarget: CreateTarget;
 }) {
-  const { t } = useTranslation();
-  const accent = table.color;
-  const [fontsLoaded] = useFonts({
-    Kalam_400Regular,
-    Kalam_700Bold,
-  });
-  const sketchColTitle = { fontFamily: 'Kalam_700Bold' as const };
-  const sketchRowTitle = { fontFamily: 'Kalam_400Regular' as const };
+  const { addHabit, setHabits } = useHabits();
+  const { width: screenWidth } = useWindowDimensions();
+  const columnLabels = useMemo(() => getColumnLabels(table), [table]);
+  const [labels, setLabels] = useState(columnLabels);
+  const [checked, setChecked] = useState(() => normalizeChecked(table));
+  const [editingCol, setEditingCol] = useState<number | null>(null);
+  const [draftLabel, setDraftLabel] = useState('');
+  const [cellMenu, setCellMenu] = useState<{ rowIndex: number; colIndex: number; title: string } | null>(null);
+  const gridGap = labels.length >= 9 ? 2 : labels.length >= 7 ? 3 : GRID.gap;
+  const columnWidth = useMemo(() => {
+    const horizontalPadding = 4;
+    const gridWidth = screenWidth - horizontalPadding;
+    const usable = gridWidth - GRID.rowHeaderWidth - (labels.length * gridGap);
+    return Math.max(22, Math.floor(usable / Math.max(labels.length, 1)));
+  }, [gridGap, labels.length, screenWidth]);
+  const compactColumns = labels.length >= 9;
 
-  // local mutable state
-  const [headerRows, setHeaderRows] = useState<string[][]>(table.headerRows);
-  const [headerCols, setHeaderCols] = useState<string[][]>(table.headerCols);
-  const [cells, setCells]           = useState<string[][]>(table.cells);
-  const [selected, setSelected]     = useState<CellPos | null>(null);
-  const [editing, setEditing]       = useState<CellPos | null>(null);
-  const [editVal, setEditVal]       = useState('');
+  useEffect(() => {
+    setLabels(columnLabels);
+    setChecked(normalizeChecked(table));
+    setEditingCol(null);
+    setDraftLabel('');
+  }, [columnLabels, table]);
 
-  // drag-to-add body rows/cols state
-  const [rowPreview, setRowPreview] = useState(0);
-  const [colPreview, setColPreview] = useState(0);
-  const [rowDragActive, setRowDragActive] = useState(false);
-  const [colDragActive, setColDragActive] = useState(false);
-
-  // drag-to-add frozen rows/cols state
-  const [frozenRowsDragActive, setFrozenRowsDragActive] = useState(false);
-  const [frozenColsDragActive, setFrozenColsDragActive] = useState(false);
-  const [frozenRowsPreview, setFrozenRowsPreview] = useState(0);
-  const frozenRowsDragOffsetAnim = useRef(new Animated.Value(0)).current;
-  const frozenRowsDragOffsetAnimRef = useRef(frozenRowsDragOffsetAnim);
-
-  // scroll animated values
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const bodyHScrollRef = useRef<ScrollView>(null);
-  const bodyVScrollRef = useRef<ScrollView>(null);
-
-  const numRows       = headerCols.length;
-  const numCols       = headerRows[0]?.length ?? 0;
-  const numFrozenRows = headerRows.length;
-  const numFrozenCols = headerCols[0]?.length ?? 1;
-  const fixedColsWidth = numFrozenCols * HDR_W;
-  const numFrozenRowsRef = useRef(numFrozenRows);
-  numFrozenRowsRef.current = numFrozenRows;
-
-  // ── commit helpers ──────────────────────────────────────────────────────────
-  const save = useCallback((hr: string[][], hc: string[][], cs: string[][]) => {
-    onUpdate({ headerRows: hr, headerCols: hc, cells: cs });
+  const persist = useCallback((nextLabels: string[], nextChecked: boolean[][]) => {
+    onUpdate({
+      headerRows: [nextLabels],
+      cells: nextChecked.map((row) => row.map((value) => (value ? '1' : ''))),
+      checked: nextChecked,
+    });
   }, [onUpdate]);
 
-  const commitEdit = useCallback(() => {
-    if (!editing) return;
-    const { row, col, area } = editing;
-    if (area === 'header-row') {
-      const next = headerRows.map(r => [...r]);
-      next[row][col] = editVal;
-      setHeaderRows(next); save(next, headerCols, cells);
-    } else if (area === 'header-col') {
-      const next = headerCols.map(r => [...r]);
-      next[row][col] = editVal;
-      setHeaderCols(next); save(headerRows, next, cells);
-    } else {
-      const next = cells.map(r => [...r]);
-      next[row][col] = editVal;
-      setCells(next); save(headerRows, headerCols, next);
-    }
-    setEditing(null);
-  }, [editing, editVal, headerRows, headerCols, cells, save]);
+  const toggleCell = useCallback((rowIndex: number, colIndex: number) => {
+    const next = checked.map((row) => [...row]);
+    next[rowIndex][colIndex] = !next[rowIndex][colIndex];
+    setChecked(next);
+    persist(labels, next);
+  }, [checked, labels, persist]);
 
-  const startEdit = (pos: CellPos) => {
-    let val = '';
-    if (pos.area === 'header-row') val = headerRows[pos.row]?.[pos.col] ?? '';
-    else if (pos.area === 'header-col') val = headerCols[pos.row]?.[pos.col] ?? '';
-    else val = cells[pos.row]?.[pos.col] ?? '';
-    setEditVal(val);
-    setEditing(pos);
-    setSelected(pos);
-  };
+  const beginEditColumn = useCallback((colIndex: number) => {
+    setEditingCol(colIndex);
+    setDraftLabel(labels[colIndex] ?? '');
+  }, [labels]);
 
-  const isSelected = (pos: CellPos) =>
-    selected?.area === pos.area && selected.row === pos.row && selected.col === pos.col;
-  const isEditing = (pos: CellPos) =>
-    editing?.area === pos.area && editing.row === pos.row && editing.col === pos.col;
+  const saveColumnLabel = useCallback(() => {
+    if (editingCol == null) return;
+    const nextLabels = [...labels];
+    nextLabels[editingCol] = draftLabel.trim();
+    setLabels(nextLabels);
+    persist(nextLabels, checked);
+    setEditingCol(null);
+    setDraftLabel('');
+  }, [checked, draftLabel, editingCol, labels, persist]);
 
-  // ── add/remove body rows & cols ─────────────────────────────────────────────
-  const applyRowPreview = useCallback((count: number) => {
-    if (count <= 0) return;
-    let nextCells = cells.map(r => [...r]);
-    let nextHCols = headerCols.map(r => [...r]);
-    for (let i = 0; i < count; i++) {
-      const newRow = Array.from({ length: numCols }, (_, ci) => detectNext(nextCells.map(r => r[ci])));
-      nextCells.push(newRow);
-      const newHColRow = Array.from({ length: numFrozenCols }, (_, fci) => detectNext(nextHCols.map(r => r[fci])));
-      nextHCols.push(newHColRow);
-    }
-    setHeaderCols(nextHCols);
-    setCells(nextCells);
-    save(headerRows, nextHCols, nextCells);
-  }, [cells, headerCols, headerRows, numCols, numFrozenCols, save]);
+  const addRow = useCallback(() => {
+    const nextChecked = [...checked, Array(labels.length).fill(false)];
+    setChecked(nextChecked);
+    persist(labels, nextChecked);
+  }, [checked, labels, persist]);
 
-  const applyColPreview = useCallback((count: number) => {
-    if (count <= 0) return;
-    let nextHRows = headerRows.map(r => [...r]);
-    let nextCells = cells.map(r => [...r]);
-    for (let i = 0; i < count; i++) {
-      nextHRows = nextHRows.map(r => [...r, detectNext(r)]);
-      nextCells = nextCells.map(r => [...r, detectNext(r)]);
-    }
-    setHeaderRows(nextHRows);
-    setCells(nextCells);
-    save(nextHRows, headerCols, nextCells);
-  }, [cells, headerRows, headerCols, save]);
+  const removeRow = useCallback(() => {
+    if (checked.length <= 1) return;
+    const nextChecked = checked.slice(0, -1);
+    setChecked(nextChecked);
+    persist(labels, nextChecked);
+  }, [checked, labels, persist]);
 
-  const removeRows = useCallback((count: number) => {
-    if (count <= 0 || headerCols.length <= 1) return;
-    const remove = Math.min(count, headerCols.length - 1);
-    const nextHCols = headerCols.slice(0, -remove);
-    const nextCells = cells.slice(0, -remove);
-    setHeaderCols(nextHCols);
-    setCells(nextCells);
-    save(headerRows, nextHCols, nextCells);
-  }, [cells, headerCols, headerRows, save]);
+  const addColumn = useCallback(() => {
+    if (labels.length >= 10) return;
+    const nextLabels = [...labels, ''];
+    const nextChecked = checked.map((row) => [...row, false]);
+    setLabels(nextLabels);
+    setChecked(nextChecked);
+    persist(nextLabels, nextChecked);
+  }, [checked, labels, persist]);
 
-  const removeCols = useCallback((count: number) => {
-    if (count <= 0 || numCols <= 1) return;
-    const remove = Math.min(count, numCols - 1);
-    const nextHRows = headerRows.map(r => r.slice(0, -remove));
-    const nextCells = cells.map(r => r.slice(0, -remove));
-    setHeaderRows(nextHRows);
-    setCells(nextCells);
-    save(nextHRows, headerCols, nextCells);
-  }, [cells, headerCols, headerRows, numCols, save]);
+  const removeColumn = useCallback(() => {
+    if (labels.length <= 1) return;
+    const nextLabels = labels.slice(0, -1);
+    const nextChecked = checked.map((row) => row.slice(0, -1));
+    setLabels(nextLabels);
+    setChecked(nextChecked);
+    persist(nextLabels, nextChecked);
+  }, [checked, labels, persist]);
 
-  // ── add/remove frozen rows & cols ───────────────────────────────────────────
-  const applyFrozenRowsChange = useCallback((delta: number) => {
-    if (delta > 0) {
-      const add = Math.min(delta, 3 - headerRows.length);
-      if (add <= 0) return;
-      let nextHRows = headerRows.map(r => [...r]);
-      for (let i = 0; i < add; i++) nextHRows.push(Array(numCols).fill(''));
-      setHeaderRows(nextHRows);
-      save(nextHRows, headerCols, cells);
-    } else if (delta < 0) {
-      const remove = Math.min(-delta, headerRows.length - 1);
-      if (remove <= 0) return;
-      const nextHRows = headerRows.slice(0, -remove);
-      setHeaderRows(nextHRows);
-      save(nextHRows, headerCols, cells);
-    }
-  }, [cells, headerCols, headerRows, numCols, save]);
+  const openCreateTask = useCallback((rowIndex: number, colIndex: number) => {
+    const rowNumber = rowIndex + 1;
+    const title = buildTaskTitle(labels[colIndex] ?? '', rowNumber, colIndex + 1);
+    setCellMenu({ rowIndex, colIndex, title });
+  }, [labels]);
 
-  const applyFrozenColsChange = useCallback((delta: number) => {
-    if (delta > 0) {
-      const add = Math.min(delta, 3 - numFrozenCols);
-      if (add <= 0) return;
-      let nextHCols = headerCols.map(r => [...r]);
-      for (let i = 0; i < add; i++) nextHCols = nextHCols.map(r => [...r, '']);
-      setHeaderCols(nextHCols);
-      save(headerRows, nextHCols, cells);
-    } else if (delta < 0) {
-      const remove = Math.min(-delta, numFrozenCols - 1);
-      if (remove <= 0) return;
-      const nextHCols = headerCols.map(r => r.slice(0, -remove));
-      setHeaderCols(nextHCols);
-      save(headerRows, nextHCols, cells);
-    }
-  }, [cells, headerCols, headerRows, numFrozenCols, save]);
-
-  // ── callback refs (stale closure fix) ──────────────────────────────────────
-  const applyRowPreviewRef   = useRef(applyRowPreview);
-  const removeRowsRef        = useRef(removeRows);
-  const applyColPreviewRef   = useRef(applyColPreview);
-  const removeColsRef        = useRef(removeCols);
-  const applyFrozenRowsRef   = useRef(applyFrozenRowsChange);
-  const applyFrozenColsRef   = useRef(applyFrozenColsChange);
-  applyRowPreviewRef.current  = applyRowPreview;
-  removeRowsRef.current       = removeRows;
-  applyColPreviewRef.current  = applyColPreview;
-  removeColsRef.current       = removeCols;
-  applyFrozenRowsRef.current  = applyFrozenRowsChange;
-  applyFrozenColsRef.current  = applyFrozenColsChange;
-
-  // ── drag: body rows ─────────────────────────────────────────────────────────
-  const rowDragState = useRef({ active: false, startY: 0, lastDelta: 0 });
-  const rowPanResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onStartShouldSetPanResponderCapture: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: () => true,
-    onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (e) => { rowDragState.current = { active: true, startY: e.nativeEvent.pageY, lastDelta: 0 }; setRowDragActive(true); },
-    onPanResponderMove: (e) => {
-      if (!rowDragState.current.active) return;
-      const delta = Math.round((e.nativeEvent.pageY - rowDragState.current.startY) / ROW_H);
-      if (delta !== rowDragState.current.lastDelta) { rowDragState.current.lastDelta = delta; setRowPreview(Math.max(0, delta)); }
-    },
-    onPanResponderRelease: () => {
-      const delta = rowDragState.current.lastDelta;
-      rowDragState.current = { active: false, startY: 0, lastDelta: 0 }; setRowPreview(0); setRowDragActive(false);
-      if (delta > 0) applyRowPreviewRef.current(delta); else if (delta < 0) removeRowsRef.current(-delta);
-    },
-    onPanResponderTerminate: () => { rowDragState.current = { active: false, startY: 0, lastDelta: 0 }; setRowPreview(0); setRowDragActive(false); },
-  })).current;
-
-  // ── drag: body cols ─────────────────────────────────────────────────────────
-  const colDragState = useRef({ active: false, startX: 0, lastDelta: 0 });
-  const colPanResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onStartShouldSetPanResponderCapture: () => true,
-    onMoveShouldSetPanResponder: () => colDragState.current.active,
-    onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (e) => { colDragState.current = { active: true, startX: e.nativeEvent.pageX, lastDelta: 0 }; setColDragActive(true); },
-    onPanResponderMove: (e) => {
-      if (!colDragState.current.active) return;
-      const delta = Math.round((e.nativeEvent.pageX - colDragState.current.startX) / COL_W);
-      if (delta !== colDragState.current.lastDelta) { colDragState.current.lastDelta = delta; setColPreview(Math.max(0, delta)); }
-    },
-    onPanResponderRelease: () => {
-      const delta = colDragState.current.lastDelta;
-      colDragState.current = { active: false, startX: 0, lastDelta: 0 }; setColPreview(0); setColDragActive(false);
-      if (delta > 0) applyColPreviewRef.current(delta); else if (delta < 0) removeColsRef.current(-delta);
-    },
-    onPanResponderTerminate: () => { colDragState.current = { active: false, startX: 0, lastDelta: 0 }; setColPreview(0); setColDragActive(false); },
-  })).current;
-
-  // ── drag: frozen rows ───────────────────────────────────────────────────────
-  const frozenRowsDragState = useRef({ active: false, startY: 0, lastDelta: 0 });
-  const frozenRowsPanResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onStartShouldSetPanResponderCapture: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (e) => { frozenRowsDragState.current = { active: true, startY: e.nativeEvent.pageY, lastDelta: 0 }; setFrozenRowsDragActive(true); },
-    onPanResponderMove: (e) => {
-      if (!frozenRowsDragState.current.active) return;
-      const dy = e.nativeEvent.pageY - frozenRowsDragState.current.startY;
-      const maxOffset = (3 - numFrozenRowsRef.current) * HDR_H;
-      frozenRowsDragOffsetAnimRef.current.setValue(Math.max(0, Math.min(dy, maxOffset)));
-      const delta = Math.sign(dy) * Math.floor(Math.abs(dy) / HDR_H);
-      if (delta !== frozenRowsDragState.current.lastDelta) { frozenRowsDragState.current.lastDelta = delta; setFrozenRowsPreview(Math.max(0, delta)); }
-    },
-    onPanResponderRelease: () => {
-      const delta = frozenRowsDragState.current.lastDelta;
-      frozenRowsDragState.current = { active: false, startY: 0, lastDelta: 0 }; setFrozenRowsDragActive(false); setFrozenRowsPreview(0);
-      frozenRowsDragOffsetAnimRef.current.setValue(0);
-      applyFrozenRowsRef.current(delta);
-    },
-    onPanResponderTerminate: () => { frozenRowsDragState.current = { active: false, startY: 0, lastDelta: 0 }; setFrozenRowsDragActive(false); setFrozenRowsPreview(0); frozenRowsDragOffsetAnimRef.current.setValue(0); },
-  })).current;
-
-  // ── drag: frozen cols ───────────────────────────────────────────────────────
-  const frozenColsDragState = useRef({ active: false, startX: 0, lastDelta: 0 });
-  const frozenColsPanResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onStartShouldSetPanResponderCapture: () => true,
-    onMoveShouldSetPanResponder: () => frozenColsDragState.current.active,
-    onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: (e) => { frozenColsDragState.current = { active: true, startX: e.nativeEvent.pageX, lastDelta: 0 }; setFrozenColsDragActive(true); },
-    onPanResponderMove: (e) => {
-      if (!frozenColsDragState.current.active) return;
-      const dx = e.nativeEvent.pageX - frozenColsDragState.current.startX;
-      const delta = Math.sign(dx) * Math.floor(Math.abs(dx) / HDR_W);
-      if (delta !== frozenColsDragState.current.lastDelta) frozenColsDragState.current.lastDelta = delta;
-    },
-    onPanResponderRelease: () => {
-      const delta = frozenColsDragState.current.lastDelta;
-      frozenColsDragState.current = { active: false, startX: 0, lastDelta: 0 }; setFrozenColsDragActive(false);
-      applyFrozenColsRef.current(delta);
-    },
-    onPanResponderTerminate: () => { frozenColsDragState.current = { active: false, startX: 0, lastDelta: 0 }; setFrozenColsDragActive(false); },
-  })).current;
-
-  if (!fontsLoaded) {
-    return (
-      <Modal visible animationType="slide" onRequestClose={() => { commitEdit(); onClose(); }}>
-        <View style={[sv.container, { justifyContent: 'center', alignItems: 'center' }]}>
-          <ActivityIndicator color={SKETCH_PLANNER.highlight} size="large" />
-        </View>
-      </Modal>
+  const confirmCreateTask = useCallback(() => {
+    if (!cellMenu) return;
+    const newHabitId = addHabit(
+      cellMenu.title,
+      table.color,
+      createTarget.folder || undefined,
+      'task',
+      { habitFreq: 'single' }
     );
-  }
+    if (createTarget.ymd) {
+      const targetYmd = createTarget.ymd;
+      setHabits((prev) => prev.map((habit) => {
+        if (habit.id !== newHabitId) return habit;
+        const overrides = { ...(habit.timeOverrides ?? {}), [targetYmd]: '00:00' as const };
+        const schedule = { ...(habit.schedule ?? { daysOfWeek: [] as number[] }) } as Habit['schedule'];
+        if (schedule) {
+          schedule.daysOfWeek = [];
+          schedule.monthDays = undefined;
+          schedule.yearMonth = undefined;
+          schedule.yearDay = undefined;
+          schedule.time = null;
+          schedule.endTime = null;
+          schedule.weeklyTimes = undefined;
+          schedule.monthlyTimes = undefined;
+        }
+        return {
+          ...habit,
+          timeOverrides: overrides,
+          schedule,
+          isAllDay: true,
+          habitFreq: 'single',
+        };
+      }));
+    }
+    setCellMenu(null);
+  }, [addHabit, cellMenu, createTarget.folder, createTarget.ymd, setHabits, table.color]);
+
+  const startColumnEditFromMenu = useCallback(() => {
+    if (!cellMenu) return;
+    const colIndex = cellMenu.colIndex;
+    setCellMenu(null);
+    requestAnimationFrame(() => {
+      beginEditColumn(colIndex);
+    });
+  }, [beginEditColumn, cellMenu]);
+
+  const showInfo = useCallback(() => {
+    Alert.alert(
+      'Come funziona',
+      'Tocca una casella per farla diventare verde. Tieni premuto su una casella per creare una task con titolo colonna + riga.'
+    );
+  }, []);
 
   return (
-    <Modal visible animationType="slide" onRequestClose={() => { commitEdit(); onClose(); }}>
-      <View style={sv.container}>
-
-        {/* Top bar */}
-        <View style={sv.topBar}>
-          <TouchableOpacity style={sv.backBtn} onPress={() => { commitEdit(); onClose(); }}>
-            <Ionicons name="chevron-back" size={22} color={accent} />
-            <Text style={[sv.backTxt, sketchRowTitle, { color: accent }]}>{t('tablesUi.back')}</Text>
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <View style={sheet.container}>
+        <View style={sheet.topBar}>
+          <TouchableOpacity style={sheet.backButton} onPress={onClose}>
+            <Ionicons name="chevron-back" size={22} color={table.color} />
+            <Text style={[sheet.backText, { color: table.color }]}>Tabelle</Text>
           </TouchableOpacity>
-          <Text style={[sv.topTitle, sketchColTitle]} numberOfLines={1}>{table.name}</Text>
-          <TouchableOpacity
-            style={sv.topRight}
-            onPress={() => {
-              if (!selected) return;
-              Alert.alert(
-                selected.area === 'body' ? t('tablesUi.deleteRowTitle') : t('tablesUi.selectionTitle'),
-                selected.area === 'body'
-                  ? t('tablesUi.deleteRowMessage', { n: selected.row + 1 })
-                  : t('tablesUi.selectionMessage'),
-                selected.area === 'body'
-                  ? [
-                      { text: t('common.cancel'), style: 'cancel' },
-                      { text: t('tablesUi.deleteRowConfirm'), style: 'destructive', onPress: () => {
-                          const nextHCols = headerCols.filter((_, i) => i !== selected.row);
-                          const nextCells = cells.filter((_, i) => i !== selected.row);
-                          setHeaderCols(nextHCols); setCells(nextCells);
-                          save(headerRows, nextHCols, nextCells); setSelected(null);
-                      }},
-                    ]
-                  : [{ text: t('common.ok'), style: 'cancel' }]
-              );
-            }}
-            disabled={!selected}
-          >
-            <Ionicons name="trash-outline" size={19} color={selected?.area === 'body' ? '#FF375F' : 'rgba(255,255,255,0.22)'} />
-          </TouchableOpacity>
+          <Text style={sheet.title} numberOfLines={1}>{table.name}</Text>
+          <View style={sheet.topActions}>
+            <TouchableOpacity style={sheet.iconButton} onPress={showInfo}>
+              <Ionicons
+                name={Platform.OS === 'ios' ? 'information-circle' : 'information-circle-outline'}
+                size={20}
+                color={C.text}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity style={[sheet.iconButton, checked.length <= 1 && sheet.iconButtonDisabled]} onPress={removeRow} disabled={checked.length <= 1}>
+              <Ionicons name="remove" size={18} color={C.text} />
+              <Text style={sheet.iconLabel}>R</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={sheet.iconButton} onPress={addRow}>
+              <Ionicons name="add" size={18} color={C.text} />
+              <Text style={sheet.iconLabel}>R</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[sheet.iconButton, labels.length <= 1 && sheet.iconButtonDisabled]} onPress={removeColumn} disabled={labels.length <= 1}>
+              <Ionicons name="remove" size={18} color={C.text} />
+              <Text style={sheet.iconLabel}>C</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[sheet.iconButton, labels.length >= 10 && sheet.iconButtonDisabled]} onPress={addColumn} disabled={labels.length >= 10}>
+              <Ionicons name="add" size={18} color={C.text} />
+              <Text style={sheet.iconLabel}>C</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Formula bar */}
-        <View style={sv.formulaBar}>
-          <Text style={[sv.formulaRef, sketchRowTitle]}>
-            {selected
-              ? selected.area === 'header-row' ? `H${selected.row + 1}.${selected.col + 1}`
-              : selected.area === 'header-col' ? `R${selected.row + 1}.${selected.col + 1}`
-              : `${String.fromCharCode(65 + selected.col)}${selected.row + 1}`
-              : ''}
-          </Text>
-          {editing ? (
-            <>
-              <TextInput style={sv.formulaInput} value={editVal} onChangeText={setEditVal} onSubmitEditing={commitEdit} returnKeyType="done" autoFocus={false} />
-              <TouchableOpacity onPress={() => setEditing(null)} style={sv.fBtn}><Ionicons name="close" size={17} color="#FF375F" /></TouchableOpacity>
-              <TouchableOpacity onPress={commitEdit} style={sv.fBtn}><Ionicons name="checkmark" size={17} color="#30D158" /></TouchableOpacity>
-            </>
-          ) : (
-            <Text style={sv.formulaStatic} numberOfLines={1}>
-              {selected
-                ? selected.area === 'header-row' ? (headerRows[selected.row]?.[selected.col] ?? '')
-                : selected.area === 'header-col' ? (headerCols[selected.row]?.[selected.col] ?? '')
-                : (cells[selected.row]?.[selected.col] ?? '')
-                : ''}
-            </Text>
-          )}
-        </View>
+        <View style={sheet.gridOuter}>
+          <View style={sheet.gridWrap}>
+            <View style={[sheet.headerRow, { gap: gridGap }]}>
+              <View style={[sheet.cornerCell, { backgroundColor: table.color }]} />
+              {labels.map((label, colIndex) => (
+                <Pressable
+                  key={`header-${colIndex}`}
+                  style={[sheet.columnHeader, { backgroundColor: table.color, width: columnWidth }]}
+                  onPress={() => beginEditColumn(colIndex)}
+                >
+                  {editingCol === colIndex ? (
+                    <TextInput
+                      value={draftLabel}
+                      onChangeText={setDraftLabel}
+                      onBlur={saveColumnLabel}
+                      onSubmitEditing={saveColumnLabel}
+                      autoFocus
+                      placeholder={`C${colIndex + 1}`}
+                      placeholderTextColor="rgba(0,0,0,0.45)"
+                      style={[sheet.columnInput, compactColumns && sheet.columnInputCompact]}
+                      returnKeyType="done"
+                      maxLength={24}
+                    />
+                  ) : (
+                    <Text style={[sheet.columnHeaderText, compactColumns && sheet.columnHeaderTextCompact]} numberOfLines={1}>
+                      {label.trim() || `C${colIndex + 1}`}
+                    </Text>
+                  )}
+                </Pressable>
+              ))}
+            </View>
 
-        {/* Grid */}
-        <View style={{ flex: 1 }}>
-
-          {/* AREA FISSA IN CIMA: angolo + righe fisse (scroll orizzontale) */}
-          <Animated.View style={{ flexDirection: 'row', height: Animated.add(numFrozenRows * HDR_H, frozenRowsDragOffsetAnim) }}>
-            <View style={{ width: fixedColsWidth, backgroundColor: C.headerBg }} />
-            <View style={{ flex: 1, overflow: 'hidden' }}>
-              <Animated.View style={{ transform: [{ translateX: Animated.multiply(scrollX, -1) }] }}>
-                {headerRows.map((hRow, fri) => {
-                  const isLastFrozenRow = fri === numFrozenRows - 1;
-                  return (
-                    <View key={fri} style={{ flexDirection: 'row' }}>
-                      {hRow.map((h, ci) => {
-                        const pos: CellPos = { row: fri, col: ci, area: 'header-row' };
-                        const sel = isSelected(pos);
-                        const edit = isEditing(pos);
-                        return (
-                          <Pressable
-                            key={ci}
-                            style={[sv.colHeader, sel && sv.headerSel]}
-                            onPress={() => { if (editing) { commitEdit(); return; } if (sel) startEdit(pos); else setSelected(pos); }}
-                          >
-                            {edit ? (
-                              <TextInput style={sv.headerInput} value={editVal} onChangeText={setEditVal} onSubmitEditing={commitEdit} onBlur={commitEdit} autoFocus returnKeyType="done" selectTextOnFocus />
-                            ) : (
-                              <Text style={[sv.colHeaderName, sketchColTitle]} numberOfLines={1}>{h}</Text>
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                      {isLastFrozenRow && Array.from({ length: colPreview }).map((_, i) => (
-                        <View key={`prev-ch-${i}`} style={[sv.colHeader, { opacity: 0.4 }]} />
-                      ))}
-                      {isLastFrozenRow && (
-                        <View
-                          style={[
-                            sv.colDragHandle,
-                            colDragActive && { backgroundColor: SKETCH_PLANNER.highlight, opacity: 0.92 },
-                          ]}
-                          {...colPanResponder.panHandlers}
-                        />
-                      )}
-                    </View>
-                  );
-                })}
-                {Array.from({ length: frozenRowsPreview }).map((_, i) => (
-                  <View key={`prev-fr-${i}`} style={{ flexDirection: 'row' }}>
-                    {Array.from({ length: numCols + colPreview }).map((_, ci) => (
-                      <View key={ci} style={[sv.colHeader, { opacity: 0.4 }]} />
-                    ))}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={sheet.rowsContent}>
+              {checked.map((row, rowIndex) => (
+                <View key={`row-${rowIndex}`} style={[sheet.bodyRow, { gap: gridGap }]}>
+                  <View style={[sheet.rowHeader, { backgroundColor: table.color }]}>
+                    <Text style={sheet.rowHeaderText}>{rowIndex + 1}</Text>
                   </View>
-                ))}
-              </Animated.View>
-            </View>
-          </Animated.View>
-
-          {/* LINEA COLORATA ORIZZONTALE — trascina su/giù per aggiungere/togliere righe fisse */}
-          <View style={{ flexDirection: 'row', height: 4 }}>
-            <View style={{ width: fixedColsWidth, backgroundColor: C.headerBg }} />
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: frozenRowsDragActive ? accent : 'rgba(164,230,29,0.5)',
-              }}
-              {...frozenRowsPanResponder.panHandlers}
-            />
-          </View>
-
-          {/* CORPO: colonne fisse + linea verticale + celle scrollabili */}
-          <View style={{ flex: 1, flexDirection: 'row' }}>
-
-            {/* Colonne fisse (scroll verticale) */}
-            <View style={{ width: fixedColsWidth, overflow: 'hidden', backgroundColor: '#000' }}>
-              <Animated.View style={{ transform: [{ translateY: Animated.multiply(scrollY, -1) }] }}>
-                {Array.from({ length: numRows + rowPreview }).map((_, ri) => {
-                  const isPreviewRow = ri >= numRows;
-                  const isLastRow = ri === numRows + rowPreview - 1;
-                  const thickBorder = isLastRow
-                    ? { borderBottomWidth: 5, borderBottomColor: rowDragActive ? accent : 'rgba(164,230,29,0.5)' }
-                    : {};
-                  return (
-                    <View key={ri} style={{ flexDirection: 'row', position: 'relative' }}>
-                      {Array.from({ length: numFrozenCols }).map((_, fci) => {
-                        const hColVal = isPreviewRow
-                          ? (() => { const base = headerCols.map(r => r[fci]); for (let k = numRows; k <= ri; k++) base.push(detectNext(base)); return base[ri]; })()
-                          : (headerCols[ri]?.[fci] ?? '');
-                        const pos: CellPos = { row: ri, col: fci, area: 'header-col' };
-                        const sel = isSelected(pos);
-                        const edit = isEditing(pos);
-                        return (
-                          <Pressable
-                            key={fci}
-                            style={[sv.rowHeader, thickBorder, sel && sv.headerSel, isPreviewRow && { opacity: 0.4 }]}
-                            onPress={() => { if (isPreviewRow) return; if (editing) { commitEdit(); return; } if (sel) startEdit(pos); else setSelected(pos); }}
-                          >
-                            {edit && !isPreviewRow ? (
-                              <TextInput style={sv.headerInput} value={editVal} onChangeText={setEditVal} onSubmitEditing={commitEdit} onBlur={commitEdit} autoFocus returnKeyType="done" selectTextOnFocus />
-                            ) : (
-                              <Text style={[sv.rowHeaderText, sketchRowTitle]} numberOfLines={1}>{hColVal}</Text>
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                      {isLastRow && (
-                        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 10 }} {...rowPanResponder.panHandlers} />
-                      )}
-                    </View>
-                  );
-                })}
-              </Animated.View>
-            </View>
-
-            {/* LINEA COLORATA VERTICALE — trascina destra/sinistra per aggiungere/togliere colonne fisse */}
-            <View
-              style={{
-                width: 4,
-                alignSelf: 'flex-start',
-                height: (numRows + rowPreview) * ROW_H,
-                backgroundColor: frozenColsDragActive ? accent : 'rgba(164,230,29,0.5)',
-              }}
-              {...frozenColsPanResponder.panHandlers}
-            />
-
-            {/* Celle body */}
-            <ScrollView
-              ref={bodyVScrollRef}
-              onScroll={Animated.event(
-                [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-                { useNativeDriver: false }
-              )}
-              scrollEventThrottle={16}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-              style={{ flex: 1, backgroundColor: '#000' }}
-            >
-              <ScrollView
-                horizontal
-                ref={bodyHScrollRef}
-                onScroll={Animated.event(
-                  [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                  { useNativeDriver: false }
-                )}
-                scrollEventThrottle={16}
-                showsHorizontalScrollIndicator={false}
-                bounces={false}
-              >
-                <View>
-                  {Array.from({ length: numRows + rowPreview }).map((_, ri) => {
-                    const isPreviewRow = ri >= numRows;
-                    return (
-                      <View key={ri} style={{ flexDirection: 'row' }}>
-                        {Array.from({ length: numCols + colPreview }).map((_, ci) => {
-                          const isPreviewCol = ci >= numCols;
-                          const pos: CellPos = { row: ri, col: ci, area: 'body' };
-                          const val = isPreviewRow || isPreviewCol ? '' : (cells[ri]?.[ci] ?? '');
-                          const sel = isSelected(pos);
-                          const edit = isEditing(pos);
-                          return (
-                            <Pressable
-                              key={ci}
-                              style={[sv.cell, sel && sv.cellSel, (isPreviewRow || isPreviewCol) && { opacity: 0.35 }]}
-                              onPress={() => { if (isPreviewRow || isPreviewCol) return; if (editing) { commitEdit(); return; } if (sel) startEdit(pos); else setSelected(pos); }}
-                            >
-                              {edit && !isPreviewRow && !isPreviewCol ? (
-                                <TextInput
-                                  style={[sv.cellInput, sel && { color: '#0a0a0a' }]}
-                                  value={editVal}
-                                  onChangeText={setEditVal}
-                                  onSubmitEditing={commitEdit}
-                                  onBlur={commitEdit}
-                                  autoFocus
-                                  returnKeyType="done"
-                                  selectTextOnFocus
-                                />
-                              ) : (
-                                <Text
-                                  style={[sv.cellText, sel && { color: '#0a0a0a', fontWeight: '600' }]}
-                                  numberOfLines={1}
-                                >
-                                  {val}
-                                </Text>
-                              )}
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    );
-                  })}
+                  {row.map((isOn, colIndex) => (
+                    <Pressable
+                      key={`cell-${rowIndex}-${colIndex}`}
+                      style={[sheet.cell, { width: columnWidth }, isOn ? sheet.cellOn : sheet.cellOff]}
+                      onPress={() => toggleCell(rowIndex, colIndex)}
+                      onLongPress={() => openCreateTask(rowIndex, colIndex)}
+                      delayLongPress={340}
+                    />
+                  ))}
                 </View>
-              </ScrollView>
+              ))}
             </ScrollView>
-
           </View>
         </View>
 
+        <Modal visible={cellMenu != null} transparent animationType="fade" onRequestClose={() => setCellMenu(null)}>
+          <View style={sheet.createBackdrop}>
+            <View style={sheet.createCard}>
+              <Text style={sheet.createEyebrow}>Menu casella</Text>
+              <Text style={sheet.createTitle}>{cellMenu?.title ?? ''}</Text>
+              <Text style={sheet.createHint}>Il titolo resta fisso. Da qui puoi creare la task oppure modificare la colonna.</Text>
+              <View style={sheet.createActions}>
+                <TouchableOpacity style={[sheet.createButton, sheet.createButtonGhost]} onPress={startColumnEditFromMenu}>
+                  <Text style={sheet.createButtonGhostText}>Modifica</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[sheet.createButton, sheet.createButtonPrimary]} onPress={confirmCreateTask}>
+                  <Text style={sheet.createButtonPrimaryText}>Crea</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={sheet.createCancelRow} onPress={() => setCellMenu(null)}>
+                <Text style={sheet.createCancelText}>Annulla</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     </Modal>
   );
 }
 
-const sv = StyleSheet.create({
-  container:  { flex: 1, backgroundColor: C.canvas },
-  topBar:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: Platform.OS === 'ios' ? 56 : 16, paddingBottom: 10, backgroundColor: C.headerBg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.gridLine },
-  backBtn:    { flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 70 },
-  backTxt:    { fontSize: 17 },
-  topTitle:   { color: C.textPrimary, fontSize: 18, flex: 1, textAlign: 'center' },
-  topRight:   { minWidth: 70, alignItems: 'flex-end', paddingRight: 4 },
-
-  formulaBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, backgroundColor: C.canvas, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.gridLine, gap: 8, minHeight: 38 },
-  formulaRef: { color: C.textMuted, fontSize: 13, minWidth: 32 },
-  formulaInput: { flex: 1, color: C.textPrimary, fontSize: 14, padding: 0 },
-  formulaStatic: { flex: 1, color: C.textHeader, fontSize: 14 },
-  fBtn:       { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
-
-  colHeader:  { width: COL_W, height: HDR_H, backgroundColor: C.headerBg, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.gridLine, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.gridLine, paddingHorizontal: 6 },
-  colHeaderName: { color: C.textHeader, fontSize: 13, textAlign: 'center' },
-  headerSel:  { backgroundColor: 'rgba(164, 230, 29, 0.38)' },
-  headerInput:{ color: C.textPrimary, fontSize: 13, padding: 0, textAlign: 'center', width: '100%' },
-  colDragHandle: { width: 5, height: HDR_H, backgroundColor: '#050505', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: C.gridLine },
-
-  rowHeader:  { width: HDR_W, height: ROW_H, backgroundColor: C.headerBg, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.gridLine, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.gridLine, paddingHorizontal: 4 },
-  rowHeaderText: { color: C.textHeader, fontSize: 14, textAlign: 'center' },
-
-  cell:       { width: COL_W, height: ROW_H, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.gridLine, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.gridLine, paddingHorizontal: 8, justifyContent: 'center', backgroundColor: C.cellBg },
-  cellSel:    { backgroundColor: SKETCH_PLANNER.highlight, borderColor: SKETCH_PLANNER.highlight, borderRadius: 6 },
-  cellText:   { color: C.textHeader, fontSize: 13 },
-  cellInput:  { color: C.textPrimary, fontSize: 13, padding: 0, flex: 1 },
-
-
+const sheet = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.canvas },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 56 : 16,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  backButton: { flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 78 },
+  backText: { fontSize: 17, fontWeight: '600' },
+  title: { flex: 1, color: C.text, textAlign: 'center', fontSize: 18, fontWeight: '700' },
+  topActions: { flexDirection: 'row', gap: 6, minWidth: 78, justifyContent: 'flex-end' },
+  iconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: C.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconButtonDisabled: {
+    opacity: 0.35,
+  },
+  iconLabel: {
+    position: 'absolute',
+    bottom: 3,
+    right: 4,
+    fontSize: 9,
+    color: C.muted,
+    fontWeight: '700',
+  },
+  gridOuter: { flex: 1, paddingHorizontal: 2, paddingBottom: 26 },
+  gridWrap: { minHeight: '100%' },
+  headerRow: { flexDirection: 'row', marginBottom: GRID.gap },
+  rowsContent: { paddingBottom: 80 },
+  bodyRow: { flexDirection: 'row', marginBottom: GRID.gap },
+  cornerCell: {
+    width: GRID.rowHeaderWidth,
+    height: GRID.colHeight,
+    borderRadius: 4,
+  },
+  columnHeader: {
+    width: GRID.colWidth,
+    height: GRID.colHeight,
+    borderRadius: 4,
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  columnHeaderText: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  columnHeaderTextCompact: {
+    fontSize: 10,
+  },
+  columnInput: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    padding: 0,
+  },
+  columnInputCompact: {
+    fontSize: 10,
+  },
+  rowHeader: {
+    width: GRID.rowHeaderWidth,
+    height: GRID.cellHeight,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowHeaderText: {
+    color: '#000000',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  cell: {
+    width: GRID.colWidth,
+    height: GRID.cellHeight,
+    borderRadius: 4,
+  },
+  cellOff: {
+    backgroundColor: C.cellOff,
+  },
+  cellOn: {
+    backgroundColor: C.cellOn,
+  },
+  createBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  createCard: {
+    backgroundColor: '#16301b',
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  createEyebrow: {
+    color: C.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  createTitle: {
+    color: C.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  createHint: {
+    color: C.muted,
+    fontSize: 13,
+    marginTop: 10,
+  },
+  createActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+  },
+  createCancelRow: {
+    marginTop: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createCancelText: {
+    color: C.muted,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  createButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createButtonGhost: {
+    backgroundColor: '#223726',
+  },
+  createButtonGhostText: {
+    color: C.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  createButtonPrimary: {
+    backgroundColor: SKETCH_PLANNER.highlight,
+  },
+  createButtonPrimaryText: {
+    color: '#000000',
+    fontSize: 15,
+    fontWeight: '800',
+  },
 });
 
-// ─── Main export ──────────────────────────────────────────────────────────────
-export default function TabelleView() {
+export default function TabelleView({
+  activeFolder,
+  todayYmd,
+  tomorrowYmd,
+  yesterdayYmd,
+}: {
+  activeFolder?: string | null;
+  todayYmd: string;
+  tomorrowYmd: string;
+  yesterdayYmd: string;
+}) {
   const { t } = useTranslation();
   const { tables, addTable, updateTable, deleteTable } = useHabits();
   const [showCreate, setShowCreate] = useState(false);
-  const [openTable, setOpenTable]   = useState<UserTable | null>(null);
+  const [openTable, setOpenTable] = useState<UserTable | null>(null);
 
-  const handleDelete = (table: UserTable) =>
+  const createTarget = useMemo(
+    () => getCreateTarget(activeFolder, todayYmd, tomorrowYmd, yesterdayYmd),
+    [activeFolder, todayYmd, tomorrowYmd, yesterdayYmd]
+  );
+
+  const handleDelete = useCallback((table: UserTable) => {
     Alert.alert(t('index.tableDeleteTitle'), t('index.tableDeleteMessage', { name: table.name }), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('common.delete'), style: 'destructive', onPress: () => deleteTable(table.id) },
     ]);
+  }, [deleteTable, t]);
 
   return (
-    <View style={mv.container}>
-      <View style={mv.toolbar}>
-        <Text style={mv.toolbarSub}>
+    <View style={main.container}>
+      <View style={main.toolbar}>
+        <Text style={main.toolbarSub}>
           {tables.length > 0
             ? tables.length === 1
               ? t('tablesUi.countOne')
@@ -896,18 +764,23 @@ export default function TabelleView() {
       </View>
 
       {tables.length === 0 ? (
-        <View style={mv.empty}>
-          <View style={mv.emptyIcon}><Ionicons name="grid-outline" size={44} color="rgba(255,255,255,0.22)" /></View>
-          <Text style={mv.emptyTitle}>{t('tablesUi.emptyTitle')}</Text>
-          <Text style={mv.emptyHint}>{t('tablesUi.emptyHint')}</Text>
-          <TouchableOpacity style={mv.emptyBtn} onPress={() => setShowCreate(true)}>
-            <Text style={mv.emptyBtnTxt}>{t('tablesUi.createTable')}</Text>
+        <View style={main.empty}>
+          <View style={main.emptyIcon}><Ionicons name="grid-outline" size={44} color="rgba(255,255,255,0.22)" /></View>
+          <Text style={main.emptyTitle}>{t('tablesUi.emptyTitle')}</Text>
+          <Text style={main.emptyHint}>{t('tablesUi.emptyHint')}</Text>
+          <TouchableOpacity style={main.emptyButton} onPress={() => setShowCreate(true)}>
+            <Text style={main.emptyButtonText}>{t('tablesUi.createTable')}</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={mv.grid}>
-          {tables.map(t => (
-            <TableCard key={t.id} table={t} onPress={() => setOpenTable(t)} onLongPress={() => handleDelete(t)} />
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={main.grid}>
+          {tables.map((table) => (
+            <TableCard
+              key={table.id}
+              table={table}
+              onPress={() => setOpenTable(table)}
+              onLongPress={() => handleDelete(table)}
+            />
           ))}
         </ScrollView>
       )}
@@ -918,38 +791,21 @@ export default function TabelleView() {
         onCreate={(name, color, cols, rows) => addTable(name, color, cols, rows)}
       />
 
-      {openTable && (
+      {openTable ? (
         <SpreadsheetView
           table={openTable}
+          createTarget={createTarget}
           onUpdate={(patch) => {
             updateTable(openTable.id, patch);
-            setOpenTable(prev => prev ? { ...prev, ...patch } : null);
+            setOpenTable((current) => (current ? { ...current, ...patch } : null));
           }}
           onClose={() => setOpenTable(null)}
         />
-      )}
+      ) : null}
 
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
-        <TouchableOpacity
-          style={{
-            position: 'absolute',
-            right: 20,
-            bottom: 98,
-            width: 83,
-            height: 83,
-            borderRadius: 42,
-            overflow: 'hidden',
-            pointerEvents: 'auto',
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: 'rgba(255,255,255,0.2)',
-          }}
-          onPress={() => setShowCreate(true)}
-        >
-          <BlurView
-            intensity={80}
-            tint="systemChromeMaterialDark"
-            style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
-          >
+      <View style={main.fabLayer} pointerEvents="box-none">
+        <TouchableOpacity style={main.fabShell} onPress={() => setShowCreate(true)}>
+          <BlurView intensity={80} tint="systemChromeMaterialDark" style={main.fab}>
             <Ionicons name="add" size={40} color={SKETCH_PLANNER.highlight} />
           </BlurView>
         </TouchableOpacity>
@@ -958,16 +814,38 @@ export default function TabelleView() {
   );
 }
 
-const mv = StyleSheet.create({
-  container:   { flex: 1, backgroundColor: C.canvas },
-  toolbar:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 4 },
-  toolbarSub:  { color: C.textMuted, fontSize: 13 },
-  addBtn:      { padding: 4 },
-  empty:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 80 },
-  emptyIcon:   { width: 80, height: 80, borderRadius: 20, backgroundColor: '#0A0A0A', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  emptyTitle:  { color: '#FFF', fontSize: 20, fontWeight: '700' },
-  emptyHint:   { color: C.textMuted, fontSize: 14, textAlign: 'center', paddingHorizontal: 40 },
-  emptyBtn:    { marginTop: 12, backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 12 },
-  emptyBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  grid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 120 },
+const main = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.canvas },
+  toolbar: { paddingHorizontal: 4, paddingVertical: 4 },
+  toolbarSub: { color: C.muted, fontSize: 13 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 80 },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: C.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: { color: C.text, fontSize: 20, fontWeight: '800' },
+  emptyHint: { color: C.muted, fontSize: 14, textAlign: 'center', paddingHorizontal: 40 },
+  emptyButton: { marginTop: 12, backgroundColor: SKETCH_PLANNER.highlight, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 12 },
+  emptyButtonText: { color: '#000000', fontSize: 16, fontWeight: '700' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 120 },
+  fabLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  fabShell: {
+    position: 'absolute',
+    right: 20,
+    bottom: 98,
+    width: 83,
+    height: 83,
+    borderRadius: 42,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  fab: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 });

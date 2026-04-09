@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   wrap: {
     width: ICON_WIDTH,
     height: ICON_HEIGHT,
-    transform: [{ translateX: ICON_TRANSLATE_X }, { translateY: 1 }],
+    transform: [{ translateX: ICON_TRANSLATE_X }, { translateY: 0 }],
   },
   leftArm: {
     position: 'absolute',

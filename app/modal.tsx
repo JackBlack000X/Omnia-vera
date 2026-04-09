@@ -399,12 +399,12 @@ export default function ModalScreen() {
   const { installMonthStartYmd: minSelectableYmd, nonPastYmd } = useAppDateBounds();
   const { width } = useWindowDimensions();
   const useCompactWeekdays = width <= 395;
-  const { type = 'new', id, folder, ymd } = useLocalSearchParams<{ type?: string; id?: string; folder?: string; ymd?: string }>();
+  const { type = 'new', id, folder, ymd, initialText, lockTitle } = useLocalSearchParams<{ type?: string; id?: string; folder?: string; ymd?: string; initialText?: string; lockTitle?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const m = useModalLogic({ type, id, folder, ymd, scrollRef });
+  const m = useModalLogic({ type, id, folder, ymd, initialText, lockTitle, scrollRef });
   const [places, setPlaces] = React.useState<{ id: string; name: string }[]>([]);
   const [selectedPlaceId, setSelectedPlaceId] = React.useState<string | null>(m.locationRule?.placeId ?? null);
   const [locationStatus, setLocationStatus] = React.useState<LocationPermissionStatus>('none');
@@ -638,11 +638,12 @@ export default function ModalScreen() {
           {(type === 'new' || type === 'rename' || type === 'edit') && !((m.tipo === 'viaggio' || m.tipo === 'salute' || m.tipo === 'vacanza') && (type === 'new' || type === 'edit')) && (
             <TextInput
               value={m.text}
-              onChangeText={(v) => v.length <= 100 && m.setText(v)}
+              onChangeText={(v) => !m.isTextLocked && v.length <= 100 && m.setText(v)}
               onSubmitEditing={m.save}
               placeholder={t('modal.placeholderName')}
               placeholderTextColor="#64748b"
-              style={styles.input}
+              editable={!m.isTextLocked}
+              style={[styles.input, m.isTextLocked && { opacity: 0.75 }]}
             />
           )}
 
@@ -2181,8 +2182,18 @@ export default function ModalScreen() {
                     </Text>
                   </View>
                   <View style={[
-                    { flexDirection: 'row', gap: 12, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
-                    m.isToday && { borderWidth: 2, borderColor: '#ff3b30', borderRadius: 12, padding: 8 }
+                    {
+                      flexDirection: 'row',
+                      gap: 12,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      borderWidth: 2,
+                      borderRadius: 12,
+                      padding: 8,
+                      borderColor: 'transparent',
+                    },
+                    m.isToday && { borderColor: '#ff3b30' }
                   ]}>
                     <View style={{ alignItems: 'center' }}>
                       <Text style={{ color: '#94a3b8', marginBottom: 6 }}>{t('common.day')}</Text>
