@@ -1,7 +1,7 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Appearance, LogBox, StyleSheet, Text, View } from 'react-native';
+import { Appearance, LogBox, StyleSheet, Text, TextInput, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -29,6 +29,16 @@ Appearance.setColorScheme('dark');
 LogBox.ignoreLogs([
   'InteractionManager has been deprecated and will be removed in a future release.',
 ]);
+
+// Keep typography consistent across devices by preventing OS-level text scaling
+// (Dynamic Type / Accessibility font size) from changing in-app layout.
+Text.defaultProps = Text.defaultProps ?? {};
+Text.defaultProps.allowFontScaling = false;
+Text.defaultProps.maxFontSizeMultiplier = 1;
+
+TextInput.defaultProps = TextInput.defaultProps ?? {};
+TextInput.defaultProps.allowFontScaling = false;
+TextInput.defaultProps.maxFontSizeMultiplier = 1;
 
 
 export const unstable_settings = {

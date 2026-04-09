@@ -18,7 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, InteractionManager, LayoutAnimation, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, InteractionManager, LayoutAnimation, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +27,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 const FOLDER_BAR_SCROLL_SLACK = 6;
 const FOLDER_ADD_MORPH_LEAD = 12;
 const FOLDER_ADD_LINE_BASE_HEIGHT = 26;
-const FOLDER_ADD_LINE_BASE_TOP = 6;
+const FOLDER_ADD_LINE_BASE_TOP = 7;
 const FOLDER_ADD_LINE_FINAL_HEIGHT = 1;
 const FOLDER_ADD_SHRINK_END_EARLY_PX = 6;
 
@@ -99,6 +99,11 @@ const ChevronIcon = ({ isCollapsed, folderColor }: { isCollapsed: boolean; folde
 export default function IndexScreen() {
   const { t } = useTranslation();
   const { activeTheme } = useAppTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const uiScale = Math.min(1.1, Math.max(1, screenWidth / 393));
+  const icon18 = Math.max(14, Math.round(18 * uiScale));
+  const icon16 = Math.max(13, Math.round(16 * uiScale));
+  const icon28 = Math.max(22, Math.round(28 * uiScale));
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { duplicateHabit, habits: allHabits, history, setHabits, getDay } = useHabits();
@@ -295,6 +300,7 @@ export default function IndexScreen() {
   const addButtonRightEdgeRef = useRef(0);
   const addButtonLeftEdgeRef = useRef(0);
   const addButtonWidthRef = useRef(0);
+  const [addButtonCenterY, setAddButtonCenterY] = useState<number | null>(null);
   const [folderBarOverflowLines, setFolderBarOverflowLines] = useState({ left: false, right: false });
   const [folderAddMorphProgress, setFolderAddMorphProgress] = useState(0);
 
@@ -361,6 +367,13 @@ export default function IndexScreen() {
     foldersScrollViewportWidthRef,
   ]);
 
+  const folderAddBaseTop = useMemo(() => {
+    if (addButtonCenterY == null) return FOLDER_ADD_LINE_BASE_TOP;
+    // +1 keeps the line center aligned with the rendered "+" center in the icon
+    // (the icon itself has a small translateY in MorphingFolderAddIcon).
+    return addButtonCenterY + 1 - (FOLDER_ADD_LINE_BASE_HEIGHT / 2);
+  }, [addButtonCenterY]);
+
   const folderAddRightLineStyle = useMemo(() => {
     const buttonWidth = addButtonWidthRef.current;
     const shrinkStart = buttonWidth > 0
@@ -376,14 +389,14 @@ export default function IndexScreen() {
     const shrinkPhase = shrinkProgress;
     const nextHeight =
       FOLDER_ADD_LINE_BASE_HEIGHT - (FOLDER_ADD_LINE_BASE_HEIGHT - FOLDER_ADD_LINE_FINAL_HEIGHT) * shrinkPhase;
-    const nextTop = FOLDER_ADD_LINE_BASE_TOP + (FOLDER_ADD_LINE_BASE_HEIGHT - nextHeight) / 2;
+    const nextTop = folderAddBaseTop + (FOLDER_ADD_LINE_BASE_HEIGHT - nextHeight) / 2;
 
     return {
       top: nextTop,
       height: nextHeight,
       opacity: 1,
     };
-  }, [folderAddMorphProgress]);
+  }, [folderAddMorphProgress, folderAddBaseTop]);
 
   const shouldShowMorphingRightLine = folderAddRightLineStyle.height > (FOLDER_ADD_LINE_FINAL_HEIGHT + 1);
 
@@ -1051,7 +1064,7 @@ export default function IndexScreen() {
                       }
                     ]}
                   >
-                    <Ionicons name={opt.icon} size={16} color={THEME.textMuted} />
+                    <Ionicons name={opt.icon} size={icon16} color={THEME.textMuted} />
                   </TouchableOpacity>
                 ))}
               </>
@@ -1066,7 +1079,7 @@ export default function IndexScreen() {
                 }
               ]}
             >
-              <Ionicons name="ellipsis-horizontal" size={18} color={THEME.textMuted} />
+              <Ionicons name="ellipsis-horizontal" size={icon18} color={THEME.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1144,7 +1157,7 @@ export default function IndexScreen() {
                 }}
                 onPress={() => setActiveFolder(null)}
               >
-                  <Ionicons name="folder-open-outline" size={18} color={activeFolder === null ? THEME.text : THEME.textMuted} />
+                  <Ionicons name="folder-open-outline" size={icon18} color={activeFolder === null ? THEME.text : THEME.textMuted} />
                   <Text style={[styles.folderLabel, activeFolder === null && styles.folderLabelActive]}>{t('common.tutte')}</Text>
                 </TouchableOpacity>
               ) : (() => {
@@ -1168,7 +1181,7 @@ export default function IndexScreen() {
                     onLongPress={() => handleLongPressFolder(f)}
                     delayLongPress={200}
                   >
-                    <Ionicons name={(f.icon ?? 'folder-outline') as any} size={18} color={activeFolder === f.name ? f.color : THEME.textMuted} />
+                    <Ionicons name={(f.icon ?? 'folder-outline') as any} size={icon18} color={activeFolder === f.name ? f.color : THEME.textMuted} />
                     <Text style={[styles.folderLabel, activeFolder === f.name && { color: f.color }]}>
                       {typeof f.name === 'string' ? f.name : String(f.name ?? '')}
                     </Text>
@@ -1180,9 +1193,11 @@ export default function IndexScreen() {
             <TouchableOpacity
               style={styles.folderAddBtn}
               onLayout={(e) => {
-                addButtonLeftEdgeRef.current = e.nativeEvent.layout.x;
-                addButtonRightEdgeRef.current = e.nativeEvent.layout.x + e.nativeEvent.layout.width;
-                addButtonWidthRef.current = e.nativeEvent.layout.width;
+                const { x, y, width, height } = e.nativeEvent.layout;
+                addButtonLeftEdgeRef.current = x;
+                addButtonRightEdgeRef.current = x + width;
+                addButtonWidthRef.current = width;
+                setAddButtonCenterY(y + (height / 2));
                 updateFolderBarOverflowDots(
                   foldersContentWidthRef.current,
                   foldersScrollViewportWidthRef.current,
@@ -1223,7 +1238,7 @@ export default function IndexScreen() {
                 {
                   bottom: undefined,
                   left: -0.34,
-                  top: FOLDER_ADD_LINE_BASE_TOP,
+                  top: folderAddBaseTop,
                   height: FOLDER_ADD_LINE_BASE_HEIGHT,
                 }
               ]}
@@ -1499,7 +1514,7 @@ export default function IndexScreen() {
           asChild
         >
           <TouchableOpacity accessibilityRole="button" style={styles.fab}>
-            <Ionicons name="add" size={28} color="#fff" />
+            <Ionicons name="add" size={icon28} color="#fff" />
           </TouchableOpacity>
         </Link>
       )}

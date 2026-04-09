@@ -1,11 +1,16 @@
 import { THEME } from '@/constants/theme';
-import { StyleSheet } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
+
+const BASE_LAYOUT_WIDTH = 393; // iPhone Pro baseline
+const MAX_LAYOUT_SCALE = 1.1;
+const uiScale = Math.min(MAX_LAYOUT_SCALE, Math.max(1, Dimensions.get('window').width / BASE_LAYOUT_WIDTH));
+const s = (value: number) => Math.round(value * uiScale);
 
 export const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
-    paddingHorizontal: 16
+    paddingHorizontal: s(16)
   },
 
   header: {
@@ -16,7 +21,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: {
-    fontSize: 28,
+    fontSize: s(28),
     fontWeight: '700',
     color: THEME.text
   },
@@ -30,9 +35,9 @@ export const styles = StyleSheet.create({
   },
   progressText: {
     color: THEME.text,
-    fontSize: 26,
+    fontSize: s(26),
     fontFamily: 'BagelFatOne_400Regular',
-    marginBottom: 4
+    marginBottom: s(4)
   },
   progressBarContainer: {
     flexDirection: 'row',
@@ -55,8 +60,8 @@ export const styles = StyleSheet.create({
     gap: 8
   },
   progressBtn: {
-    width: 32,
-    height: 32,
+    width: s(32),
+    height: s(32),
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -165,7 +170,7 @@ export const styles = StyleSheet.create({
   },
   folderLabel: {
     color: THEME.textMuted,
-    fontSize: 13,
+    fontSize: s(13),
     fontWeight: '500',
   },
   folderLabelActive: {
@@ -173,11 +178,11 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   folderAddBtn: {
-    width: 28,
-    height: 34,
+    width: s(28),
+    height: s(34),
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: -18,
+    marginLeft: s(-18),
     marginTop: -1,
   },
   listWrap: {
@@ -446,13 +451,13 @@ export const styles = StyleSheet.create({
 
   fab: {
     position: 'absolute',
-    right: 20,
+    right: s(20),
     bottom: 98,
     zIndex: 1000,
     backgroundColor: '#1d4ed8',
-    width: 83,
-    height: 83,
-    borderRadius: 42,
+    width: s(83),
+    height: s(83),
+    borderRadius: s(42),
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#1d4ed8',

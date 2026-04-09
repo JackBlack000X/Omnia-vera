@@ -15,9 +15,11 @@ const STEM_WIDTH_MAX = 2 * ICON_SCALE;
 const STEM_HEIGHT_MIN = 8.5 * ICON_SCALE;
 const STEM_HEIGHT_MAX = 14 * ICON_SCALE;
 const ARM_HEIGHT = 2 * ICON_SCALE;
-// Keep the final "+" optically balanced: the horizontal stroke needs a small extra
-// extension because of overlap and rounded caps.
-const ARM_LENGTH_MAX = (STEM_HEIGHT_MAX / 2) + (ARM_HEIGHT * 0.45);
+const ARM_OVERLAP_FACTOR = 0.62;
+const ARM_OVERLAP = ARM_HEIGHT * ARM_OVERLAP_FACTOR;
+// Enforce a perfectly symmetric final "+": same visual span horizontally and vertically.
+// Horizontal span at t=1 is (2 * ARM_LENGTH_MAX - 2 * ARM_OVERLAP), so solve it to equal STEM_HEIGHT_MAX.
+const ARM_LENGTH_MAX = (STEM_HEIGHT_MAX + (2 * ARM_OVERLAP)) / 2;
 
 type Props = {
   progress: number;
@@ -60,7 +62,7 @@ export const MorphingFolderAddIcon = React.memo(function MorphingFolderAddIcon({
     const leftArmWidth = armCoreWidth + Math.max(0, (ARM_LENGTH_MAX - armCoreWidth) * leftArmPhase);
     const rightArmWidth = armCoreWidth + Math.max(0, (ARM_LENGTH_MAX - armCoreWidth) * rightArmPhase);
     const armTop = (ICON_HEIGHT - ARM_HEIGHT) / 2;
-    const armOverlap = ARM_HEIGHT * 0.62;
+    const armOverlap = ARM_OVERLAP;
 
     const leftBlobWidth = ARM_HEIGHT + ARM_LENGTH_MAX * 1.1 * leftStretchPhase;
     const leftBlobHeight = ARM_HEIGHT + stemHeight * 0.85 * leftStretchPhase;
