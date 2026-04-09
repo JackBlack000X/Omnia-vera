@@ -97,6 +97,16 @@ target 'Tothemoon' do
         File.write(fmt_base_header, contents.sub(apple_clause, patched_clause))
       end
     end
+
+    expo_configure_script = File.join(installer.sandbox.root.to_s, 'Target Support Files', 'Pods-Tothemoon', 'expo-configure-project.sh')
+    if File.exist?(expo_configure_script)
+      script = File.read(expo_configure_script)
+      sanitized_script = script.gsub(/ ?"react-native-widget-extension"/, '')
+      if sanitized_script != script
+        FileUtils.chmod('u+w', expo_configure_script)
+        File.write(expo_configure_script, sanitized_script)
+      end
+    end
     # codex-ios-26-fmt-fix end
   end
 end

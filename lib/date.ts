@@ -78,6 +78,33 @@ export function addMonths(date: Date, months: number): Date {
   return result;
 }
 
+export function ymdToDate(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+
+export function compareYmd(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
+export function minYmd(a: string, b: string): string {
+  return compareYmd(a, b) <= 0 ? a : b;
+}
+
+export function maxYmd(a: string, b: string): string {
+  return compareYmd(a, b) >= 0 ? a : b;
+}
+
+export function firstDayOfMonthYmd(ymd: string): string {
+  const [year, month] = ymd.split('-').map(Number);
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`;
+}
+
+export function clampYmdNotBeforeYmd(value: string, minYmdValue: string): string {
+  return compareYmd(value, minYmdValue) < 0 ? minYmdValue : value;
+}
+
 export function parseYmdSafe(ymd: string): Date {
   const [y, m, d] = ymd.split('-').map(Number);
   const result = new Date();

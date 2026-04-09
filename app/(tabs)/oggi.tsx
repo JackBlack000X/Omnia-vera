@@ -1827,10 +1827,10 @@ export default function OggiScreen() {
         <TouchableOpacity onPress={() => navigateDate('prev')} style={styles.navButton}>
           <Ionicons name="chevron-back" size={24} color={THEME.text} />
         </TouchableOpacity>
-        <Text style={[styles.dateText, isToday(currentDate, TZ) ? styles.todayDateText : styles.otherDateText]}>
-          {todayDate}
-        </Text>
-        <View style={styles.headerRight}>
+        <View style={styles.dateWeatherWrap}>
+          <Text style={[styles.dateText, isToday(currentDate, TZ) ? styles.todayDateText : styles.otherDateText]}>
+            {todayDate}
+          </Text>
           {todayWeather ? (
             <IconSymbol
               name={weatherCodeToIcon(todayWeather.code)}
@@ -1840,6 +1840,8 @@ export default function OggiScreen() {
               style={styles.weatherIcon}
             />
           ) : null}
+        </View>
+        <View style={styles.headerRight}>
           <TouchableOpacity onPress={() => navigateDate('next')} style={styles.navButton}>
              <Ionicons name="chevron-forward" size={24} color={THEME.text} />
           </TouchableOpacity>
@@ -2410,6 +2412,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'capitalize',
   },
+  dateWeatherWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   todayDateText: {
     color: '#FF3B30',
   },
@@ -2422,7 +2429,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   weatherIcon: {
-    marginRight: 2,
     transform: [{ translateY: 0 }],
   },
   settingsButton: {

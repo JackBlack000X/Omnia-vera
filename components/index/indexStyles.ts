@@ -137,22 +137,25 @@ export const styles = StyleSheet.create({
     paddingVertical: 2,
     gap: 12,
     // Spazio dopo il + così, con molte cartelle, resta aria prima della colonna Oggi
-    paddingRight: 24,
+    paddingRight: 6,
   },
   todayTabAnchor: {
     flexShrink: 0,
-    marginLeft: 12,
-    paddingLeft: 10,
-    paddingVertical: 2,
+    marginLeft: 4,
+    paddingLeft: 0,
+    paddingVertical: 0,
     backgroundColor: '#000',
     zIndex: 2,
     elevation: 4,
-    maxWidth: '40%',
+    maxWidth: '34%',
+  },
+  todayTabMenu: {
+    alignSelf: 'flex-start',
   },
   todayTabRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 0,
   },
   folderRow: {
     flexDirection: 'row',
@@ -161,7 +164,7 @@ export const styles = StyleSheet.create({
   },
   folderLabel: {
     color: THEME.textMuted,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
   },
   folderLabelActive: {
@@ -173,7 +176,7 @@ export const styles = StyleSheet.create({
     height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: -4,
+    marginLeft: -14,
   },
   listWrap: {
     flex: 1,

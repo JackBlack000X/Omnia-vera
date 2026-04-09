@@ -1,10 +1,11 @@
 import { useHabits } from '@/lib/habits/Provider';
-import { formatYmd } from '@/lib/date';
+import { clampYmdNotBeforeYmd, compareYmd, formatYmd } from '@/lib/date';
 import { getHealthHabitOption, HEALTH_HABIT_OPTIONS } from '@/lib/healthHabits';
 import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
 import { Habit, HabitTipo, HealthMetric, NotificationConfig, TravelMeta, isTravelLikeTipo } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
 import { inferSmartTaskSeed } from '@/lib/smartTask';
+import { useAppDateBounds } from '@/lib/appDateBounds';
 import { getFallbackCity } from '@/lib/weather';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -17,6 +18,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const { type, id, folder, ymd, scrollRef } = params;
   const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
   const router = useRouter();
+  const { installMonthStartYmd: minSelectableYmd, nonPastYmd: minNonPastYmd } = useAppDateBounds();
   const existing = useMemo(() => habits.find(h => h.id === id), [habits, id]);
   const VACATION_COLOR = '#4A148C';
 
@@ -45,7 +47,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const inferredExistingTipo: HabitTipo = (existing?.tipo ?? 'task');
   const supportsOptionalTime = (currentTipo: HabitTipo) =>
     currentTipo === 'task' || currentTipo === 'abitudine' || currentTipo === 'avviso';
-  const todayYmdForInit = useMemo(() => ymd ?? getDay(new Date()), [ymd, getDay]);
+  const todayYmdForInit = useMemo(() => clampYmdNotBeforeYmd(ymd ?? getDay(new Date()), minSelectableYmd), [ymd, getDay, minSelectableYmd]);
   const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
   const calendarTodayYmd = useMemo(() => formatYmd(new Date()), []);
   const todayForInit = useMemo(() => new Date(`${todayYmdForInit}T12:00:00`), [todayYmdForInit]);
@@ -61,23 +63,24 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   );
   const shouldUseDateSpecificOverrides = Boolean(ymd) || !hasRecurringSchedule;
   const initialTravelDepartureYmd = useMemo(() => {
-    if (existing?.travel?.giornoPartenza) return existing.travel.giornoPartenza;
+    if (existing?.travel?.giornoPartenza) return clampYmdNotBeforeYmd(existing.travel.giornoPartenza, minSelectableYmd);
     if (type !== 'new') return todayYmdForInit;
 
     // Tasks can follow the app's logical day, but trips must keep the real
     // calendar day even when "today" is still anchored to the previous
     // logical day before the reset hour.
     if (todayYmdForInit === logicalTodayYmd && calendarTodayYmd !== logicalTodayYmd) {
-      return calendarTodayYmd;
+      return clampYmdNotBeforeYmd(calendarTodayYmd, minSelectableYmd);
     }
 
-    return todayYmdForInit;
+    return clampYmdNotBeforeYmd(todayYmdForInit, minSelectableYmd);
   }, [
     existing?.travel?.giornoPartenza,
     type,
     todayYmdForInit,
     logicalTodayYmd,
     calendarTodayYmd,
+    minSelectableYmd,
   ]);
   const firstOccurrenceSlotForToday = useMemo(() => {
     if (!shouldUseDateSpecificOverrides) return null;
@@ -128,7 +131,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [smartTaskEnabled, setSmartTaskEnabled] = useState<boolean>(existing?.smartTask?.enabled ?? false);
 
   const [notification, setNotification] = useState<NotificationConfig>(
-    existing?.notification ?? { enabled: false, minutesBefore: 0, customTime: null, customDate: null, showAsTaskInOggi: false }
+    (() => {
+      const base = existing?.notification ?? { enabled: false, minutesBefore: 0, customTime: null, customDate: null, showAsTaskInOggi: false };
+      if (base.customDate && compareYmd(base.customDate, minNonPastYmd) < 0) {
+        return { ...base, customDate: minNonPastYmd };
+      }
+      return base;
+    })()
   );
 
   const showNativeMergeAlert = useCallback((onConfirm: () => void) => {
@@ -163,7 +172,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   });
   const [repeatEndCount, setRepeatEndCount] = useState<number>(4);
   const [repeatEndCustomDate, setRepeatEndCustomDate] = useState<string | null>(
-    existing?.schedule?.repeatEndDate ?? null
+    (() => {
+      const saved = existing?.schedule?.repeatEndDate ?? null;
+      if (saved && compareYmd(saved, minNonPastYmd) < 0) return minNonPastYmd;
+      return saved;
+    })()
   );
 
   // Stato specifico per i viaggi
@@ -247,14 +260,17 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   };
 
   const buildVacationTravelMeta = (): TravelMeta => {
-    const endDate = travelGiornoRitorno ?? travelGiornoPartenza;
+    const startDate = clampYmdNotBeforeYmd(travelGiornoPartenza, minSelectableYmd);
+    const endDate = travelGiornoRitorno
+      ? clampYmdNotBeforeYmd(travelGiornoRitorno, startDate)
+      : startDate;
     const endTime = travelOrarioArrivoRitorno || travelOrarioArrivo || travelOrarioPartenza;
 
     return {
       mezzo: 'altro',
       partenzaTipo: 'personalizzata',
       destinazioneNome: '',
-      giornoPartenza: travelGiornoPartenza,
+      giornoPartenza: startDate,
       giornoRitorno: endDate,
       orarioPartenza: travelOrarioPartenza,
       orarioArrivo: endTime,
@@ -386,25 +402,27 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   });
   const prevMonthDaysRef = useRef<number[]>(monthDays);
   const recurringStartYmd = useMemo(() => {
-    if (type === 'new') return todayYmdForInit;
-    return existing?.schedule?.repeatStartDate ?? todayYmdForInit;
-  }, [type, existing?.schedule?.repeatStartDate, todayYmdForInit]);
+    const candidate = type === 'new' ? todayYmdForInit : (existing?.schedule?.repeatStartDate ?? todayYmdForInit);
+    return clampYmdNotBeforeYmd(candidate, minSelectableYmd);
+  }, [type, existing?.schedule?.repeatStartDate, todayYmdForInit, minSelectableYmd]);
 
   // For single tasks, get date from timeOverrides (YYYY-MM-DD keys); for recurring from repeatStartDate; for annual from schedule
   const initialSingleDate = useMemo(() => {
     const startYmd = existing?.schedule?.repeatStartDate;
     if (startYmd && /^\d{4}-\d{2}-\d{2}$/.test(startYmd)) {
-      const [y, m, d] = startYmd.split('-').map(Number);
+      const clamped = clampYmdNotBeforeYmd(startYmd, minSelectableYmd);
+      const [y, m, d] = clamped.split('-').map(Number);
       return { year: y, month: m, day: d };
     }
     const keys = existing?.timeOverrides ? Object.keys(existing.timeOverrides).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)) : [];
     if (keys.length > 0) {
-      const [y, m, d] = keys[0].split('-').map(Number);
+      const clamped = clampYmdNotBeforeYmd(keys[0], minSelectableYmd);
+      const [y, m, d] = clamped.split('-').map(Number);
       return { year: y, month: m, day: d };
     }
-    const [y, m, d] = todayYmdForInit.split('-').map(Number);
+    const [y, m, d] = clampYmdNotBeforeYmd(todayYmdForInit, minSelectableYmd).split('-').map(Number);
     return { year: y, month: m, day: d };
-  }, [existing?.timeOverrides, existing?.schedule?.repeatStartDate, todayYmdForInit]);
+  }, [existing?.timeOverrides, existing?.schedule?.repeatStartDate, todayYmdForInit, minSelectableYmd]);
   const [annualMonth, setAnnualMonth] = useState<number>(() =>
     existing?.schedule?.yearMonth ?? initialSingleDate.month);
   const [annualDay, setAnnualDay] = useState<number>(() =>
@@ -467,44 +485,38 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
   // Data inizio non può essere oltre data fine ripetizione (quando "Data personalizzata" è impostata)
   const maxStartYmd = repeatEndType === 'personalizzata' && repeatEndCustomDate && /^\d{4}-\d{2}-\d{2}$/.test(repeatEndCustomDate)
-    ? repeatEndCustomDate
+    ? clampYmdNotBeforeYmd(repeatEndCustomDate, minNonPastYmd)
     : null;
   const setAnnualDayClamped = useCallback((updater: (d: number) => number) => {
     const newD = Math.max(1, Math.min(31, updater(annualDay)));
-    const ymd = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(newD).padStart(2, '0')}`;
-    if (maxStartYmd && ymd > maxStartYmd) {
-      const [, , d] = maxStartYmd.split('-').map(Number);
-      setAnnualYear(Number(maxStartYmd.slice(0, 4)));
-      setAnnualMonth(Number(maxStartYmd.slice(5, 7)));
-      setAnnualDay(d);
-      return;
-    }
-    setAnnualDay(newD);
-  }, [annualYear, annualMonth, annualDay, maxStartYmd]);
+    const candidate = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(newD).padStart(2, '0')}`;
+    let next = clampYmdNotBeforeYmd(candidate, minSelectableYmd);
+    if (maxStartYmd && compareYmd(next, maxStartYmd) > 0) next = maxStartYmd;
+    const [y, m, d] = next.split('-').map(Number);
+    setAnnualYear(y);
+    setAnnualMonth(m);
+    setAnnualDay(d);
+  }, [annualYear, annualMonth, annualDay, maxStartYmd, minSelectableYmd]);
   const setAnnualMonthClamped = useCallback((updater: (m: number) => number) => {
     const newM = Math.max(1, Math.min(12, updater(annualMonth)));
-    const ymd = `${annualYear}-${String(newM).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
-    if (maxStartYmd && ymd > maxStartYmd) {
-      const [, m, d] = maxStartYmd.split('-').map(Number);
-      setAnnualYear(Number(maxStartYmd.slice(0, 4)));
-      setAnnualMonth(m);
-      setAnnualDay(d);
-      return;
-    }
-    setAnnualMonth(newM);
-  }, [annualYear, annualMonth, annualDay, maxStartYmd]);
+    const candidate = `${annualYear}-${String(newM).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+    let next = clampYmdNotBeforeYmd(candidate, minSelectableYmd);
+    if (maxStartYmd && compareYmd(next, maxStartYmd) > 0) next = maxStartYmd;
+    const [y, m, d] = next.split('-').map(Number);
+    setAnnualYear(y);
+    setAnnualMonth(m);
+    setAnnualDay(d);
+  }, [annualYear, annualMonth, annualDay, maxStartYmd, minSelectableYmd]);
   const setAnnualYearClamped = useCallback((updater: (y: number) => number) => {
     const newY = updater(annualYear);
-    const ymd = `${newY}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
-    if (maxStartYmd && ymd > maxStartYmd) {
-      const [y, m, d] = maxStartYmd.split('-').map(Number);
-      setAnnualYear(y);
-      setAnnualMonth(m);
-      setAnnualDay(d);
-      return;
-    }
-    setAnnualYear(newY);
-  }, [annualYear, annualMonth, annualDay, maxStartYmd]);
+    const candidate = `${newY}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+    let next = clampYmdNotBeforeYmd(candidate, minSelectableYmd);
+    if (maxStartYmd && compareYmd(next, maxStartYmd) > 0) next = maxStartYmd;
+    const [y, m, d] = next.split('-').map(Number);
+    setAnnualYear(y);
+    setAnnualMonth(m);
+    setAnnualDay(d);
+  }, [annualYear, annualMonth, annualDay, maxStartYmd, minSelectableYmd]);
 
   // Check if selected date is today
   const isToday = useMemo(() => {
@@ -1325,11 +1337,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 return { ...h, timeOverrides: {}, schedule };
               }));
             } else if (freq === 'single') {
-              // For single frequency, save as one-off override for selected date without time
-              const y = annualYear;
-              const m = String(annualMonth).padStart(2, '0');
-              const d = String(annualDay).padStart(2, '0');
-              const ymd = `${y}-${m}-${d}`;
+            // For single frequency, save as one-off override for selected date without time
+              const ymd = sanitizedAnnualYmd;
               setHabits(prev => prev.map(h => {
                 if (h.id !== existing.id) return h;
                 const next = { ...(h.timeOverrides ?? {}) } as Record<string, string>;
@@ -1436,6 +1445,21 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       return;
     }
 
+    const sanitizedNotification: NotificationConfig = notification.customDate
+      ? { ...notification, customDate: clampYmdNotBeforeYmd(notification.customDate, minNonPastYmd) }
+      : notification;
+    const sanitizedRepeatEndCustomDate = repeatEndCustomDate
+      ? clampYmdNotBeforeYmd(repeatEndCustomDate, minNonPastYmd)
+      : null;
+    const sanitizedAnnualYmd = clampYmdNotBeforeYmd(
+      `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`,
+      minSelectableYmd,
+    );
+    const sanitizedTravelGiornoPartenza = clampYmdNotBeforeYmd(travelGiornoPartenza, minSelectableYmd);
+    const sanitizedTravelGiornoRitorno = travelGiornoRitorno
+      ? clampYmdNotBeforeYmd(travelGiornoRitorno, sanitizedTravelGiornoPartenza)
+      : undefined;
+
     const shouldCheckDuplicate =
       !skipDuplicateCheck &&
       mode === 'timed' &&
@@ -1509,7 +1533,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         const endAt = `${endDate}T${travel.orarioArrivoRitorno ?? travel.orarioArrivo}:00`;
         const vacationColor = VACATION_COLOR;
         const notificationForVacation: NotificationConfig = {
-          ...notification,
+          ...sanitizedNotification,
           minutesBefore: null,
           showAsTaskInOggi: false,
         };
@@ -1601,7 +1625,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         };
         // New task "Tutto il giorno" + Singola: create with timeOverrides/schedule in one go so it persists
         const isNewAllDaySingle = type === 'new' && mode === 'allDay' && (!supportsOptionalTime(tipo) || taskHasTime) && freq === 'single';
-        const ymdSingle = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+        const ymdSingle = sanitizedAnnualYmd;
         const initialAllDaySingle = isNewAllDaySingle ? {
           timeOverrides: { [ymdSingle]: '00:00' as const },
           schedule: { daysOfWeek: [] as number[], monthDays: undefined, time: null, endTime: null, weeklyTimes: undefined, monthlyTimes: undefined },
@@ -1653,8 +1677,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 partenzaTipo: travelPartenzaTipo,
                 partenzaNome: storedPartenzaNome,
                 destinazioneNome: travelDestinazioneNome.trim(),
-                giornoPartenza: travelGiornoPartenza,
-                giornoRitorno: travelGiornoRitorno,
+                giornoPartenza: sanitizedTravelGiornoPartenza,
+                giornoRitorno: sanitizedTravelGiornoRitorno,
                 orarioPartenza: travelOrarioPartenza,
                 orarioArrivo: travelOrarioArrivo,
                 arrivoGiornoDopo: travelArrivoGiornoDopo,
@@ -1677,10 +1701,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
 
           if (freq === 'single') {
             // save one-off override for selected date only
-            const y = annualYear;
-            const m = String(annualMonth).padStart(2, '0');
-            const d = String(annualDay).padStart(2, '0');
-            const ymd = `${y}-${m}-${d}`;
+            const ymd = sanitizedAnnualYmd;
             updateScheduleFromDate(newHabitId, ymd, time as string, endTime as string | null);
             setHabits(prev => {
               const next = prev.map(h => {
@@ -1846,10 +1867,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         if (mode === 'allDay' && (!supportsOptionalTime(tipo) || taskHasTime)) {
           if (freq === 'single' && !isNewAllDaySingle) {
             // Edit only: new single all-day uses initial in addHabit above
-            const y = annualYear;
-            const m = String(annualMonth).padStart(2, '0');
-            const d = String(annualDay).padStart(2, '0');
-            const ymd = `${y}-${m}-${d}`;
+            const ymd = sanitizedAnnualYmd;
             setHabits(prev => {
               const next = prev.map(h => {
                 if (h.id !== newHabitId) return h;
@@ -1928,7 +1946,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         }
         // New single task without time: ensure the selected date is saved as timeOverride so it appears in Oggi.
         if (type === 'new' && freq === 'single' && (mode === 'allDay' || !taskHasTime) && !isNewAllDaySingle) {
-          const ymdFromForm = `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+          const ymdFromForm = sanitizedAnnualYmd;
           setHabits(prev => {
             const next = prev.map(h => {
               if (h.id !== newHabitId) return h;
@@ -1968,20 +1986,20 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       const computedRepeatEndDateNew = (() => {
           if (repeatEndType === 'mai') return null;
           if (repeatEndType === 'durata') {
-            const d = new Date(annualYear, annualMonth - 1, annualDay);
+            const d = new Date(`${sanitizedAnnualYmd}T12:00:00`);
             if (freq === 'daily') d.setDate(d.getDate() + repeatEndCount);
             else if (freq === 'weekly') d.setDate(d.getDate() + repeatEndCount * 7);
             else if (freq === 'monthly') d.setMonth(d.getMonth() + repeatEndCount);
             else d.setFullYear(d.getFullYear() + repeatEndCount);
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
           }
-          return repeatEndCustomDate ?? null;
+          return sanitizedRepeatEndCustomDate;
         })();
         // Persist explicit flags so the modal restores them correctly on re-open
-      const repeatStartYmd = freq !== 'single' ? recurringStartYmd : null;
+      const repeatStartYmd = freq !== 'single' ? clampYmdNotBeforeYmd(recurringStartYmd, minSelectableYmd) : null;
       const smartTaskTargetYmd = (() => {
         if (freq === 'single') {
-          return `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+          return sanitizedAnnualYmd;
         }
         return repeatStartYmd ?? todayYmdForInit;
       })();
@@ -2010,7 +2028,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             health: resolvedHealth,
             locationRule: locationRule ?? undefined,
             pauseDuringTravel: !isTravelLikeTipo(tipo) ? pauseDuringTravel : undefined,
-            notification,
+            notification: sanitizedNotification,
             askReview: !isTravelLikeTipo(tipo) && tipo !== 'avviso' ? askReview : undefined,
             smartTask: resolvedSmartTask
               ? {
@@ -2031,14 +2049,14 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                 ? travelPartenzaNome.trim() || undefined
                 : currentCityName || h.travel?.partenzaNome;
             const travel: TravelMeta = {
-              mezzo: travelMezzo,
-              partenzaTipo: travelPartenzaTipo,
-              partenzaNome: storedPartenzaNome,
-              destinazioneNome: travelDestinazioneNome.trim(),
-              giornoPartenza: travelGiornoPartenza,
-              giornoRitorno: travelGiornoRitorno,
-              orarioPartenza: travelOrarioPartenza,
-              orarioArrivo: travelOrarioArrivo,
+                mezzo: travelMezzo,
+                partenzaTipo: travelPartenzaTipo,
+                partenzaNome: storedPartenzaNome,
+                destinazioneNome: travelDestinazioneNome.trim(),
+                giornoPartenza: sanitizedTravelGiornoPartenza,
+                giornoRitorno: sanitizedTravelGiornoRitorno,
+                orarioPartenza: travelOrarioPartenza,
+                orarioArrivo: travelOrarioArrivo,
               arrivoGiornoDopo: travelArrivoGiornoDopo,
               orarioPartenzaRitorno: travelOrarioPartenzaRitorno,
               partenzaRitornoGiornoDopo: travelPartenzaRitornoGiornoDopo,
@@ -2088,15 +2106,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         }));
       }
 
-      if (freq === 'single') {
-        // For single frequency, save as one-off override for selected date only (remove today if moved)
-        const y = annualYear;
-        const m = String(annualMonth).padStart(2, '0');
-        const d = String(annualDay).padStart(2, '0');
-        const ymd = `${y}-${m}-${d}`;
-        updateScheduleFromDate(existing.id, ymd, time, endTime);
-        setHabits(prev => {
-          const next = prev.map(h => {
+        if (freq === 'single') {
+          // For single frequency, save as one-off override for selected date only (remove today if moved)
+          const ymd = sanitizedAnnualYmd;
+          updateScheduleFromDate(existing.id, ymd, time, endTime);
+          setHabits(prev => {
+            const next = prev.map(h => {
             if (h.id !== existing.id) return h;
             const overrides: Record<string, string | { start: string; end: string }> = {};
             if (time) overrides[ymd] = endTime ? { start: time, end: endTime } : time;
@@ -2236,10 +2251,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       if (mode === 'allDay' && (!supportsOptionalTime(tipo) || taskHasTime)) {
         if (freq === 'single') {
           // For single frequency, save as one-off override for selected date only (remove today if moved)
-          const y = annualYear;
-          const m = String(annualMonth).padStart(2, '0');
-          const d = String(annualDay).padStart(2, '0');
-          const ymd = `${y}-${m}-${d}`;
+          const ymd = sanitizedAnnualYmd;
           setHabits(prev => {
             const next = prev.map(h => {
               if (h.id !== existing.id) return h;
@@ -2316,19 +2328,19 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       const computedRepeatEndDate = (() => {
         if (repeatEndType === 'mai') return null;
         if (repeatEndType === 'durata') {
-          const d = new Date(annualYear, annualMonth - 1, annualDay);
+          const d = new Date(`${sanitizedAnnualYmd}T12:00:00`);
           if (freq === 'daily') d.setDate(d.getDate() + repeatEndCount);
           else if (freq === 'weekly') d.setDate(d.getDate() + repeatEndCount * 7);
           else if (freq === 'monthly') d.setMonth(d.getMonth() + repeatEndCount);
           else d.setFullYear(d.getFullYear() + repeatEndCount);
           return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         }
-        return repeatEndCustomDate ?? null;
+        return sanitizedRepeatEndCustomDate;
       })();
-      const repeatStartYmd = freq !== 'single' ? recurringStartYmd : null;
+      const repeatStartYmd = freq !== 'single' ? clampYmdNotBeforeYmd(recurringStartYmd, minSelectableYmd) : null;
       const smartTaskTargetYmd = (() => {
         if (freq === 'single') {
-          return `${annualYear}-${String(annualMonth).padStart(2, '0')}-${String(annualDay).padStart(2, '0')}`;
+          return sanitizedAnnualYmd;
         }
         return repeatStartYmd ?? todayYmdForInit;
       })();
@@ -2357,7 +2369,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         habitFreq: finalHabitFreq,
         tipo: existingTipo,
         locationRule: locationRule ?? undefined,
-        notification,
+        notification: sanitizedNotification,
         askReview: !isTravelLikeTipo(existingTipo) && existingTipo !== 'avviso' ? askReview : undefined,
         timeOverrides: nextTimeOverrides,
         smartTask: preservedSmartTask

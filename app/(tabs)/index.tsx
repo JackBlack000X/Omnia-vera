@@ -285,6 +285,8 @@ export default function IndexScreen() {
   } = useIndexLogic();
 
   const lastFolderBarScrollXRef = useRef(0);
+  const allTabRightEdgeRef = useRef(0);
+  const addButtonRightEdgeRef = useRef(0);
   const [folderBarOverflowLines, setFolderBarOverflowLines] = useState({ left: false, right: false });
 
   const updateFolderBarOverflowDots = useCallback(
@@ -299,8 +301,14 @@ export default function IndexScreen() {
         setFolderBarOverflowLines((p) => (p.left || p.right ? { left: false, right: false } : p));
         return;
       }
-      const right = scrollX + lw < contentW - FOLDER_BAR_SCROLL_SLACK;
-      const left = scrollX > FOLDER_BAR_SCROLL_SLACK;
+      const allTabFullyHidden = allTabRightEdgeRef.current > 0
+        ? scrollX > allTabRightEdgeRef.current
+        : scrollX > FOLDER_BAR_SCROLL_SLACK;
+      const addButtonVisible = addButtonRightEdgeRef.current > 0
+        ? scrollX + lw >= addButtonRightEdgeRef.current - 8
+        : scrollX + lw >= contentW - FOLDER_BAR_SCROLL_SLACK;
+      const right = !addButtonVisible;
+      const left = scrollX > FOLDER_BAR_SCROLL_SLACK && allTabFullyHidden;
       setFolderBarOverflowLines((p) => {
         if (p.left === left && p.right === right) return p;
         return { left, right };
@@ -1055,11 +1063,19 @@ export default function IndexScreen() {
           >
             {folderTabsOrder.map((folderNameOrNull, i) =>
               folderNameOrNull === null ? (
-                <TouchableOpacity
-                  key="tutte"
-                  style={styles.folderRow}
-                  onPress={() => setActiveFolder(null)}
-                >
+              <TouchableOpacity
+                key="tutte"
+                style={styles.folderRow}
+                onLayout={(e) => {
+                  allTabRightEdgeRef.current = e.nativeEvent.layout.x + e.nativeEvent.layout.width;
+                  updateFolderBarOverflowDots(
+                    foldersContentWidthRef.current,
+                    foldersScrollViewportWidthRef.current,
+                    lastFolderBarScrollXRef.current
+                  );
+                }}
+                onPress={() => setActiveFolder(null)}
+              >
                   <Ionicons name="folder-open-outline" size={18} color={activeFolder === null ? THEME.text : THEME.textMuted} />
                   <Text style={[styles.folderLabel, activeFolder === null && styles.folderLabelActive]}>{t('common.tutte')}</Text>
                 </TouchableOpacity>
@@ -1093,7 +1109,18 @@ export default function IndexScreen() {
               })()
             )}
 
-            <TouchableOpacity style={styles.folderAddBtn} onPress={handleAddFolder}>
+            <TouchableOpacity
+              style={styles.folderAddBtn}
+              onLayout={(e) => {
+                addButtonRightEdgeRef.current = e.nativeEvent.layout.x + e.nativeEvent.layout.width;
+                updateFolderBarOverflowDots(
+                  foldersContentWidthRef.current,
+                  foldersScrollViewportWidthRef.current,
+                  lastFolderBarScrollXRef.current
+                );
+              }}
+              onPress={handleAddFolder}
+            >
               <Ionicons name="add" size={18} color={THEME.green} />
             </TouchableOpacity>
           </ScrollView>
@@ -1113,6 +1140,7 @@ export default function IndexScreen() {
 
         <View style={styles.todayTabAnchor}>
           <MenuView
+            style={styles.todayTabMenu}
             shouldOpenOnLongPress={false}
             onPressAction={({ nativeEvent }) => {
               if (nativeEvent.event === IERI_YESTERDAY_KEY) {

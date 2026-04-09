@@ -10,6 +10,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { HabitsProvider } from '@/lib/habits/Provider';
 import { LocaleProvider } from '@/lib/i18n/LocaleProvider';
 import i18n from '@/lib/i18n/i18n';
+import { AppDateBoundsProvider } from '@/lib/appDateBounds';
+import { formatYmd } from '@/lib/date';
 import { AppThemeProvider } from '@/lib/theme-context';
 import { STORAGE_KEYS } from '@/lib/storageKeys';
 import IntroVideo from '@/components/IntroVideo';
@@ -88,11 +90,30 @@ export default function RootLayout() {
   });
 
   const [showIntro, setShowIntro] = useState<boolean | null>(null); // null = loading
+  const [appInstallYmd, setAppInstallYmd] = useState<string | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEYS.introSeen).then((val) => {
-      setShowIntro(val !== 'true');
-    });
+    let cancelled = false;
+
+    (async () => {
+      const [introSeen, storedInstallYmd] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.introSeen),
+        AsyncStorage.getItem(STORAGE_KEYS.appFirstLaunchYmd),
+      ]);
+      const resolvedInstallYmd = /^\d{4}-\d{2}-\d{2}$/.test(storedInstallYmd ?? '')
+        ? storedInstallYmd!
+        : formatYmd();
+      if (!storedInstallYmd) {
+        AsyncStorage.setItem(STORAGE_KEYS.appFirstLaunchYmd, resolvedInstallYmd).catch(() => {});
+      }
+      if (cancelled) return;
+      setAppInstallYmd(resolvedInstallYmd);
+      setShowIntro(introSeen !== 'true');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleIntroDone = useCallback(() => {
@@ -101,7 +122,7 @@ export default function RootLayout() {
   }, []);
 
   // Keep the app on a black boot screen until both storage and the custom font are ready.
-  if (showIntro === null || !fontsLoaded) {
+  if (showIntro === null || !fontsLoaded || appInstallYmd === null) {
     return <View style={{ flex: 1, backgroundColor: '#000' }} />;
   }
 
@@ -120,14 +141,16 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
       <LocaleProvider>
       <SafeAreaProvider>
-        <HabitsProvider>
-          <WidgetSyncBridge />
-          <AppThemeProvider>
-            <RootErrorBoundary>
-              <RootNavigator />
-            </RootErrorBoundary>
-          </AppThemeProvider>
-        </HabitsProvider>
+        <AppDateBoundsProvider installYmd={appInstallYmd}>
+          <HabitsProvider>
+            <WidgetSyncBridge />
+            <AppThemeProvider>
+              <RootErrorBoundary>
+                <RootNavigator />
+              </RootErrorBoundary>
+            </AppThemeProvider>
+          </HabitsProvider>
+        </AppDateBoundsProvider>
       </SafeAreaProvider>
       </LocaleProvider>
     </GestureHandlerRootView>

@@ -25,11 +25,13 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
 export function useAppTheme() {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    throw new Error('useAppTheme must be used within a AppThemeProvider');
+    return {
+      activeTheme: 'classic',
+      setActiveTheme: () => {},
+    };
   }
   return context;
 }
-
 
 
 

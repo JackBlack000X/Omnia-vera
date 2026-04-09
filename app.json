@@ -37,6 +37,18 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "autolinking": {
+      "ios": {
+        "exclude": [
+          "react-native-widget-extension"
+        ]
+      },
+      "android": {
+        "exclude": [
+          "react-native-widget-extension"
+        ]
+      }
+    },
     "plugins": [
       [
         "expo-calendar",

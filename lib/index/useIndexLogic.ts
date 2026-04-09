@@ -166,10 +166,9 @@ export function useIndexLogic() {
   const [draggingSelectionCount, setDraggingSelectionCount] = useState(0);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
   const today = getDay(new Date());
-  // Giorno di calendario in Zurich (può differire da today quando dayResetTime > 00:00 e siamo prima del reset)
-  const calendarToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const tomorrow = useMemo(() => nextYmd(calendarToday), [calendarToday]);
-  const yesterday = useMemo(() => prevYmd(calendarToday), [calendarToday]);
+  // Usa il giorno logico corrente dell'app, così Yesterday/Tomorrow restano coerenti col reset giornaliero.
+  const tomorrow = useMemo(() => nextYmd(today), [today]);
+  const yesterday = useMemo(() => prevYmd(today), [today]);
   const menuToday = today;
   const menuTomorrow = tomorrow;
   const menuYesterday = yesterday;
@@ -198,6 +197,19 @@ export function useIndexLogic() {
       habit.folder ?? '',
       habit.color ?? '',
       habit.tipo ?? '',
+      habit.travel?.mezzo ?? '',
+      habit.travel?.partenzaTipo ?? '',
+      habit.travel?.partenzaNome ?? '',
+      habit.travel?.destinazioneNome ?? '',
+      habit.travel?.giornoPartenza ?? '',
+      habit.travel?.giornoRitorno ?? '',
+      habit.travel?.orarioPartenza ?? '',
+      habit.travel?.orarioArrivo ?? '',
+      habit.travel?.arrivoGiornoDopo ? '1' : '0',
+      habit.travel?.orarioPartenzaRitorno ?? '',
+      habit.travel?.partenzaRitornoGiornoDopo ? '1' : '0',
+      habit.travel?.orarioArrivoRitorno ?? '',
+      habit.travel?.arrivoRitornoGiornoDopo ? '1' : '0',
       habit.habitFreq ?? '',
       habit.isAllDay ? '1' : '0',
       String(habit.dailyOccurrences ?? 1),
@@ -744,9 +756,8 @@ export function useIndexLogic() {
   }, [habits, tomorrow, singleHabitsHiddenAfterReset, dayResetTime]);
 
   const habitsAppearingYesterday = useMemo(() => {
-    return getHabitsAppearingOnDate(habits, yesterday, dayResetTime)
-      .filter((h) => !singleHabitsHiddenAfterReset.has(h.id));
-  }, [habits, yesterday, singleHabitsHiddenAfterReset, dayResetTime]);
+    return getHabitsAppearingOnDate(habits, yesterday, dayResetTime);
+  }, [habits, yesterday, dayResetTime]);
 
   const sortedHabits = useMemo(() => {
     let list: Habit[];

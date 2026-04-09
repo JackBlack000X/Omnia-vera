@@ -11,6 +11,8 @@ import { useLocalSearchParams } from 'expo-router';
 import { loadPlaces } from '@/lib/places';
 import { searchCities, type CityInfo } from '@/lib/weather';
 import { canAskLocationPermission, getLocationPermissionStatusAsync, type LocationPermissionStatus } from '@/lib/location';
+import { clampYmdNotBeforeYmd, compareYmd, ymdToDate } from '@/lib/date';
+import { useAppDateBounds } from '@/lib/appDateBounds';
 import type { NotificationConfig } from '@/lib/habits/schema';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -92,19 +94,6 @@ function formatYmd(year: number, month: number, day: number): string {
   return `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-function clampYmdNotBefore(min: Date, year: number, month: number, day: number): { year: number; month: number; day: number } {
-  const candidate = new Date(year, month - 1, day);
-  const minStart = new Date(min.getFullYear(), min.getMonth(), min.getDate());
-  if (candidate < minStart) {
-    return {
-      year: minStart.getFullYear(),
-      month: minStart.getMonth() + 1,
-      day: minStart.getDate(),
-    };
-  }
-  return { year, month, day };
-}
-
 function shiftYmd(value: string, deltaDays: number): string {
   const { year, month, day } = parseYmdSafe(value);
   const next = new Date(year, month - 1, day);
@@ -152,6 +141,7 @@ function NotificationCustomPicker({
 }) {
   const { t } = useTranslation();
   const fmt = useFormatLocale();
+  const { nonPastYmd } = useAppDateBounds();
   const [showTime, setShowTime] = useState(false);
   const [showDate, setShowDate] = useState(false);
 
@@ -167,9 +157,9 @@ function NotificationCustomPicker({
 
   const dateDate = (() => {
     if (notification.customDate) {
-      return new Date(notification.customDate);
+      return ymdToDate(clampYmdNotBeforeYmd(notification.customDate, nonPastYmd));
     }
-    return new Date();
+    return ymdToDate(nonPastYmd);
   })();
 
   const formatTime = (time: string | null | undefined) =>
@@ -177,7 +167,7 @@ function NotificationCustomPicker({
 
   const formatDate = (d: string | null | undefined) => {
     if (!d) return t('modal.anyDay');
-    const dt = new Date(d);
+    const dt = ymdToDate(clampYmdNotBeforeYmd(d, nonPastYmd));
     return dt.toLocaleDateString(fmt, { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
@@ -228,12 +218,14 @@ function NotificationCustomPicker({
             themeVariant="dark"
             textColor="white"
             accentColor="#ec4899"
+            minimumDate={ymdToDate(nonPastYmd)}
             onChange={(_, date) => {
               if (date) {
                 const y = date.getFullYear();
                 const mo = String(date.getMonth() + 1).padStart(2, '0');
                 const d = String(date.getDate()).padStart(2, '0');
-                setNotification({ ...notification, customDate: `${y}-${mo}-${d}` });
+                const next = clampYmdNotBeforeYmd(`${y}-${mo}-${d}`, nonPastYmd);
+                setNotification({ ...notification, customDate: next });
                 setShowDate(false);
               }
             }}
@@ -348,18 +340,18 @@ function RepeatEndCustomPicker({
 }) {
   const { t } = useTranslation();
   const fmt = useFormatLocale();
+  const { nonPastYmd } = useAppDateBounds();
   const [showPicker, setShowPicker] = useState(false);
 
   const formatDate = (d: string | null | undefined) => {
     if (!d) return t('modal.pickDate');
-    const dt = new Date(d);
+    const dt = ymdToDate(clampYmdNotBeforeYmd(d, nonPastYmd));
     return dt.toLocaleDateString(fmt, { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   const dateDate = (() => {
-    if (value) return new Date(value);
-    const d = new Date(); d.setDate(d.getDate() + 30);
-    return d;
+    if (value) return ymdToDate(clampYmdNotBeforeYmd(value, nonPastYmd));
+    return ymdToDate(nonPastYmd);
   })();
 
   return (
@@ -382,13 +374,13 @@ function RepeatEndCustomPicker({
             themeVariant="dark"
             textColor="white"
             accentColor="#ec4899"
-            minimumDate={new Date()}
+            minimumDate={ymdToDate(nonPastYmd)}
             onChange={(_, date) => {
               if (date) {
                 const y = date.getFullYear();
                 const mo = String(date.getMonth() + 1).padStart(2, '0');
                 const d = String(date.getDate()).padStart(2, '0');
-                onChange(`${y}-${mo}-${d}`);
+                onChange(clampYmdNotBeforeYmd(`${y}-${mo}-${d}`, nonPastYmd));
                 setShowPicker(false);
               }
             }}
@@ -404,6 +396,7 @@ function RepeatEndCustomPicker({
 export default function ModalScreen() {
   const { t } = useTranslation();
   const fmt = useFormatLocale();
+  const { installMonthStartYmd: minSelectableYmd, nonPastYmd } = useAppDateBounds();
   const { width } = useWindowDimensions();
   const useCompactWeekdays = width <= 395;
   const { type = 'new', id, folder, ymd } = useLocalSearchParams<{ type?: string; id?: string; folder?: string; ymd?: string }>();
@@ -515,8 +508,10 @@ export default function ModalScreen() {
   React.useEffect(() => {
     if (!m.travelGiornoRitorno) return;
 
-    const partenzaDate = parseYmdSafe(m.travelGiornoPartenza);
-    const ritornoDate = parseYmdSafe(m.travelGiornoRitorno);
+    const partenzaYmd = clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd);
+    const ritornoYmd = clampYmdNotBeforeYmd(m.travelGiornoRitorno, partenzaYmd);
+    const partenzaDate = parseYmdSafe(partenzaYmd);
+    const ritornoDate = parseYmdSafe(ritornoYmd);
     const dStart = new Date(partenzaDate.year, partenzaDate.month - 1, partenzaDate.day);
     const dRet = new Date(ritornoDate.year, ritornoDate.month - 1, ritornoDate.day);
     const dayDiff = Math.round((dRet.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24));
@@ -544,7 +539,7 @@ export default function ModalScreen() {
       const nextY = base.getFullYear();
       const nextM = base.getMonth() + 1;
       const nextD = base.getDate();
-      m.setTravelGiornoRitorno(formatYmd(nextY, nextM, nextD));
+      m.setTravelGiornoRitorno(clampYmdNotBeforeYmd(formatYmd(nextY, nextM, nextD), minSelectableYmd));
       m.setTravelOrarioPartenzaRitorno('00:00');
       m.setTravelPartenzaRitornoGiornoDopo(false);
       m.setTravelOrarioArrivoRitorno('00:05');
@@ -585,7 +580,7 @@ export default function ModalScreen() {
       if (arriveOutMin >= 24 * 60) {
         const extraDays = Math.floor(arriveOutMin / (24 * 60));
         dRet.setDate(dRet.getDate() + extraDays);
-        m.setTravelGiornoRitorno(formatYmd(dRet.getFullYear(), dRet.getMonth() + 1, dRet.getDate()));
+        m.setTravelGiornoRitorno(clampYmdNotBeforeYmd(formatYmd(dRet.getFullYear(), dRet.getMonth() + 1, dRet.getDate()), minSelectableYmd));
         const wrapped = arriveOutMin - extraDays * 24 * 60;
         m.setTravelPartenzaRitornoGiornoDopo(false);
         m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(wrapped));
@@ -618,6 +613,8 @@ export default function ModalScreen() {
     m.travelOrarioPartenza,
     m.travelOrarioArrivo,
     m.travelOrarioPartenzaRitorno,
+    minSelectableYmd,
+    nonPastYmd,
   ]);
 
   return (
@@ -1300,19 +1297,13 @@ export default function ModalScreen() {
               </View>
 
               {(() => {
-                const parsed = parseYmdSafe(m.travelGiornoPartenza);
-                const today = new Date();
-                const clamped = clampYmdNotBefore(today, parsed.year, parsed.month, parsed.day);
-                const { year, month, day } = clamped;
-                const isToday =
-                  year === today.getFullYear() &&
-                  month === today.getMonth() + 1 &&
-                  day === today.getDate();
+                const clampedYmd = clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd);
+                const { year, month, day } = parseYmdSafe(clampedYmd);
+                const isToday = compareYmd(clampedYmd, nonPastYmd) === 0;
 
                 const applyAndSet = (nextYear: number, nextMonth: number, nextDay: number) => {
-                  const minDate = today;
-                  const fixed = clampYmdNotBefore(minDate, nextYear, nextMonth, nextDay);
-                  m.setTravelGiornoPartenza(formatYmd(fixed.year, fixed.month, fixed.day));
+                  const fixed = clampYmdNotBeforeYmd(formatYmd(nextYear, nextMonth, nextDay), minSelectableYmd);
+                  m.setTravelGiornoPartenza(fixed);
                 };
 
                 return (
@@ -1455,8 +1446,8 @@ export default function ModalScreen() {
                   // Se supera 23:55 → avanza il giorno ritorno e riparte da 00:00.
                   const pushReturnIfNeeded = (newArrivalAbs: number) => {
                     if (!m.travelGiornoRitorno) return;
-                    const pDate = parseYmdSafe(m.travelGiornoPartenza);
-                    const rDate = parseYmdSafe(m.travelGiornoRitorno);
+                    const pDate = parseYmdSafe(clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd));
+                    const rDate = parseYmdSafe(clampYmdNotBeforeYmd(m.travelGiornoRitorno, minSelectableYmd));
                     const dS = new Date(pDate.year, pDate.month - 1, pDate.day);
                     const dR = new Date(rDate.year, rDate.month - 1, rDate.day);
                     const dd = Math.round((dR.getTime() - dS.getTime()) / (1000 * 60 * 60 * 24));
@@ -1468,7 +1459,7 @@ export default function ModalScreen() {
                     if (relRetDep >= 24 * 60) {
                       const extraDays = Math.floor(relRetDep / (24 * 60));
                       dR.setDate(dR.getDate() + extraDays);
-                      m.setTravelGiornoRitorno(formatYmd(dR.getFullYear(), dR.getMonth() + 1, dR.getDate()));
+                      m.setTravelGiornoRitorno(clampYmdNotBeforeYmd(formatYmd(dR.getFullYear(), dR.getMonth() + 1, dR.getDate()), minSelectableYmd));
                       const wrapped = relRetDep - extraDays * 24 * 60;
                       m.setTravelPartenzaRitornoGiornoDopo(false);
                       m.setTravelOrarioPartenzaRitorno(minutesToHhmmSafe(wrapped));
@@ -1596,15 +1587,13 @@ export default function ModalScreen() {
                       // Se l'arrivo dell'andata è marcato "giorno dopo",
                       // il giorno di ritorno parte già dal giorno successivo.
                       if (m.travelArrivoGiornoDopo) {
-                        const partenza = parseYmdSafe(m.travelGiornoPartenza);
+                        const partenza = parseYmdSafe(clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd));
                         const base = new Date(partenza.year, partenza.month - 1, partenza.day);
                         base.setDate(base.getDate() + 1);
-                        const nextY = base.getFullYear();
-                        const nextM = base.getMonth() + 1;
-                        const nextD = base.getDate();
-                        m.setTravelGiornoRitorno(formatYmd(nextY, nextM, nextD));
+                        const nextYmd = clampYmdNotBeforeYmd(formatYmd(base.getFullYear(), base.getMonth() + 1, base.getDate()), minSelectableYmd);
+                        m.setTravelGiornoRitorno(nextYmd);
                       } else {
-                        m.setTravelGiornoRitorno(m.travelGiornoPartenza);
+                        m.setTravelGiornoRitorno(clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd));
                       }
                     }}
                     style={[styles.chip, styles.chipGhost, { marginTop: 8, alignSelf: 'flex-start' }]}
@@ -1613,27 +1602,22 @@ export default function ModalScreen() {
                   </TouchableOpacity>
                 ) : (
                   (() => {
-                    const parsed = parseYmdSafe(m.travelGiornoRitorno);
-                    const partenzaParsed = parseYmdSafe(m.travelGiornoPartenza);
-                    const today = new Date();
-                    const baseMinDate = new Date(
-                      partenzaParsed.year,
-                      partenzaParsed.month - 1,
-                      partenzaParsed.day,
-                    );
+                    const parsedYmd = clampYmdNotBeforeYmd(m.travelGiornoRitorno, minSelectableYmd);
+                    const partenzaYmd = clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd);
+                    const partenzaParsed = parseYmdSafe(partenzaYmd);
+                    const baseMinDate = new Date(partenzaParsed.year, partenzaParsed.month - 1, partenzaParsed.day);
                     // Se l'arrivo dell'andata è "giorno dopo", il minimo ritorno è dal giorno successivo.
                     if (m.travelArrivoGiornoDopo) {
                       baseMinDate.setDate(baseMinDate.getDate() + 1);
                     }
-                    const clamped = clampYmdNotBefore(baseMinDate, parsed.year, parsed.month, parsed.day);
-                    const { year, month, day } = clamped;
-                    const isToday =
-                      year === today.getFullYear() &&
-                      month === today.getMonth() + 1 &&
-                      day === today.getDate();
+                    const baseMinYmd = formatYmd(baseMinDate.getFullYear(), baseMinDate.getMonth() + 1, baseMinDate.getDate());
+                    const effectiveMinYmd = compareYmd(baseMinYmd, minSelectableYmd) > 0 ? baseMinYmd : minSelectableYmd;
+                    const clampedYmd = clampYmdNotBeforeYmd(parsedYmd, effectiveMinYmd);
+                    const { year, month, day } = parseYmdSafe(clampedYmd);
+                    const isToday = compareYmd(clampedYmd, nonPastYmd) === 0;
                     const applyAndSet = (nextYear: number, nextMonth: number, nextDay: number) => {
-                      const fixed = clampYmdNotBefore(baseMinDate, nextYear, nextMonth, nextDay);
-                      m.setTravelGiornoRitorno(formatYmd(fixed.year, fixed.month, fixed.day));
+                      const fixed = clampYmdNotBeforeYmd(formatYmd(nextYear, nextMonth, nextDay), effectiveMinYmd);
+                      m.setTravelGiornoRitorno(fixed);
                     };
 
                     return (
@@ -1790,8 +1774,10 @@ export default function ModalScreen() {
                             // - se è lo stesso giorno della partenza (senza "giorno dopo"), il ritorno non può iniziare prima dell'arrivo andata
                             // - se la partenza arriva "giorno dopo" e il ritorno è impostato al giorno successivo,
                             //   il ritorno non può iniziare prima dell'orario di arrivo (sul nuovo giorno)
-                            const partenzaDate = parseYmdSafe(m.travelGiornoPartenza);
-                            const ritornoDate = m.travelGiornoRitorno ? parseYmdSafe(m.travelGiornoRitorno) : partenzaDate;
+                            const partenzaDate = parseYmdSafe(clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd));
+                            const ritornoDate = m.travelGiornoRitorno
+                              ? parseYmdSafe(clampYmdNotBeforeYmd(m.travelGiornoRitorno, minSelectableYmd))
+                              : partenzaDate;
                             const dStart = new Date(partenzaDate.year, partenzaDate.month - 1, partenzaDate.day);
                             const dRet = new Date(ritornoDate.year, ritornoDate.month - 1, ritornoDate.day);
                             const dayDiff = Math.round((dRet.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24));
@@ -1956,10 +1942,8 @@ export default function ModalScreen() {
               </View>
 
               {(() => {
-                const startYmd = m.travelGiornoPartenza;
-                const endYmd = m.travelGiornoRitorno ?? m.travelGiornoPartenza;
-                const now = new Date();
-                const todayYmd = formatYmd(now.getFullYear(), now.getMonth() + 1, now.getDate());
+                const startYmd = clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd);
+                const endYmd = clampYmdNotBeforeYmd(m.travelGiornoRitorno ?? m.travelGiornoPartenza, startYmd);
                 const startDate = parseYmdSafe(startYmd);
                 const endDate = parseYmdSafe(endYmd);
                 const startDateLabel = new Date(startDate.year, startDate.month - 1, startDate.day);
@@ -1967,30 +1951,30 @@ export default function ModalScreen() {
                 const startMinutes = hhmmToMinutesSafe(m.travelOrarioPartenza, 9 * 60);
                 const endMinutes = hhmmToMinutesSafe(m.travelOrarioArrivoRitorno ?? m.travelOrarioArrivo, 18 * 60);
                 const sameDay = startYmd === endYmd;
-                const isStartToday = startYmd === todayYmd;
-                const isEndToday = endYmd === todayYmd;
+                const isStartToday = compareYmd(startYmd, nonPastYmd) === 0;
+                const isEndToday = compareYmd(endYmd, nonPastYmd) === 0;
 
                 const setStartDate = (delta: number) => {
-                  const next = shiftYmd(startYmd, delta);
+                  const next = clampYmdNotBeforeYmd(shiftYmd(startYmd, delta), minSelectableYmd);
                   m.setTravelGiornoPartenza(next);
-                  if (endYmd < next) m.setTravelGiornoRitorno(next);
+                  if (compareYmd(endYmd, next) < 0) m.setTravelGiornoRitorno(next);
                 };
 
                 const setStartMonth = (delta: number) => {
-                  const next = shiftYmdByMonths(startYmd, delta);
+                  const next = clampYmdNotBeforeYmd(shiftYmdByMonths(startYmd, delta), minSelectableYmd);
                   m.setTravelGiornoPartenza(next);
-                  if (endYmd < next) m.setTravelGiornoRitorno(next);
+                  if (compareYmd(endYmd, next) < 0) m.setTravelGiornoRitorno(next);
                 };
 
                 const setStartYear = (delta: number) => {
-                  const next = shiftYmdByYears(startYmd, delta);
+                  const next = clampYmdNotBeforeYmd(shiftYmdByYears(startYmd, delta), minSelectableYmd);
                   m.setTravelGiornoPartenza(next);
-                  if (endYmd < next) m.setTravelGiornoRitorno(next);
+                  if (compareYmd(endYmd, next) < 0) m.setTravelGiornoRitorno(next);
                 };
 
                 const setEndDate = (delta: number) => {
-                  const next = shiftYmd(endYmd, delta);
-                  if (next < startYmd) {
+                  const next = clampYmdNotBeforeYmd(shiftYmd(endYmd, delta), startYmd);
+                  if (compareYmd(next, startYmd) < 0) {
                     m.setTravelGiornoRitorno(startYmd);
                     return;
                   }
@@ -1998,8 +1982,8 @@ export default function ModalScreen() {
                 };
 
                 const setEndMonth = (delta: number) => {
-                  const next = shiftYmdByMonths(endYmd, delta);
-                  if (next < startYmd) {
+                  const next = clampYmdNotBeforeYmd(shiftYmdByMonths(endYmd, delta), startYmd);
+                  if (compareYmd(next, startYmd) < 0) {
                     m.setTravelGiornoRitorno(startYmd);
                     return;
                   }
@@ -2007,8 +1991,8 @@ export default function ModalScreen() {
                 };
 
                 const setEndYear = (delta: number) => {
-                  const next = shiftYmdByYears(endYmd, delta);
-                  if (next < startYmd) {
+                  const next = clampYmdNotBeforeYmd(shiftYmdByYears(endYmd, delta), startYmd);
+                  if (compareYmd(next, startYmd) < 0) {
                     m.setTravelGiornoRitorno(startYmd);
                     return;
                   }
@@ -2716,14 +2700,15 @@ export default function ModalScreen() {
               (m.travelPartenzaTipo !== 'attuale' && !m.travelPartenzaNome.trim()) ||
               !m.travelDestinazioneNome.trim()
             );
-            const vacationEndYmd = m.travelGiornoRitorno ?? m.travelGiornoPartenza;
+            const vacationStartYmd = clampYmdNotBeforeYmd(m.travelGiornoPartenza, minSelectableYmd);
+            const vacationEndYmd = clampYmdNotBeforeYmd(m.travelGiornoRitorno ?? vacationStartYmd, vacationStartYmd);
             const vacationEndTime = m.travelOrarioArrivoRitorno ?? m.travelOrarioArrivo;
             const vacationIncomplete = (type === 'new' || type === 'edit') && m.tipo === 'vacanza' && (
-              !m.travelGiornoPartenza ||
+              !vacationStartYmd ||
               !vacationEndYmd ||
               !m.travelOrarioPartenza ||
               !vacationEndTime ||
-              new Date(`${vacationEndYmd}T${vacationEndTime}:00`).getTime() <= new Date(`${m.travelGiornoPartenza}T${m.travelOrarioPartenza}:00`).getTime()
+              new Date(`${vacationEndYmd}T${vacationEndTime}:00`).getTime() <= new Date(`${vacationStartYmd}T${m.travelOrarioPartenza}:00`).getTime()
             );
             const healthIncomplete = (type === 'new' || type === 'edit') && m.tipo === 'salute' && !m.healthMetric;
             return (

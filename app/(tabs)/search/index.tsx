@@ -4,6 +4,7 @@ import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { useHabits } from '@/lib/habits/Provider';
 import { isHabitFullyDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
+import { parseYmdSafe } from '@/lib/date';
 import { HabitItem } from '@/components/HabitItem';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
@@ -16,7 +17,8 @@ type StatusFilter = 'all' | 'open' | 'completed';
 
 type SearchResult = {
   habit: Habit;
-  isCompleted: boolean;
+  isCompletedRecent: boolean;
+  recentCompletionYmd: string | null;
   score: number;
 };
 
@@ -35,6 +37,12 @@ function getCreatedAtRank(habit: Habit) {
     if (!Number.isNaN(timestamp)) return timestamp;
   }
   return 0;
+}
+
+function shiftYmd(ymd: string, days: number): string {
+  const date = parseYmdSafe(ymd);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 export default function SearchScreen() {
@@ -74,7 +82,11 @@ export default function SearchScreen() {
   );
 
   const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
-  const logicalTodayHistory = history[logicalTodayYmd];
+  const recentWindowStartYmd = useMemo(() => shiftYmd(logicalTodayYmd, -6), [logicalTodayYmd]);
+  const recentHistoryDates = useMemo(
+    () => Object.keys(history).filter((ymd) => ymd >= recentWindowStartYmd && ymd <= logicalTodayYmd).sort().reverse(),
+    [history, logicalTodayYmd, recentWindowStartYmd],
+  );
   const normalizedQuery = useMemo(() => normalizeSearchText(query), [query]);
 
   const openStatusPicker = useCallback(() => {
@@ -127,23 +139,30 @@ export default function SearchScreen() {
         return tipo === 'task' || tipo === 'abitudine';
       })
       .map((habit) => {
-        const isCompleted = isHabitFullyDoneForDay(logicalTodayHistory, habit);
+        const recentCompletionYmd = recentHistoryDates.find((ymd) => isHabitFullyDoneForDay(history[ymd], habit)) ?? null;
+        const isCompletedRecent = !!recentCompletionYmd;
         const displayTitle = getHabitDisplayTitle(habit);
         const searchableText = normalizeSearchText(displayTitle);
         const score = normalizedQuery
           ? (searchableText.startsWith(normalizedQuery) ? 0 : searchableText.includes(normalizedQuery) ? 1 : 2)
           : 0;
 
-        return { habit, isCompleted, score };
+        return { habit, isCompletedRecent, recentCompletionYmd, score };
       })
       .filter((item) => {
-        if (statusFilter === 'open' && item.isCompleted) return false;
-        if (statusFilter === 'completed' && !item.isCompleted) return false;
+        if (statusFilter === 'open' && item.isCompletedRecent) return false;
+        if (statusFilter === 'completed' && !item.isCompletedRecent) return false;
         if (!normalizedQuery) return true;
         return normalizeSearchText(getHabitDisplayTitle(item.habit)).includes(normalizedQuery);
       })
       .sort((left, right) => {
         if (normalizedQuery && left.score !== right.score) return left.score - right.score;
+
+        if (statusFilter === 'completed') {
+          const leftDate = left.recentCompletionYmd ?? '';
+          const rightDate = right.recentCompletionYmd ?? '';
+          if (leftDate !== rightDate) return rightDate.localeCompare(leftDate);
+        }
 
         const leftTitle = getHabitDisplayTitle(left.habit);
         const rightTitle = getHabitDisplayTitle(right.habit);
@@ -172,7 +191,7 @@ export default function SearchScreen() {
           }
         }
       });
-  }, [habits, logicalTodayHistory, normalizedQuery, sortMode, statusFilter, getHabitDisplayTitle, fmt]);
+  }, [habits, history, normalizedQuery, recentHistoryDates, sortMode, statusFilter, getHabitDisplayTitle, fmt]);
 
   return (
     <>
@@ -232,7 +251,7 @@ export default function SearchScreen() {
           {results.length > 0 ? (
             <View style={styles.resultsList}>
               {results.map((item: SearchResult, index: number) => {
-                const { habit, isCompleted } = item;
+                const { habit } = item;
                 const displayHabit = {
                   ...habit,
                   text: getHabitDisplayTitle(habit),
@@ -252,7 +271,7 @@ export default function SearchScreen() {
                     <HabitItem
                       habit={displayHabit}
                       index={index}
-                      isDone={isCompleted}
+                      isDone={item.isCompletedRecent}
                       completionMode="day"
                       onRename={goEdit}
                       onSchedule={goEdit}

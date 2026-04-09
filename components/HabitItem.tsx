@@ -137,6 +137,24 @@ function formatVacationPeriod(habit: Habit): string | null {
   return `${startDate} ${startTime} → ${endDate} ${endTime}`;
 }
 
+function getTravelRouteParts(habit: Habit): { from: string; to: string; hasReturn: boolean } | null {
+  const baseTitle = habit.text?.trim();
+  const routeParts = baseTitle
+    ? baseTitle.split('→').map((part) => part.trim()).filter(Boolean)
+    : [];
+
+  const from = routeParts[0] ?? habit.travel?.partenzaNome?.trim() ?? '';
+  const to = routeParts[1] ?? habit.travel?.destinazioneNome?.trim() ?? '';
+
+  if (!from || !to) return null;
+
+  return {
+    from,
+    to,
+    hasReturn: Boolean(habit.travel?.giornoRitorno),
+  };
+}
+
 const noiseShaderSource = `
   uniform float threshold;
   uniform float2 resolution;
@@ -404,7 +422,12 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
 
   const timeText = getTimeText();
   const frequencyText = getFrequencyText();
-  const displayTitle = isVacation ? t('modal.tipoVacation') : (isHealthHabit ? (healthOption?.label ?? habit.text) : habit.text);
+  const travelRoute = isTravel ? getTravelRouteParts(habit) : null;
+  const displayTitle = isVacation
+    ? t('modal.tipoVacation')
+    : isHealthHabit
+      ? (healthOption?.label ?? habit.text)
+      : habit.text;
   const displaySubtext = isVacation ? vacationPeriod : timeText;
   const displayFrequency = isVacation ? null : frequencyText;
   const healthMetricValue = (() => {
@@ -680,17 +703,49 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
 
       <View style={[styles.content, shouldCenterContent && { justifyContent: 'center' }]}>
         <View style={styles.titleRow}>
-          <Text
-            style={[
-              styles.habitText,
-              { color: isHealthHabit ? healthPrimaryTextColor : primaryTextColor },
-              lineStrikeDone && styles.habitDone,
-              isVacation && styles.vacationTitle,
-            ]}
-            numberOfLines={isTravel ? 2 : 1}
-          >
-            {displayTitle}
-          </Text>
+          {isTravel && travelRoute ? (
+            <View style={styles.travelTitleRow}>
+              <Text
+                style={[
+                  styles.habitText,
+                  { color: isHealthHabit ? healthPrimaryTextColor : primaryTextColor },
+                  lineStrikeDone && styles.habitDone,
+                  isVacation && styles.vacationTitle,
+                ]}
+                numberOfLines={1}
+              >
+                {travelRoute.from}
+              </Text>
+              <Ionicons
+                name={travelRoute.hasReturn ? 'swap-horizontal-outline' : 'arrow-forward-outline'}
+                size={16}
+                color={isHealthHabit ? healthPrimaryTextColor : primaryTextColor}
+              />
+              <Text
+                style={[
+                  styles.habitText,
+                  { color: isHealthHabit ? healthPrimaryTextColor : primaryTextColor },
+                  lineStrikeDone && styles.habitDone,
+                  isVacation && styles.vacationTitle,
+                ]}
+                numberOfLines={1}
+              >
+                {travelRoute.to}
+              </Text>
+            </View>
+          ) : (
+            <Text
+              style={[
+                styles.habitText,
+                { color: isHealthHabit ? healthPrimaryTextColor : primaryTextColor },
+                lineStrikeDone && styles.habitDone,
+                isVacation && styles.vacationTitle,
+              ]}
+              numberOfLines={1}
+            >
+              {displayTitle}
+            </Text>
+          )}
           {isHealthHabit && healthValueLabel && (
             <Text style={styles.sleepHoursInline}>{healthValueLabel}</Text>
           )}
@@ -875,6 +930,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+
+  travelTitleRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
 
   habitText: {
