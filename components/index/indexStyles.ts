@@ -121,6 +121,7 @@ export const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: THEME.green,
     zIndex: 4,
+    transform: [{ scaleX: 0.66 }, { scaleY: 0.66 }],
   },
   folderBarOverflowLineRight: {
     right: 0,
@@ -176,7 +177,8 @@ export const styles = StyleSheet.create({
     height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: -14,
+    marginLeft: -18,
+    marginTop: -1,
   },
   listWrap: {
     flex: 1,

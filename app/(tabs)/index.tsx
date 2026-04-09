@@ -28,8 +28,8 @@ const FOLDER_BAR_SCROLL_SLACK = 6;
 const FOLDER_ADD_MORPH_LEAD = 12;
 const FOLDER_ADD_LINE_BASE_HEIGHT = 26;
 const FOLDER_ADD_LINE_BASE_TOP = 6;
-const FOLDER_ADD_LINE_FINAL_HEIGHT = 2;
-const FOLDER_ADD_SHRINK_END_EARLY_PX = 2;
+const FOLDER_ADD_LINE_FINAL_HEIGHT = 1;
+const FOLDER_ADD_SHRINK_END_EARLY_PX = 6;
 
 const TASKS_DRAG_AUTOSCROLL_THRESHOLD = 108;
 const TASKS_DRAG_AUTOSCROLL_SPEED = 72;
@@ -364,7 +364,7 @@ export default function IndexScreen() {
   const folderAddRightLineStyle = useMemo(() => {
     const buttonWidth = addButtonWidthRef.current;
     const shrinkStart = buttonWidth > 0
-      ? (FOLDER_ADD_MORPH_LEAD + MORPHING_FOLDER_ADD_FIRST_PIXEL_OFFSET - 2) / (buttonWidth + FOLDER_ADD_MORPH_LEAD)
+      ? (FOLDER_ADD_MORPH_LEAD + MORPHING_FOLDER_ADD_FIRST_PIXEL_OFFSET + 3.5) / (buttonWidth + FOLDER_ADD_MORPH_LEAD)
       : 0.5;
     const shrinkEnd = buttonWidth > 0
       ? 1 - (FOLDER_ADD_SHRINK_END_EARLY_PX / (buttonWidth + FOLDER_ADD_MORPH_LEAD))
@@ -385,7 +385,7 @@ export default function IndexScreen() {
     };
   }, [folderAddMorphProgress]);
 
-  const shouldShowMorphingRightLine = folderBarOverflowLines.right || folderAddRightLineStyle.height > 0.25;
+  const shouldShowMorphingRightLine = folderAddRightLineStyle.height > (FOLDER_ADD_LINE_FINAL_HEIGHT + 1);
 
   const handleSelectDayScope = useCallback(
     (scope: typeof OGGI_TODAY_KEY | typeof DOMANI_TOMORROW_KEY | typeof IERI_YESTERDAY_KEY) => {
@@ -1206,6 +1206,7 @@ export default function IndexScreen() {
                 styles.folderBarOverflowLineRight,
                 {
                   bottom: undefined,
+                  right: -0.34,
                   top: folderAddRightLineStyle.top,
                   height: folderAddRightLineStyle.height,
                   opacity: folderAddRightLineStyle.opacity,
@@ -1216,7 +1217,16 @@ export default function IndexScreen() {
           ) : null}
           {folderBarOverflowLines.left ? (
             <View
-              style={[styles.folderBarOverflowLine, styles.folderBarOverflowLineLeft]}
+              style={[
+                styles.folderBarOverflowLine,
+                styles.folderBarOverflowLineLeft,
+                {
+                  bottom: undefined,
+                  left: -0.34,
+                  top: FOLDER_ADD_LINE_BASE_TOP,
+                  height: FOLDER_ADD_LINE_BASE_HEIGHT,
+                }
+              ]}
               pointerEvents="none"
             />
           ) : null}
