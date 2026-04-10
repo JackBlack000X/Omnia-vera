@@ -1,16 +1,17 @@
 import { SKETCH_PLANNER } from '@/constants/sketchPlanner';
+import { TableTaskCreateOverlay } from '@/components/index/TableTaskCreateOverlay';
 import { useHabits } from '@/lib/habits/Provider';
 import type { UserTable } from '@/lib/habits/schema';
 import { DOMANI_TOMORROW_KEY, IERI_YESTERDAY_KEY, OGGI_TODAY_KEY, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
-  Dimensions,
   KeyboardAvoidingView,
+  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -22,9 +23,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-
-const SCREEN_W = Dimensions.get('window').width;
-const CARD_W = (SCREEN_W - 32 - 12) / 2;
 
 const C = {
   canvas: '#000000',
@@ -44,6 +42,20 @@ const GRID = {
   cellHeight: 28,
   gap: 4,
 } as const;
+
+const MAX_TABLE_COLUMNS = 10;
+
+function getAdaptiveGap(columnCount: number): number {
+  return GRID.gap;
+}
+
+function getThumbnailGap(columnCount: number): number {
+  return 2;
+}
+
+function getReferenceLeftCellWidth(totalWidth: number, gap: number, minWidth: number): number {
+  return Math.max(minWidth, Math.floor((totalWidth - MAX_TABLE_COLUMNS * gap) / (MAX_TABLE_COLUMNS + 1)));
+}
 
 type CreateTarget = {
   folder?: string;
@@ -73,51 +85,97 @@ function getCreateTarget(activeFolder: string | null | undefined, todayYmd: stri
   return { folder: activeFolder, ymd: todayYmd };
 }
 
-function buildTaskTitle(columnLabel: string, rowNumber: number, colNumber: number): string {
-  const safeColumn = columnLabel.trim() || `Colonna ${colNumber}`;
-  return `Titolo ${safeColumn} ${rowNumber}`;
+function buildTaskTitle(tableName: string, columnLabel: string, rowNumber: number, colNumber: number): string {
+  const safeTable = tableName.trim();
+  const safeColumn = columnLabel.trim() || `C${colNumber}`;
+  return [safeTable, safeColumn, String(rowNumber)].filter(Boolean).join(' ');
 }
 
 function TableThumbnail({ table }: { table: UserTable }) {
-  const cols = getColumnLabels(table).slice(0, 4);
   const checked = normalizeChecked(table);
-  const rows = checked.slice(0, 3);
+  const totalColumns = Math.max(getColumnLabels(table).length, checked[0]?.length ?? 0, 1);
+  const previewColumns = Math.min(totalColumns, MAX_TABLE_COLUMNS);
+  const previewGap = getThumbnailGap(previewColumns);
+  const previewTenColumnGap = getThumbnailGap(MAX_TABLE_COLUMNS);
+  const maxPreviewRows = 5;
+  const hasOverflowRows = checked.length > maxPreviewRows;
+  const [thumbnailWidth, setThumbnailWidth] = useState(0);
+  const rows = checked
+    .slice(0, Math.min(checked.length, maxPreviewRows))
+    .map((row) => Array.from({ length: previewColumns }, (_, index) => Boolean(row[index])));
   const accent = table.color;
+  const indexCellSize = thumbnailWidth > 0
+    ? getReferenceLeftCellWidth(thumbnailWidth, previewTenColumnGap, 4)
+    : 12;
+  const dataCellWidth = thumbnailWidth > 0
+    ? Math.max(4, (thumbnailWidth - indexCellSize - previewColumns * previewGap) / previewColumns)
+    : undefined;
 
   return (
-    <View style={{ gap: 3 }}>
-      <View style={{ flexDirection: 'row', gap: 3 }}>
-        <View style={{ width: 12, height: 12, backgroundColor: accent, borderRadius: 2 }} />
-        {cols.map((_, index) => (
-          <View key={index} style={{ width: 26, height: 12, backgroundColor: accent, borderRadius: 2 }} />
+    <View
+      style={[thumbnail.root, { gap: previewGap }]}
+      onLayout={(event) => {
+        const nextWidth = Math.floor(event.nativeEvent.layout.width);
+        if (nextWidth > 0 && nextWidth !== thumbnailWidth) {
+          setThumbnailWidth(nextWidth);
+        }
+      }}
+    >
+      <View style={[thumbnail.row, { gap: previewGap }]}>
+        <View style={[thumbnail.indexCell, { width: indexCellSize, height: indexCellSize, backgroundColor: accent }]} />
+        {Array.from({ length: previewColumns }, (_, index) => (
+          <View
+            key={index}
+            style={[thumbnail.fillCell, { width: dataCellWidth, height: indexCellSize, backgroundColor: accent }]}
+          />
         ))}
       </View>
       {rows.map((row, ri) => (
-        <View key={ri} style={{ flexDirection: 'row', gap: 3 }}>
-          <View style={{ width: 12, height: 12, backgroundColor: accent, borderRadius: 2 }} />
+        <View key={ri} style={[thumbnail.row, { gap: previewGap }]}>
+          <View
+            style={[
+              thumbnail.indexCell,
+              { width: indexCellSize, height: indexCellSize, backgroundColor: accent },
+            ]}
+          />
           {row.map((isOn, ci) => (
             <View
               key={ci}
-              style={{
-                width: 26,
-                height: 12,
-                backgroundColor: isOn ? C.cellOn : C.cellOff,
-                borderRadius: 2,
-              }}
+              style={[
+                thumbnail.fillCell,
+                { width: dataCellWidth, height: indexCellSize, backgroundColor: isOn ? C.cellOn : C.cellOff },
+              ]}
             />
           ))}
         </View>
       ))}
+      {hasOverflowRows ? (
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.92)']}
+          style={thumbnail.fadeOverlay}
+        />
+      ) : null}
     </View>
   );
 }
 
-function TableCard({ table, onPress, onLongPress }: { table: UserTable; onPress: () => void; onLongPress: () => void }) {
+function TableCard({
+  table,
+  cardWidth,
+  onPress,
+  onLongPress,
+}: {
+  table: UserTable;
+  cardWidth: number;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
   const cols = getColumnLabels(table).length;
   const rows = table.cells.length;
   return (
     <TouchableOpacity
-      style={[cards.card, { borderTopColor: table.color }]}
+      style={[cards.card, { width: cardWidth, borderTopColor: table.color }]}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={450}
@@ -126,15 +184,42 @@ function TableCard({ table, onPress, onLongPress }: { table: UserTable; onPress:
       <View style={cards.preview}>
         <TableThumbnail table={table} />
       </View>
-      <Text style={cards.name} numberOfLines={2}>{table.name}</Text>
-      <Text style={cards.meta}>{rows} righe · {cols} colonne</Text>
+      <View style={cards.footer}>
+        <Text style={cards.name} numberOfLines={1}>{table.name}</Text>
+        <Text style={cards.meta} numberOfLines={1}>{rows} righe · {cols} colonne</Text>
+      </View>
     </TouchableOpacity>
   );
 }
 
+const thumbnail = StyleSheet.create({
+  root: {
+    width: '100%',
+    position: 'relative',
+    alignSelf: 'stretch',
+  },
+  row: {
+    flexDirection: 'row',
+  },
+  indexCell: {
+    borderRadius: 2,
+    flexShrink: 0,
+  },
+  fillCell: {
+    borderRadius: 2,
+    flexShrink: 0,
+  },
+  fadeOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 18,
+  },
+});
+
 const cards = StyleSheet.create({
   card: {
-    width: CARD_W,
     backgroundColor: C.surface,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
@@ -149,19 +234,25 @@ const cards = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
   },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
   name: {
     color: C.text,
     fontSize: 14,
     fontWeight: '700',
-    paddingHorizontal: 10,
-    paddingTop: 10,
+    flex: 1,
   },
   meta: {
     color: C.muted,
     fontSize: 12,
-    paddingHorizontal: 10,
-    paddingTop: 4,
-    paddingBottom: 12,
+    flexShrink: 0,
   },
 });
 
@@ -297,26 +388,35 @@ function SpreadsheetView({
   onUpdate,
   onClose,
   createTarget,
+  todayYmd,
 }: {
   table: UserTable;
   onUpdate: (patch: Partial<Omit<UserTable, 'id' | 'createdAt'>>) => void;
   onClose: () => void;
   createTarget: CreateTarget;
+  todayYmd: string;
 }) {
-  const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
   const columnLabels = useMemo(() => getColumnLabels(table), [table]);
   const [labels, setLabels] = useState(columnLabels);
   const [checked, setChecked] = useState(() => normalizeChecked(table));
   const [editingCol, setEditingCol] = useState<number | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
-  const gridGap = labels.length >= 9 ? 2 : labels.length >= 7 ? 3 : GRID.gap;
+  const [taskModalTitle, setTaskModalTitle] = useState<string | null>(null);
+  const gridGap = getAdaptiveGap(labels.length);
+  const tenColumnGap = getAdaptiveGap(MAX_TABLE_COLUMNS);
+  const rowHeaderWidth = useMemo(() => {
+    const horizontalPadding = 4;
+    const gridWidth = screenWidth - horizontalPadding;
+    return getReferenceLeftCellWidth(gridWidth, tenColumnGap, 22);
+  }, [screenWidth, tenColumnGap]);
+  const cellSize = rowHeaderWidth;
   const columnWidth = useMemo(() => {
     const horizontalPadding = 4;
     const gridWidth = screenWidth - horizontalPadding;
-    const usable = gridWidth - GRID.rowHeaderWidth - (labels.length * gridGap);
+    const usable = gridWidth - rowHeaderWidth - (labels.length * gridGap);
     return Math.max(22, Math.floor(usable / Math.max(labels.length, 1)));
-  }, [gridGap, labels.length, screenWidth]);
+  }, [gridGap, labels.length, rowHeaderWidth, screenWidth]);
   const compactColumns = labels.length >= 9;
 
   useEffect(() => {
@@ -389,23 +489,9 @@ function SpreadsheetView({
 
   const openCreateTask = useCallback((rowIndex: number, colIndex: number) => {
     const rowNumber = rowIndex + 1;
-    const title = buildTaskTitle(labels[colIndex] ?? '', rowNumber, colIndex + 1);
-    requestAnimationFrame(() => {
-      onClose();
-      requestAnimationFrame(() => {
-        router.push({
-          pathname: '/modal',
-          params: {
-            type: 'new',
-            folder: createTarget.folder,
-            ymd: createTarget.ymd,
-            initialText: title,
-            lockTitle: '1',
-          },
-        });
-      });
-    });
-  }, [createTarget.folder, createTarget.ymd, labels, onClose, router]);
+    const title = buildTaskTitle(table.name, labels[colIndex] ?? '', rowNumber, colIndex + 1);
+    setTaskModalTitle(title);
+  }, [labels, table.name]);
 
   const showInfo = useCallback(() => {
     Alert.alert(
@@ -453,11 +539,11 @@ function SpreadsheetView({
         <View style={sheet.gridOuter}>
           <View style={sheet.gridWrap}>
             <View style={[sheet.headerRow, { gap: gridGap }]}>
-              <View style={[sheet.cornerCell, { backgroundColor: table.color }]} />
+              <View style={[sheet.cornerCell, { width: rowHeaderWidth, height: cellSize, backgroundColor: table.color }]} />
               {labels.map((label, colIndex) => (
                 <Pressable
                   key={`header-${colIndex}`}
-                  style={[sheet.columnHeader, { backgroundColor: table.color, width: columnWidth }]}
+                  style={[sheet.columnHeader, { backgroundColor: table.color, width: columnWidth, height: cellSize }]}
                   onPress={() => beginEditColumn(colIndex)}
                 >
                   {editingCol === colIndex ? (
@@ -485,13 +571,13 @@ function SpreadsheetView({
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={sheet.rowsContent}>
               {checked.map((row, rowIndex) => (
                 <View key={`row-${rowIndex}`} style={[sheet.bodyRow, { gap: gridGap }]}>
-                  <View style={[sheet.rowHeader, { backgroundColor: table.color }]}>
+                  <View style={[sheet.rowHeader, { width: rowHeaderWidth, height: cellSize, backgroundColor: table.color }]}>
                     <Text style={sheet.rowHeaderText}>{rowIndex + 1}</Text>
                   </View>
                   {row.map((isOn, colIndex) => (
                     <Pressable
                       key={`cell-${rowIndex}-${colIndex}`}
-                      style={[sheet.cell, { width: columnWidth }, isOn ? sheet.cellOn : sheet.cellOff]}
+                      style={[sheet.cell, { width: columnWidth, height: cellSize }, isOn ? sheet.cellOn : sheet.cellOff]}
                       onPress={() => toggleCell(rowIndex, colIndex)}
                       onLongPress={() => openCreateTask(rowIndex, colIndex)}
                       delayLongPress={340}
@@ -502,6 +588,16 @@ function SpreadsheetView({
             </ScrollView>
           </View>
         </View>
+
+        {taskModalTitle ? (
+          <TableTaskCreateOverlay
+            title={taskModalTitle}
+            defaultFolder={createTarget.folder}
+            defaultYmd={createTarget.ymd ?? todayYmd}
+            defaultTaskHasTime={Boolean(createTarget.ymd)}
+            onClose={() => setTaskModalTitle(null)}
+          />
+        ) : null}
 
       </View>
     </Modal>
@@ -617,13 +713,29 @@ export default function TabelleView({
 }) {
   const { t } = useTranslation();
   const { tables, addTable, updateTable, deleteTable } = useHabits();
+  const { width: screenWidth } = useWindowDimensions();
   const [showCreate, setShowCreate] = useState(false);
   const [openTable, setOpenTable] = useState<UserTable | null>(null);
+  const [containerWidth, setContainerWidth] = useState(screenWidth);
 
   const createTarget = useMemo(
     () => getCreateTarget(activeFolder, todayYmd, tomorrowYmd, yesterdayYmd),
     [activeFolder, todayYmd, tomorrowYmd, yesterdayYmd]
   );
+  const cardWidth = useMemo(() => {
+    const availableWidth = containerWidth > 0 ? containerWidth : screenWidth;
+    const horizontalPadding = 8;
+    const gap = 12;
+    const minCardWidth = 156;
+    const columns = Math.min(2, Math.max(1, Math.floor((availableWidth - horizontalPadding + gap) / (minCardWidth + gap))));
+    return Math.floor((availableWidth - horizontalPadding - gap * (columns - 1)) / columns);
+  }, [containerWidth, screenWidth]);
+  const handleContainerLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.floor(event.nativeEvent.layout.width);
+    if (nextWidth > 0 && nextWidth !== containerWidth) {
+      setContainerWidth(nextWidth);
+    }
+  }, [containerWidth]);
 
   const handleDelete = useCallback((table: UserTable) => {
     Alert.alert(t('index.tableDeleteTitle'), t('index.tableDeleteMessage', { name: table.name }), [
@@ -633,7 +745,7 @@ export default function TabelleView({
   }, [deleteTable, t]);
 
   return (
-    <View style={main.container}>
+    <View style={main.container} onLayout={handleContainerLayout}>
       <View style={main.toolbar}>
         <Text style={main.toolbarSub}>
           {tables.length > 0
@@ -659,6 +771,7 @@ export default function TabelleView({
             <TableCard
               key={table.id}
               table={table}
+              cardWidth={cardWidth}
               onPress={() => setOpenTable(table)}
               onLongPress={() => handleDelete(table)}
             />
@@ -676,6 +789,7 @@ export default function TabelleView({
         <SpreadsheetView
           table={openTable}
           createTarget={createTarget}
+          todayYmd={todayYmd}
           onUpdate={(patch) => {
             updateTable(openTable.id, patch);
             setOpenTable((current) => (current ? { ...current, ...patch } : null));
@@ -715,7 +829,7 @@ const main = StyleSheet.create({
   emptyHint: { color: C.muted, fontSize: 14, textAlign: 'center', paddingHorizontal: 40 },
   emptyButton: { marginTop: 12, backgroundColor: SKETCH_PLANNER.highlight, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 12 },
   emptyButtonText: { color: '#000000', fontSize: 16, fontWeight: '700' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 120 },
+  grid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 120, alignContent: 'flex-start' },
   fabLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   fabShell: {
     position: 'absolute',
