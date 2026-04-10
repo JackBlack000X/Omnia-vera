@@ -352,7 +352,7 @@ export type HabitsContextType = {
   deleteTrackerEntry: (id: string) => void;
   savedTrackerPeople: string[];
   tables: UserTable[];
-  addTable: (name: string, color: string, cols?: number, rows?: number) => string;
+  addTable: (name: string, color: string, cols?: number, rows?: number, folder?: string) => string;
   updateTable: (id: string, patch: Partial<Omit<UserTable, 'id' | 'createdAt'>>) => void;
   deleteTable: (id: string) => void;
 };
@@ -453,7 +453,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
                     : Array.from({ length: rowCount }, (_, ri) =>
                         Array.from({ length: colCount }, (_, ci) => Boolean(t.cells?.[ri]?.[ci]))
                       );
-                  return { ...t, checked };
+                  return { ...t, checked, folder: typeof t.folder === 'string' && t.folder.trim() ? t.folder.trim() : undefined };
                 }
                 // intermediate format (headerRow/headerCol)
                 if (t.headerRow) {
@@ -464,7 +464,15 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
                   const checked = Array.from({ length: rowCount }, (_, ri) =>
                     Array.from({ length: colCount }, (_, ci) => Boolean(t.cells?.[ri]?.[ci]))
                   );
-                  return { ...t, headerRows, headerCols, checked, headerRow: undefined, headerCol: undefined };
+                  return {
+                    ...t,
+                    headerRows,
+                    headerCols,
+                    checked,
+                    folder: typeof t.folder === 'string' && t.folder.trim() ? t.folder.trim() : undefined,
+                    headerRow: undefined,
+                    headerCol: undefined,
+                  };
                 }
                 // legacy format (columns/rows)
                 const cols: string[] = Array.isArray(t.columns) ? t.columns : [];
@@ -477,7 +485,16 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
                   headerRow.map(col => oldRows[ri]?.[col] ?? '')
                 );
                 const checked = cells.map(row => row.map(Boolean));
-                return { ...t, headerRows, headerCols, cells, checked, columns: undefined, rows: undefined };
+                return {
+                  ...t,
+                  headerRows,
+                  headerCols,
+                  cells,
+                  checked,
+                  folder: typeof t.folder === 'string' && t.folder.trim() ? t.folder.trim() : undefined,
+                  columns: undefined,
+                  rows: undefined,
+                };
               });
               setTables(migrated);
             }
@@ -1323,14 +1340,24 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const addTable = useCallback((name: string, color: string, cols = 4, rowCount = 5): string => {
+  const addTable = useCallback((name: string, color: string, cols = 4, rowCount = 4, folder?: string): string => {
     const newId = generateUUID();
     const now = formatYmd();
     const headerRows = [Array.from({ length: cols }, () => '')];
     const headerCols = Array.from({ length: rowCount }, (_, i) => [String(i + 1)]);
     const cells: string[][] = Array.from({ length: rowCount }, () => Array(cols).fill(''));
     const checked = Array.from({ length: rowCount }, () => Array(cols).fill(false));
-    const newTable: UserTable = { id: newId, name, color, createdAt: now, headerRows, headerCols, cells, checked };
+    const newTable: UserTable = {
+      id: newId,
+      name,
+      color,
+      createdAt: now,
+      folder: folder?.trim() || undefined,
+      headerRows,
+      headerCols,
+      cells,
+      checked,
+    };
     setTables(prev => {
       const next = [...prev, newTable];
       AsyncStorage.setItem(STORAGE_TABLES, JSON.stringify(next)).catch(() => {});

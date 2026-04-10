@@ -651,61 +651,7 @@ export function TableTaskCreateOverlay({
                 ]}
               >
                 <GlassCard style={styles.heroCard}>
-                  <View style={styles.heroTopRow}>
-                    <View style={styles.heroIconWrap}>
-                      <LinearGradient
-                        colors={['rgba(147,197,253,0.42)', 'rgba(110,231,183,0.2)']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.heroIconGlow}
-                      />
-                      <Ionicons name="grid-outline" size={20} color="#F8FAFC" />
-                    </View>
-                    <View style={styles.heroCopy}>
-                      <Text style={styles.heroTitle}>{t('modal.titleNew')}</Text>
-                      <Text style={styles.heroSubtitle}>{t('modal.tipoTask')}</Text>
-                    </View>
-                    <GlassView
-                      glassEffectStyle="clear"
-                      colorScheme="dark"
-                      style={styles.lockPill}
-                    >
-                      <Ionicons name="lock-closed" size={13} color="#E5EEF9" />
-                    </GlassView>
-                  </View>
-
-                  <View style={styles.lockedTitleCard}>
-                    <Text style={styles.lockedTitleText}>{title}</Text>
-                  </View>
-
-                  <GlassContainer spacing={10} style={styles.metaPillRow}>
-                    <ChoicePill
-                      label={selectedDateLabel}
-                      icon="calendar-outline"
-                      selected
-                      onPress={() => {
-                        setShowDatePicker((current) => !current);
-                        setShowStartPicker(false);
-                        setShowEndPicker(false);
-                      }}
-                    />
-                    <ChoicePill
-                      label={taskHasTime ? startTimeLabel : t('modal.timeNone')}
-                      icon={taskHasTime ? 'time-outline' : 'today-outline'}
-                      selected
-                      onPress={() => {
-                        if (!taskHasTime) {
-                          setTaskHasTime(true);
-                          setShowStartPicker(true);
-                          setShowEndPicker(false);
-                          return;
-                        }
-                        setShowStartPicker((current) => !current);
-                        setShowDatePicker(false);
-                        setShowEndPicker(false);
-                      }}
-                    />
-                  </GlassContainer>
+                  <Text style={styles.heroOnlyTitle}>{title}</Text>
                 </GlassCard>
 
                 <SectionEyebrow>{t('modal.dateSpecificDay')}</SectionEyebrow>
@@ -1118,72 +1064,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(17,24,39,0.28)',
   },
   heroCard: {
-    padding: 16,
-    gap: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
   },
-  heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  heroIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 18,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  heroIconGlow: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  heroCopy: {
-    flex: 1,
-    gap: 3,
-  },
-  heroTitle: {
-    color: '#F8FAFC',
+  heroOnlyTitle: {
+    color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '700',
     letterSpacing: -0.6,
-  },
-  heroSubtitle: {
-    color: 'rgba(255,255,255,0.62)',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  lockPill: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  lockedTitleCard: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 20,
-    backgroundColor: 'rgba(3,10,20,0.34)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.14)',
-    gap: 4,
-  },
-  lockedTitleText: {
-    color: '#FFFFFF',
-    fontSize: 19,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  metaPillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
   },
   sectionEyebrow: {
     color: 'rgba(255,255,255,0.42)',

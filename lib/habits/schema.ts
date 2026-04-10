@@ -138,6 +138,7 @@ export type UserTable = {
   name: string;
   color: string;
   createdAt: string;
+  folder?: string; // custom folder/category name
   headerRows: string[][];  // frozen rows at top  – headerRows[frozenRowIdx][colIdx]
   headerCols: string[][];  // frozen cols on left – headerCols[rowIdx][frozenColIdx]
   cells: string[][];       // body cells[rowIdx][colIdx]

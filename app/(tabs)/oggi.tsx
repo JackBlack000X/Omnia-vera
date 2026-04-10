@@ -1,5 +1,6 @@
 import DraggableEvent from '@/components/oggi/DraggableEvent';
 import DayReviewModal, { ReviewHabitItem } from '@/components/oggi/DayReviewModal';
+import { styles as indexStyles } from '@/components/index/indexStyles';
 import TrackerModal from '@/components/oggi/TrackerModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { THEME } from '@/constants/theme';
@@ -1845,15 +1846,6 @@ export default function OggiScreen() {
           <TouchableOpacity onPress={() => navigateDate('next')} style={styles.navButton}>
              <Ionicons name="chevron-forward" size={24} color={THEME.text} />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={() => {
-              setEditingTrackerEntry(null);
-              setShowTrackerModal(true);
-            }}
-          >
-            <Ionicons name="timer-outline" size={24} color="#60a5fa" />
-          </TouchableOpacity>
           <TouchableOpacity style={styles.settingsButton} onPress={() => setShowSettings(true)}>
              <Ionicons name="settings-outline" size={24} color={THEME.text} />
           </TouchableOpacity>
@@ -2387,6 +2379,19 @@ export default function OggiScreen() {
          </View>
       </Modal>
 
+      <View style={styles.fabLayer} pointerEvents="box-none">
+        <TouchableOpacity
+          accessibilityRole="button"
+          style={[indexStyles.fab, styles.trackerFab]}
+          onPress={() => {
+            setEditingTrackerEntry(null);
+            setShowTrackerModal(true);
+          }}
+        >
+          <Ionicons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
     </SafeAreaView>
   );
 }
@@ -2433,6 +2438,17 @@ const styles = StyleSheet.create({
   },
   settingsButton: {
     padding: 4,
+  },
+  fabLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  trackerFab: {
+    backgroundColor: '#dc2626',
+    shadowColor: '#dc2626',
   },
   
   // All Day

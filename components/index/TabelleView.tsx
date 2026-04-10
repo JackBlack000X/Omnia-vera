@@ -1,15 +1,19 @@
 import { SKETCH_PLANNER } from '@/constants/sketchPlanner';
+import { styles as indexStyles } from '@/components/index/indexStyles';
 import { TableTaskCreateOverlay } from '@/components/index/TableTaskCreateOverlay';
 import { useHabits } from '@/lib/habits/Provider';
 import type { UserTable } from '@/lib/habits/schema';
 import { DOMANI_TOMORROW_KEY, IERI_YESTERDAY_KEY, OGGI_TODAY_KEY, TUTTE_KEY } from '@/lib/index/indexTypes';
+import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { GlassView } from 'expo-glass-effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
+  Animated,
+  Easing,
   KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
@@ -23,6 +27,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const C = {
   canvas: '#000000',
@@ -62,6 +67,8 @@ type CreateTarget = {
   ymd?: string;
 };
 
+const GLASS_EFFECT = { style: 'regular', animate: true, animationDuration: 0.26 } as const;
+
 function normalizeChecked(table: UserTable): boolean[][] {
   const rowCount = Array.isArray(table.cells) ? table.cells.length : 0;
   const colCount = Array.isArray(table.headerRows?.[0]) ? table.headerRows[0].length : 0;
@@ -85,13 +92,60 @@ function getCreateTarget(activeFolder: string | null | undefined, todayYmd: stri
   return { folder: activeFolder, ymd: todayYmd };
 }
 
+function isRealFolder(activeFolder: string | null | undefined): activeFolder is string {
+  return Boolean(
+    activeFolder &&
+    activeFolder !== TUTTE_KEY &&
+    activeFolder !== OGGI_TODAY_KEY &&
+    activeFolder !== DOMANI_TOMORROW_KEY &&
+    activeFolder !== IERI_YESTERDAY_KEY
+  );
+}
+
 function buildTaskTitle(tableName: string, columnLabel: string, rowNumber: number, colNumber: number): string {
   const safeTable = tableName.trim();
   const safeColumn = columnLabel.trim() || `C${colNumber}`;
   return [safeTable, safeColumn, String(rowNumber)].filter(Boolean).join(' ');
 }
 
-function TableThumbnail({ table }: { table: UserTable }) {
+function getInitialModalCols(table?: UserTable | null): number {
+  if (!table) return 4;
+  return Math.max(1, getColumnLabels(table).length || 4);
+}
+
+function getInitialModalRows(table?: UserTable | null): number {
+  if (!table) return 4;
+  return Math.max(1, Array.isArray(table.cells) ? table.cells.length : 4);
+}
+
+function resizeTablePatch(table: UserTable, name: string, color: string, cols: number, rows: number): Partial<Omit<UserTable, 'id' | 'createdAt'>> {
+  const safeCols = Math.max(1, Math.min(10, Math.floor(cols)));
+  const safeRows = Math.max(1, Math.min(20, Math.floor(rows)));
+  const currentLabels = getColumnLabels(table);
+  const currentChecked = normalizeChecked(table);
+
+  const nextLabels = Array.from({ length: safeCols }, (_, index) => currentLabels[index] ?? '');
+  const nextChecked = Array.from({ length: safeRows }, (_, rowIndex) =>
+    Array.from({ length: safeCols }, (_, colIndex) => Boolean(currentChecked[rowIndex]?.[colIndex]))
+  );
+
+  return {
+    name,
+    color,
+    headerRows: [nextLabels],
+    headerCols: Array.from({ length: safeRows }, (_, index) => [String(index + 1)]),
+    cells: nextChecked.map((row) => row.map((value) => (value ? '1' : ''))),
+    checked: nextChecked,
+  };
+}
+
+function TableThumbnail({
+  table,
+  availableWidth,
+}: {
+  table: UserTable;
+  availableWidth: number;
+}) {
   const checked = normalizeChecked(table);
   const totalColumns = Math.max(getColumnLabels(table).length, checked[0]?.length ?? 0, 1);
   const previewColumns = Math.min(totalColumns, MAX_TABLE_COLUMNS);
@@ -99,28 +153,20 @@ function TableThumbnail({ table }: { table: UserTable }) {
   const previewTenColumnGap = getThumbnailGap(MAX_TABLE_COLUMNS);
   const maxPreviewRows = 5;
   const hasOverflowRows = checked.length > maxPreviewRows;
-  const [thumbnailWidth, setThumbnailWidth] = useState(0);
   const rows = checked
     .slice(0, Math.min(checked.length, maxPreviewRows))
     .map((row) => Array.from({ length: previewColumns }, (_, index) => Boolean(row[index])));
   const accent = table.color;
+  const thumbnailWidth = Math.max(0, Math.floor(availableWidth));
   const indexCellSize = thumbnailWidth > 0
     ? getReferenceLeftCellWidth(thumbnailWidth, previewTenColumnGap, 4)
     : 12;
   const dataCellWidth = thumbnailWidth > 0
     ? Math.max(4, (thumbnailWidth - indexCellSize - previewColumns * previewGap) / previewColumns)
-    : undefined;
+    : 4;
 
   return (
-    <View
-      style={[thumbnail.root, { gap: previewGap }]}
-      onLayout={(event) => {
-        const nextWidth = Math.floor(event.nativeEvent.layout.width);
-        if (nextWidth > 0 && nextWidth !== thumbnailWidth) {
-          setThumbnailWidth(nextWidth);
-        }
-      }}
-    >
+    <View style={[thumbnail.root, { gap: previewGap }]}>
       <View style={[thumbnail.row, { gap: previewGap }]}>
         <View style={[thumbnail.indexCell, { width: indexCellSize, height: indexCellSize, backgroundColor: accent }]} />
         {Array.from({ length: previewColumns }, (_, index) => (
@@ -163,30 +209,44 @@ function TableThumbnail({ table }: { table: UserTable }) {
 function TableCard({
   table,
   cardWidth,
+  selected,
+  selectionMode,
   onPress,
   onLongPress,
 }: {
   table: UserTable;
   cardWidth: number;
+  selected: boolean;
+  selectionMode: boolean;
   onPress: () => void;
   onLongPress: () => void;
 }) {
   const cols = getColumnLabels(table).length;
   const rows = table.cells.length;
+  const previewWidth = Math.max(0, cardWidth - 24);
   return (
     <TouchableOpacity
-      style={[cards.card, { width: cardWidth, borderTopColor: table.color }]}
+      style={[
+        cards.card,
+        { width: cardWidth, borderTopColor: table.color },
+        selected && cards.cardSelected,
+      ]}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={450}
       activeOpacity={0.82}
     >
+      {selectionMode ? (
+        <View style={[cards.selectionBadge, selected && cards.selectionBadgeActive]}>
+          <Ionicons name={selected ? 'checkmark' : 'ellipse-outline'} size={14} color="#FFFFFF" />
+        </View>
+      ) : null}
       <View style={cards.preview}>
-        <TableThumbnail table={table} />
+        <TableThumbnail table={table} availableWidth={previewWidth} />
       </View>
       <View style={cards.footer}>
         <Text style={cards.name} numberOfLines={1}>{table.name}</Text>
-        <Text style={cards.meta} numberOfLines={1}>{rows} righe · {cols} colonne</Text>
+        <Text style={cards.meta} numberOfLines={1}>{rows}/{cols}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -227,6 +287,32 @@ const cards = StyleSheet.create({
     borderTopWidth: 4,
     overflow: 'hidden',
   },
+  cardSelected: {
+    borderColor: '#FFFFFF',
+    borderWidth: 1.5,
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  selectionBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  selectionBadgeActive: {
+    backgroundColor: '#16a34a',
+    borderColor: '#16a34a',
+  },
   preview: {
     minHeight: 92,
     backgroundColor: C.canvas,
@@ -250,58 +336,209 @@ const cards = StyleSheet.create({
     flex: 1,
   },
   meta: {
-    color: C.muted,
+    color: C.text,
     fontSize: 12,
     flexShrink: 0,
   },
 });
 
-const ACCENT_COLORS = ['#0A84FF', '#30D158', '#FF9F0A', '#FF375F', '#BF5AF2', '#5E5CE6', '#64D2FF', '#F7D154'];
+function hueToHex(hue: number): string {
+  const h = ((hue % 360) + 360) % 360;
+  const c = 1;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  let r = 0;
+  let g = 0;
+  let b = 0;
 
-function CreateModal({ visible, onClose, onCreate }: {
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+
+  const toHex = (value: number) => Math.round(value * 255).toString(16).padStart(2, '0').toUpperCase();
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function hexToHue(hex: string): number {
+  const normalized = hex.replace('#', '');
+  if (normalized.length !== 6) return 0;
+  const r = parseInt(normalized.slice(0, 2), 16) / 255;
+  const g = parseInt(normalized.slice(2, 4), 16) / 255;
+  const b = parseInt(normalized.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  if (delta === 0) return 0;
+  if (max === r) return 60 * (((g - b) / delta + 6) % 6);
+  if (max === g) return 60 * ((b - r) / delta + 2);
+  return 60 * ((r - g) / delta + 4);
+}
+
+const MIN_SLIDER_COLOR = '#6B6B72';
+const MAX_SLIDER_COLOR = '#FFFFFF';
+const DEFAULT_TABLE_COLOR = MIN_SLIDER_COLOR;
+const COLOR_SLIDER_MAX = 1000;
+const EDGE_TINT_RANGE = 80;
+
+function mixHexColors(from: string, to: string, amount: number): string {
+  const clamp = Math.max(0, Math.min(1, amount));
+  const a = from.replace('#', '');
+  const b = to.replace('#', '');
+  const channels = [0, 2, 4].map((index) => {
+    const start = parseInt(a.slice(index, index + 2), 16);
+    const end = parseInt(b.slice(index, index + 2), 16);
+    return Math.round(start + (end - start) * clamp).toString(16).padStart(2, '0').toUpperCase();
+  });
+  return `#${channels.join('')}`;
+}
+
+function sliderToColor(value: number): string {
+  const clamped = Math.max(0, Math.min(COLOR_SLIDER_MAX, value));
+  if (clamped <= EDGE_TINT_RANGE) {
+    return mixHexColors(MIN_SLIDER_COLOR, DEFAULT_TABLE_COLOR, clamped / EDGE_TINT_RANGE);
+  }
+  if (clamped >= COLOR_SLIDER_MAX - EDGE_TINT_RANGE) {
+    return mixHexColors('#BF5AF2', MAX_SLIDER_COLOR, (clamped - (COLOR_SLIDER_MAX - EDGE_TINT_RANGE)) / EDGE_TINT_RANGE);
+  }
+  const hue = ((clamped - EDGE_TINT_RANGE) / (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2)) * 360;
+  return hueToHex(hue);
+}
+
+function colorToSlider(hex: string): number {
+  const normalized = hex.replace('#', '').toUpperCase();
+  if (normalized.length !== 6) return EDGE_TINT_RANGE;
+  if (normalized === MIN_SLIDER_COLOR.replace('#', '')) return 0;
+  if (normalized === MAX_SLIDER_COLOR.replace('#', '')) return COLOR_SLIDER_MAX;
+  const hue = hexToHue(hex);
+  return Math.round(EDGE_TINT_RANGE + (hue / 360) * (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2));
+}
+
+const COLOR_BAR_STOPS = [
+  0,
+  EDGE_TINT_RANGE,
+  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.16,
+  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.33,
+  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.5,
+  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.66,
+  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.83,
+  COLOR_SLIDER_MAX - EDGE_TINT_RANGE,
+  COLOR_SLIDER_MAX,
+];
+
+const CHROMATIC_BAR = COLOR_BAR_STOPS.map((stop) => sliderToColor(stop));
+const CHROMATIC_LOCATIONS = COLOR_BAR_STOPS.map((stop) => stop / COLOR_SLIDER_MAX);
+
+function CreateModal({ visible, onClose, onSubmit, initialTable }: {
   visible: boolean;
   onClose: () => void;
-  onCreate: (name: string, color: string, cols: number, rows: number) => void;
+  onSubmit: (name: string, color: string, cols: number, rows: number) => void;
+  initialTable?: UserTable | null;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState('');
   const [cols, setCols] = useState(4);
-  const [rows, setRows] = useState(5);
-  const [accent, setAccent] = useState(ACCENT_COLORS[1]);
+  const [rows, setRows] = useState(4);
+  const [accentSliderValue, setAccentSliderValue] = useState(() => colorToSlider(DEFAULT_TABLE_COLOR));
+  const [isMounted, setIsMounted] = useState(visible);
+  const backdropProgress = React.useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const sheetProgress = React.useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const accent = useMemo(() => sliderToColor(accentSliderValue), [accentSliderValue]);
+  const isEditing = Boolean(initialTable);
 
   const reset = useCallback(() => {
-    setName('');
-    setCols(4);
-    setRows(5);
-    setAccent(ACCENT_COLORS[1]);
-  }, []);
+    setName(initialTable?.name ?? '');
+    setCols(getInitialModalCols(initialTable));
+    setRows(getInitialModalRows(initialTable));
+    setAccentSliderValue(colorToSlider(initialTable?.color ?? DEFAULT_TABLE_COLOR));
+  }, [initialTable]);
 
   const close = useCallback(() => {
-    reset();
     onClose();
-  }, [onClose, reset]);
+  }, [onClose]);
 
   const canCreate = name.trim().length > 0;
 
+  useEffect(() => {
+    backdropProgress.stopAnimation();
+    sheetProgress.stopAnimation();
+
+    if (visible) {
+      reset();
+      setIsMounted(true);
+      backdropProgress.setValue(0);
+      sheetProgress.setValue(0);
+      Animated.parallel([
+        Animated.timing(backdropProgress, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.spring(sheetProgress, {
+          toValue: 1,
+          damping: 22,
+          mass: 0.92,
+          stiffness: 210,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
+    }
+
+    if (!isMounted) return;
+
+    Animated.parallel([
+      Animated.timing(backdropProgress, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(sheetProgress, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.bezier(0.4, 0, 1, 1),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) setIsMounted(false);
+    });
+  }, [backdropProgress, isMounted, reset, sheetProgress, visible]);
+
+  const backdropOpacity = backdropProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const sheetTranslateY = sheetProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [44, 0],
+  });
+  const sheetOpacity = sheetProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.74, 1],
+  });
+  if (!isMounted) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+    <Modal visible transparent animationType="none" onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <View style={create.backdrop}>
-          <View style={create.sheet}>
+        <Animated.View style={[create.backdrop, { opacity: backdropOpacity }]}>
+          <Animated.View style={[create.sheet, { opacity: sheetOpacity, transform: [{ translateY: sheetTranslateY }] }]}>
             <View style={create.handle} />
             <View style={create.header}>
               <TouchableOpacity onPress={close}><Text style={create.cancel}>{t('common.cancel')}</Text></TouchableOpacity>
-              <Text style={create.title}>{t('tablesUi.newTableTitle')}</Text>
+              <Text style={create.title}>{isEditing ? 'Modifica tabella' : t('tablesUi.newTableTitle')}</Text>
               <TouchableOpacity
                 disabled={!canCreate}
                 onPress={() => {
                   if (!canCreate) return;
-                  onCreate(name.trim(), accent, cols, rows);
-                  reset();
+                  onSubmit(name.trim(), accent, cols, rows);
                   onClose();
                 }}
               >
-                <Text style={[create.done, !canCreate && { opacity: 0.35 }]}>{t('tablesUi.create')}</Text>
+                <Text style={[create.done, !canCreate && { opacity: 0.35 }]}>{isEditing ? t('common.save') : t('tablesUi.create')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -317,30 +554,29 @@ function CreateModal({ visible, onClose, onCreate }: {
               />
 
               <Text style={create.label}>{t('tablesUi.colorLabel')}</Text>
-              <View style={create.colors}>
-                {ACCENT_COLORS.map((color) => (
-                  <TouchableOpacity key={color} onPress={() => setAccent(color)}>
-                    <View style={[create.swatch, { backgroundColor: color }, accent === color && create.swatchSelected]} />
-                  </TouchableOpacity>
-                ))}
+              <View style={create.colorSliderWrap}>
+                <LinearGradient
+                  colors={CHROMATIC_BAR}
+                  locations={CHROMATIC_LOCATIONS}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={create.colorTrack}
+                />
+                <Slider
+                  style={create.colorSlider}
+                  minimumValue={0}
+                  maximumValue={COLOR_SLIDER_MAX}
+                  value={accentSliderValue}
+                  minimumTrackTintColor="transparent"
+                  maximumTrackTintColor="transparent"
+                  thumbTintColor={accent}
+                  onValueChange={setAccentSliderValue}
+                />
               </View>
 
-              <Text style={create.label}>{t('tablesUi.sizeLabel')}</Text>
+              <Text style={[create.label, create.sizeLabel]}>{t('tablesUi.sizeLabel')}</Text>
               <View style={create.sizeRow}>
-                <View style={create.sizeCard}>
-                  <Text style={create.sizeText}>{t('tablesUi.columns')}</Text>
-                  <View style={create.stepper}>
-                    <TouchableOpacity style={create.stepButton} onPress={() => setCols((value) => Math.max(1, value - 1))}>
-                      <Text style={create.stepLabel}>−</Text>
-                    </TouchableOpacity>
-                    <Text style={create.value}>{cols}</Text>
-                    <TouchableOpacity style={create.stepButton} onPress={() => setCols((value) => Math.min(10, value + 1))}>
-                      <Text style={create.stepLabel}>+</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <View style={create.sizeCard}>
+                <View style={[create.sizeCard, create.sizeCardLeft, { backgroundColor: accent }]}>
                   <Text style={create.sizeText}>{t('tablesUi.rowsLabel')}</Text>
                   <View style={create.stepper}>
                     <TouchableOpacity style={create.stepButton} onPress={() => setRows((value) => Math.max(1, value - 1))}>
@@ -352,10 +588,23 @@ function CreateModal({ visible, onClose, onCreate }: {
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                <View style={[create.sizeCard, create.sizeCardRight, { backgroundColor: accent }]}>
+                  <Text style={create.sizeText}>{t('tablesUi.columns')}</Text>
+                  <View style={create.stepper}>
+                    <TouchableOpacity style={create.stepButton} onPress={() => setCols((value) => Math.max(1, value - 1))}>
+                      <Text style={create.stepLabel}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={create.value}>{cols}</Text>
+                    <TouchableOpacity style={create.stepButton} onPress={() => setCols((value) => Math.min(10, value + 1))}>
+                      <Text style={create.stepLabel}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             </ScrollView>
-          </View>
-        </View>
+          </Animated.View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -369,18 +618,40 @@ const create = StyleSheet.create({
   title: { color: C.text, fontSize: 17, fontWeight: '700' },
   cancel: { color: C.muted, fontSize: 17 },
   done: { color: SKETCH_PLANNER.highlight, fontSize: 17, fontWeight: '700' },
-  label: { color: C.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.7, marginTop: 18, marginBottom: 8 },
+  label: { color: C.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.7, marginTop: 18, marginBottom: 4 },
+  sizeLabel: { marginTop: 10 },
   input: { backgroundColor: C.surfaceAlt, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 16 },
-  colors: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  swatch: { width: 32, height: 32, borderRadius: 16 },
-  swatchSelected: { borderWidth: 2.5, borderColor: '#FFFFFF' },
-  sizeRow: { flexDirection: 'row', gap: 12 },
+  colorSliderWrap: {
+    justifyContent: 'center',
+    height: 36,
+    marginHorizontal: 12,
+  },
+  colorTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 12,
+    borderRadius: 999,
+  },
+  colorSlider: {
+    height: 36,
+  },
+  sizeRow: { flexDirection: 'row', gap: 0 },
   sizeCard: { flex: 1, backgroundColor: C.surfaceAlt, borderRadius: 14, padding: 14, alignItems: 'center', gap: 10 },
-  sizeText: { color: C.muted, fontSize: 13, fontWeight: '600' },
+  sizeCardLeft: {
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    marginRight: -1,
+  },
+  sizeCardRight: {
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+  },
+  sizeText: { color: '#000000', fontSize: 13, fontWeight: '700' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  stepButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#2D2D31', alignItems: 'center', justifyContent: 'center' },
-  stepLabel: { color: C.text, fontSize: 20, fontWeight: '700', lineHeight: 22 },
-  value: { color: C.text, fontSize: 22, fontWeight: '800', minWidth: 28, textAlign: 'center' },
+  stepButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'center', justifyContent: 'center' },
+  stepLabel: { color: '#FFFFFF', fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  value: { color: '#000000', fontSize: 22, fontWeight: '800', minWidth: 28, textAlign: 'center' },
 });
 
 function SpreadsheetView({
@@ -397,6 +668,7 @@ function SpreadsheetView({
   todayYmd: string;
 }) {
   const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const columnLabels = useMemo(() => getColumnLabels(table), [table]);
   const [labels, setLabels] = useState(columnLabels);
   const [checked, setChecked] = useState(() => normalizeChecked(table));
@@ -517,22 +789,6 @@ function SpreadsheetView({
                 color={C.text}
               />
             </TouchableOpacity>
-            <TouchableOpacity style={[sheet.iconButton, checked.length <= 1 && sheet.iconButtonDisabled]} onPress={removeRow} disabled={checked.length <= 1}>
-              <Ionicons name="remove" size={18} color={C.text} />
-              <Text style={sheet.iconLabel}>R</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={sheet.iconButton} onPress={addRow}>
-              <Ionicons name="add" size={18} color={C.text} />
-              <Text style={sheet.iconLabel}>R</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[sheet.iconButton, labels.length <= 1 && sheet.iconButtonDisabled]} onPress={removeColumn} disabled={labels.length <= 1}>
-              <Ionicons name="remove" size={18} color={C.text} />
-              <Text style={sheet.iconLabel}>C</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[sheet.iconButton, labels.length >= 10 && sheet.iconButtonDisabled]} onPress={addColumn} disabled={labels.length >= 10}>
-              <Ionicons name="add" size={18} color={C.text} />
-              <Text style={sheet.iconLabel}>C</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -568,7 +824,13 @@ function SpreadsheetView({
               ))}
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={sheet.rowsContent}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[
+                sheet.rowsContent,
+                { paddingBottom: 118 + insets.bottom },
+              ]}
+            >
               {checked.map((row, rowIndex) => (
                 <View key={`row-${rowIndex}`} style={[sheet.bodyRow, { gap: gridGap }]}>
                   <View style={[sheet.rowHeader, { width: rowHeaderWidth, height: cellSize, backgroundColor: table.color }]}>
@@ -586,6 +848,49 @@ function SpreadsheetView({
                 </View>
               ))}
             </ScrollView>
+          </View>
+        </View>
+
+        <View
+          pointerEvents="box-none"
+          style={[
+            sheet.floatingActionsWrap,
+            { right: 14, bottom: 6 },
+          ]}
+        >
+          <View style={sheet.floatingActions}>
+            <View style={sheet.rowActions}>
+              <TouchableOpacity style={sheet.floatingButton} onPress={addRow}>
+                <Ionicons name="add" size={18} color={C.text} />
+                <Text style={sheet.floatingButtonLabel}>Riga</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[sheet.floatingButton, checked.length <= 1 && sheet.floatingButtonDisabled]}
+                onPress={removeRow}
+                disabled={checked.length <= 1}
+              >
+                <Ionicons name="remove" size={18} color={C.text} />
+                <Text style={sheet.floatingButtonLabel}>Riga</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={sheet.columnActions}>
+              <TouchableOpacity
+                style={[sheet.floatingButton, labels.length >= 10 && sheet.floatingButtonDisabled]}
+                onPress={addColumn}
+                disabled={labels.length >= 10}
+              >
+                <Ionicons name="add" size={18} color={C.text} />
+                <Text style={sheet.floatingButtonLabel}>Col</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[sheet.floatingButton, labels.length <= 1 && sheet.floatingButtonDisabled]}
+                onPress={removeColumn}
+                disabled={labels.length <= 1}
+              >
+                <Ionicons name="remove" size={18} color={C.text} />
+                <Text style={sheet.floatingButtonLabel}>Col</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -698,6 +1003,46 @@ const sheet = StyleSheet.create({
   cellOn: {
     backgroundColor: C.cellOn,
   },
+  floatingActionsWrap: {
+    position: 'absolute',
+  },
+  floatingActions: {
+    width: 232,
+    height: 124,
+  },
+  rowActions: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    gap: 8,
+    alignItems: 'flex-end',
+  },
+  columnActions: {
+    position: 'absolute',
+    right: 80,
+    bottom: 0,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  floatingButton: {
+    width: 72,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: 'rgba(10,10,10,0.94)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  floatingButtonDisabled: {
+    opacity: 0.35,
+  },
+  floatingButtonLabel: {
+    color: C.text,
+    fontSize: 11,
+    fontWeight: '700',
+  },
 });
 
 export default function TabelleView({
@@ -715,13 +1060,21 @@ export default function TabelleView({
   const { tables, addTable, updateTable, deleteTable } = useHabits();
   const { width: screenWidth } = useWindowDimensions();
   const [showCreate, setShowCreate] = useState(false);
+  const [editingTable, setEditingTable] = useState<UserTable | null>(null);
   const [openTable, setOpenTable] = useState<UserTable | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedTableIds, setSelectedTableIds] = useState<Set<string>>(new Set());
   const [containerWidth, setContainerWidth] = useState(screenWidth);
 
   const createTarget = useMemo(
     () => getCreateTarget(activeFolder, todayYmd, tomorrowYmd, yesterdayYmd),
     [activeFolder, todayYmd, tomorrowYmd, yesterdayYmd]
   );
+  const filteredTables = useMemo(() => {
+    if (!isRealFolder(activeFolder)) return tables;
+    const normalizedFolder = activeFolder.trim();
+    return tables.filter((table) => (table.folder ?? '').trim() === normalizedFolder);
+  }, [activeFolder, tables]);
   const cardWidth = useMemo(() => {
     const availableWidth = containerWidth > 0 ? containerWidth : screenWidth;
     const horizontalPadding = 8;
@@ -737,43 +1090,143 @@ export default function TabelleView({
     }
   }, [containerWidth]);
 
-  const handleDelete = useCallback((table: UserTable) => {
-    Alert.alert(t('index.tableDeleteTitle'), t('index.tableDeleteMessage', { name: table.name }), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('common.delete'), style: 'destructive', onPress: () => deleteTable(table.id) },
-    ]);
-  }, [deleteTable, t]);
+  const toggleSelectedTable = useCallback((tableId: string) => {
+    setSelectedTableIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tableId)) next.delete(tableId);
+      else next.add(tableId);
+      return next;
+    });
+  }, []);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedTableIds(new Set());
+  }, []);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedTableIds.size === 0) return;
+    const idsToDelete = Array.from(selectedTableIds);
+    Alert.alert(
+      t('index.tableDeleteTitle'),
+      idsToDelete.length === 1 ? 'Eliminare la tabella selezionata?' : `Eliminare ${idsToDelete.length} tabelle selezionate?`,
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: () => {
+            idsToDelete.forEach((id) => deleteTable(id));
+            exitSelectionMode();
+          },
+        },
+      ],
+    );
+  }, [deleteTable, exitSelectionMode, selectedTableIds, t]);
+
+  const openEditModal = useCallback((table: UserTable) => {
+    setEditingTable(table);
+    setShowCreate(true);
+  }, []);
+
+  const closeEditor = useCallback(() => {
+    setShowCreate(false);
+    setEditingTable(null);
+  }, []);
+
+  const handleCardPress = useCallback((table: UserTable) => {
+    if (selectionMode) {
+      toggleSelectedTable(table.id);
+      return;
+    }
+    setOpenTable(table);
+  }, [selectionMode, toggleSelectedTable]);
+
+  const handleCardLongPress = useCallback((table: UserTable) => {
+    if (selectionMode) {
+      toggleSelectedTable(table.id);
+      return;
+    }
+    openEditModal(table);
+  }, [openEditModal, selectionMode, toggleSelectedTable]);
 
   return (
     <View style={main.container} onLayout={handleContainerLayout}>
       <View style={main.toolbar}>
-        <Text style={main.toolbarSub}>
-          {tables.length > 0
-            ? tables.length === 1
-              ? t('tablesUi.countOne')
-              : t('tablesUi.countMany', { count: tables.length })
-            : ''}
-        </Text>
+        <View style={main.toolbarRow}>
+          {selectionMode ? (
+            <Text style={main.toolbarSub}>
+              {selectedTableIds.size > 0
+                ? `${selectedTableIds.size} selezionate`
+                : 'Seleziona tabelle'}
+            </Text>
+          ) : (
+            <View style={main.toolbarSubPlaceholder} />
+          )}
+          <View style={main.toolbarActions}>
+            {selectionMode ? (
+              <View style={main.selectionActions}>
+                <TouchableOpacity activeOpacity={0.86} onPress={exitSelectionMode}>
+                  <GlassView
+                    glassEffectStyle={GLASS_EFFECT}
+                    colorScheme="dark"
+                    isInteractive
+                    style={[main.glassButton, main.glassIconButton, main.selectionTopButton]}
+                  >
+                    <Ionicons name="close-outline" size={16} color="#FFFFFF" />
+                  </GlassView>
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.86} onPress={handleDeleteSelected} disabled={selectedTableIds.size === 0}>
+                  <GlassView
+                    glassEffectStyle={GLASS_EFFECT}
+                    colorScheme="dark"
+                    isInteractive
+                    style={[main.glassButton, main.glassIconButton, selectedTableIds.size === 0 && main.glassButtonDisabled]}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+                  </GlassView>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity activeOpacity={0.86} onPress={() => setSelectionMode(true)}>
+                <GlassView
+                  glassEffectStyle={GLASS_EFFECT}
+                  colorScheme="dark"
+                  isInteractive
+                  style={[main.glassButton, main.glassSelectButton, main.glassButtonRaised]}
+                >
+                  <Text style={main.glassSelectText}>Seleziona</Text>
+                </GlassView>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
       </View>
 
-      {tables.length === 0 ? (
+      {filteredTables.length === 0 ? (
         <View style={main.empty}>
           <View style={main.emptyIcon}><Ionicons name="grid-outline" size={44} color="rgba(255,255,255,0.22)" /></View>
           <Text style={main.emptyTitle}>{t('tablesUi.emptyTitle')}</Text>
-          <Text style={main.emptyHint}>{t('tablesUi.emptyHint')}</Text>
+          <Text style={main.emptyHint}>
+            {isRealFolder(activeFolder)
+              ? `${t('tablesUi.emptyHint')} (${activeFolder})`
+              : t('tablesUi.emptyHint')}
+          </Text>
           <TouchableOpacity style={main.emptyButton} onPress={() => setShowCreate(true)}>
             <Text style={main.emptyButtonText}>{t('tablesUi.createTable')}</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={main.grid}>
-          {tables.map((table) => (
+          {filteredTables.map((table) => (
             <TableCard
               key={table.id}
               table={table}
               cardWidth={cardWidth}
-              onPress={() => setOpenTable(table)}
-              onLongPress={() => handleDelete(table)}
+              selected={selectedTableIds.has(table.id)}
+              selectionMode={selectionMode}
+              onPress={() => handleCardPress(table)}
+              onLongPress={() => handleCardLongPress(table)}
             />
           ))}
         </ScrollView>
@@ -781,8 +1234,16 @@ export default function TabelleView({
 
       <CreateModal
         visible={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreate={(name, color, cols, rows) => addTable(name, color, cols, rows)}
+        initialTable={editingTable}
+        onClose={closeEditor}
+        onSubmit={(name, color, cols, rows) => {
+          if (editingTable) {
+            updateTable(editingTable.id, resizeTablePatch(editingTable, name, color, cols, rows));
+            setOpenTable((current) => (current?.id === editingTable.id ? { ...current, ...resizeTablePatch(editingTable, name, color, cols, rows) } : current));
+            return;
+          }
+          addTable(name, color, cols, rows, createTarget.folder);
+        }}
       />
 
       {openTable ? (
@@ -798,22 +1259,84 @@ export default function TabelleView({
         />
       ) : null}
 
-      <View style={main.fabLayer} pointerEvents="box-none">
-        <TouchableOpacity style={main.fabShell} onPress={() => setShowCreate(true)}>
-          <BlurView intensity={80} tint="systemChromeMaterialDark" style={main.fab}>
-            <Ionicons name="add" size={40} color={SKETCH_PLANNER.highlight} />
-          </BlurView>
-        </TouchableOpacity>
-      </View>
+      {!selectionMode ? (
+        <View style={main.fabLayer} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[indexStyles.fab, main.fab]}
+            onPress={() => {
+              setEditingTable(null);
+              setShowCreate(true);
+            }}
+          >
+            <Ionicons name="add" size={28} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const main = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.canvas },
-  toolbar: { paddingHorizontal: 4, paddingVertical: 4 },
-  toolbarSub: { color: C.muted, fontSize: 13 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 80 },
+  toolbar: { paddingHorizontal: 4, paddingTop: 4, paddingBottom: 8 },
+  toolbarRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  toolbarSub: { color: C.muted, fontSize: 13, marginTop: 8 },
+  toolbarSubPlaceholder: { flex: 1 },
+  toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  selectionActions: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+  },
+  glassButton: {
+    minHeight: 34,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  glassIconButton: {
+    width: 38,
+    minHeight: 38,
+    paddingHorizontal: 0,
+    borderRadius: 19,
+    justifyContent: 'center',
+  },
+  glassSelectButton: {
+    minHeight: 36,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.16)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  glassSelectText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  glassButtonRaised: {
+    marginTop: -53,
+  },
+  selectionTopButton: {
+    marginBottom: 2,
+  },
+  glassButtonDisabled: {
+    opacity: 0.4,
+  },
+  glassButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 80, marginTop: -20 },
   emptyIcon: {
     width: 80,
     height: 80,
@@ -831,16 +1354,9 @@ const main = StyleSheet.create({
   emptyButtonText: { color: '#000000', fontSize: 16, fontWeight: '700' },
   grid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 120, alignContent: 'flex-start' },
   fabLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  fabShell: {
-    position: 'absolute',
-    right: 20,
-    bottom: 98,
-    width: 83,
-    height: 83,
-    borderRadius: 42,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.2)',
+  fab: {
+    right: 10,
+    backgroundColor: '#16a34a',
+    shadowColor: '#16a34a',
   },
-  fab: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 });

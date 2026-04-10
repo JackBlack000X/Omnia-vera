@@ -108,10 +108,17 @@ export default function IndexScreen() {
   const insets = useSafeAreaInsets();
   const { duplicateHabit, habits: allHabits, history, setHabits, getDay } = useHabits();
   const [activeSection, setActiveSection] = useState<'tasks' | 'tabelle'>('tasks');
+  const [hasMountedTables, setHasMountedTables] = useState(false);
   const [smartTaskPrompt, setSmartTaskPrompt] = useState<SmartTaskPromptState | null>(null);
   const [dismissedSmartTaskIds, setDismissedSmartTaskIds] = useState<string[]>([]);
   const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
   const logicalTodayHistory = history[logicalTodayYmd];
+
+  React.useEffect(() => {
+    if (activeSection === 'tabelle' && !hasMountedTables) {
+      setHasMountedTables(true);
+    }
+  }, [activeSection, hasMountedTables]);
 
   React.useEffect(() => {
     setDismissedSmartTaskIds([]);
@@ -948,43 +955,72 @@ export default function IndexScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-      {activeTheme !== 'futuristic' && (
-        <View style={styles.header}>
-          <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-end' }}>
-            <TouchableOpacity onPress={() => setActiveSection('tasks')}>
-              <Text style={[styles.title, activeSection !== 'tasks' && { color: '#888' }]}>{t('index.tasks')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setActiveSection('tabelle')}>
-              <Text style={[styles.title, activeSection !== 'tabelle' && { color: '#888' }]}>{t('index.tables')}</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.progressText, activeSection !== 'tasks' && { opacity: 0 }]}>{stats.pct}%</Text>
-        </View>
-      )}
-
-      {activeTheme === 'futuristic' && (
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16, marginTop: 55, paddingHorizontal: 16, paddingBottom: 6 }}>
+      <View
+        style={[
+          styles.header,
+          activeTheme === 'futuristic' && {
+            marginTop: 55,
+            paddingHorizontal: 6,
+            paddingBottom: 6,
+            marginBottom: 8,
+          },
+        ]}
+      >
+        <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-end' }}>
           <TouchableOpacity onPress={() => setActiveSection('tasks')}>
-            <Text style={[styles.progressText, activeSection !== 'tasks' && { opacity: 0.3 }]}>{stats.pct}%</Text>
+            <Text
+              style={[
+                styles.title,
+                activeTheme === 'futuristic' && {
+                  fontSize: 18,
+                  letterSpacing: 1,
+                  fontFamily: 'BagelFatOne_400Regular',
+                },
+                activeSection !== 'tasks' && { color: '#888', opacity: 0.55 },
+              ]}
+            >
+              {activeTheme === 'futuristic' ? t('index.tasks').toUpperCase() : t('index.tasks')}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setActiveSection('tabelle')}>
-            <Text style={[styles.progressText, { fontSize: 18, letterSpacing: 1 }, activeSection !== 'tabelle' && { opacity: 0.3 }]}>
-              {t('index.tables').toUpperCase()}
+            <Text
+              style={[
+                styles.title,
+                activeTheme === 'futuristic' && {
+                  fontSize: 18,
+                  letterSpacing: 1,
+                  fontFamily: 'BagelFatOne_400Regular',
+                },
+                activeSection !== 'tabelle' && { color: '#888', opacity: 0.55 },
+              ]}
+            >
+              {activeTheme === 'futuristic' ? t('index.tables').toUpperCase() : t('index.tables')}
             </Text>
           </TouchableOpacity>
         </View>
+        <Text
+          style={[
+            styles.progressText,
+            activeTheme === 'futuristic' && { fontSize: 22, letterSpacing: 1, marginBottom: 0 },
+            activeSection !== 'tasks' && { opacity: 0 },
+          ]}
+        >
+          {stats.pct}%
+        </Text>
+      </View>
+
+      {(hasMountedTables || activeSection === 'tabelle') && (
+        <View style={{ flex: 1, display: activeSection === 'tabelle' ? 'flex' : 'none' }}>
+          <TabelleView
+            activeFolder={activeFolder}
+            todayYmd={menuToday}
+            tomorrowYmd={menuTomorrow}
+            yesterdayYmd={menuYesterday}
+          />
+        </View>
       )}
 
-      {activeSection === 'tabelle' && (
-        <TabelleView
-          activeFolder={activeFolder}
-          todayYmd={menuToday}
-          tomorrowYmd={menuTomorrow}
-          yesterdayYmd={menuYesterday}
-        />
-      )}
-
-      {activeSection === 'tasks' && <><View style={styles.tasksProgressAndFoldersWrap}>
+      {activeSection === 'tasks' && <View style={{ flex: 1 }}><View style={styles.tasksProgressAndFoldersWrap}>
         <View style={styles.progressSection}>
         <View style={styles.progressBarContainer}>
           <View style={[
@@ -1559,7 +1595,7 @@ export default function IndexScreen() {
           </TouchableOpacity>
         </Link>
       )}
-      </>}
+      </View>}
 
       <FolderModals
         createFolderVisible={createFolderVisible}
