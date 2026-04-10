@@ -50,6 +50,7 @@ const GRID = {
 } as const;
 
 const MAX_TABLE_COLUMNS = 10;
+const TABLE_OVERVIEW_CARD_HEIGHT = 152;
 
 function getAdaptiveGap(columnCount: number): number {
   return GRID.gap;
@@ -73,6 +74,8 @@ type TableSortMode =
   | 'createdAtAsc'
   | 'alphabeticalAsc'
   | 'alphabeticalDesc'
+  | 'completedDesc'
+  | 'completedAsc'
   | 'sizeDesc'
   | 'sizeAsc';
 
@@ -133,11 +136,29 @@ function getTableSize(table: UserTable): number {
   return rows * cols;
 }
 
+function getTableCompletedCount(table: UserTable): number {
+  return normalizeChecked(table).reduce(
+    (sum, row) => sum + row.filter(Boolean).length,
+    0
+  );
+}
+
+function getTableCompletionRatio(table: UserTable): number {
+  const total = Math.max(1, getTableSize(table));
+  return getTableCompletedCount(table) / total;
+}
+
+function getTableCompletionPercentLabel(table: UserTable): string {
+  return `${Math.round(getTableCompletionRatio(table) * 100)}%`;
+}
+
 const SORT_OPTIONS: { mode: TableSortMode; title: string; subtitle?: string }[] = [
   { mode: 'createdAtDesc', title: 'Più recenti', subtitle: 'Data di aggiunta' },
   { mode: 'createdAtAsc', title: 'Meno recenti', subtitle: 'Data di aggiunta' },
   { mode: 'alphabeticalAsc', title: 'Nome A-Z' },
   { mode: 'alphabeticalDesc', title: 'Nome Z-A' },
+  { mode: 'completedDesc', title: 'Più completate', subtitle: 'Percentuale completamento' },
+  { mode: 'completedAsc', title: 'Meno completate', subtitle: 'Percentuale completamento' },
   { mode: 'sizeDesc', title: 'Più grandi', subtitle: 'Dimensione tabella' },
   { mode: 'sizeAsc', title: 'Più piccole', subtitle: 'Dimensione tabella' },
 ];
@@ -258,6 +279,7 @@ function TableCard({
   const cols = getColumnLabels(table).length;
   const rows = table.cells.length;
   const previewWidth = Math.max(0, cardWidth - 24);
+  const completionPercent = getTableCompletionPercentLabel(table);
   return (
     <View style={[cards.cardWrap, { width: cardWidth }, selected && cards.cardWrapSelected]}>
       {selected ? <View pointerEvents="none" style={cards.selectionOutline} /> : null}
@@ -282,7 +304,10 @@ function TableCard({
         </View>
         <View style={cards.footer}>
           <Text style={cards.name} numberOfLines={1}>{table.name}</Text>
-          <Text style={cards.meta} numberOfLines={1}>{rows}/{cols}</Text>
+          <View style={cards.metaRow}>
+            <Text style={cards.meta} numberOfLines={1}>{rows}-{cols}</Text>
+            <Text style={[cards.meta, cards.completionMeta]} numberOfLines={1}>{completionPercent}</Text>
+          </View>
         </View>
       </TouchableOpacity>
     </View>
@@ -333,6 +358,7 @@ const cards = StyleSheet.create({
     borderColor: C.border,
     borderTopWidth: 4,
     overflow: 'hidden',
+    height: TABLE_OVERVIEW_CARD_HEIGHT,
   },
   cardSelected: {
   },
@@ -366,7 +392,7 @@ const cards = StyleSheet.create({
     borderColor: '#16a34a',
   },
   preview: {
-    minHeight: 92,
+    flex: 1,
     backgroundColor: C.canvas,
     justifyContent: 'center',
     alignItems: 'center',
@@ -390,6 +416,17 @@ const cards = StyleSheet.create({
   meta: {
     color: C.text,
     fontSize: 12,
+    flexShrink: 0,
+  },
+  completionMeta: {
+    color: C.cellOn,
+    fontFamily: 'BagelFatOne_400Regular',
+    fontSize: 13,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     flexShrink: 0,
   },
 });
@@ -1379,6 +1416,18 @@ export default function TabelleView({
       }
       if (sortMode === 'alphabeticalDesc') {
         return b.name.localeCompare(a.name, 'it', { sensitivity: 'base' }) || b.id.localeCompare(a.id);
+      }
+      if (sortMode === 'completedDesc') {
+        return getTableCompletionRatio(b) - getTableCompletionRatio(a)
+          || getTableCompletedCount(b) - getTableCompletedCount(a)
+          || b.name.localeCompare(a.name, 'it', { sensitivity: 'base' })
+          || b.id.localeCompare(a.id);
+      }
+      if (sortMode === 'completedAsc') {
+        return getTableCompletionRatio(a) - getTableCompletionRatio(b)
+          || getTableCompletedCount(a) - getTableCompletedCount(b)
+          || a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+          || b.id.localeCompare(a.id);
       }
       if (sortMode === 'sizeDesc') {
         return getTableSize(b) - getTableSize(a)
