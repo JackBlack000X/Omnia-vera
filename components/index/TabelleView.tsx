@@ -4,6 +4,7 @@ import type { UserTable } from '@/lib/habits/schema';
 import { DOMANI_TOMORROW_KEY, IERI_YESTERDAY_KEY, OGGI_TODAY_KEY, TUTTE_KEY } from '@/lib/index/indexTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -302,14 +303,13 @@ function SpreadsheetView({
   onClose: () => void;
   createTarget: CreateTarget;
 }) {
-  const { addHabit, setHabits } = useHabits();
+  const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
   const columnLabels = useMemo(() => getColumnLabels(table), [table]);
   const [labels, setLabels] = useState(columnLabels);
   const [checked, setChecked] = useState(() => normalizeChecked(table));
   const [editingCol, setEditingCol] = useState<number | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
-  const [cellMenu, setCellMenu] = useState<{ rowIndex: number; colIndex: number; title: string } | null>(null);
   const gridGap = labels.length >= 9 ? 2 : labels.length >= 7 ? 3 : GRID.gap;
   const columnWidth = useMemo(() => {
     const horizontalPadding = 4;
@@ -390,54 +390,22 @@ function SpreadsheetView({
   const openCreateTask = useCallback((rowIndex: number, colIndex: number) => {
     const rowNumber = rowIndex + 1;
     const title = buildTaskTitle(labels[colIndex] ?? '', rowNumber, colIndex + 1);
-    setCellMenu({ rowIndex, colIndex, title });
-  }, [labels]);
-
-  const confirmCreateTask = useCallback(() => {
-    if (!cellMenu) return;
-    const newHabitId = addHabit(
-      cellMenu.title,
-      table.color,
-      createTarget.folder || undefined,
-      'task',
-      { habitFreq: 'single' }
-    );
-    if (createTarget.ymd) {
-      const targetYmd = createTarget.ymd;
-      setHabits((prev) => prev.map((habit) => {
-        if (habit.id !== newHabitId) return habit;
-        const overrides = { ...(habit.timeOverrides ?? {}), [targetYmd]: '00:00' as const };
-        const schedule = { ...(habit.schedule ?? { daysOfWeek: [] as number[] }) } as Habit['schedule'];
-        if (schedule) {
-          schedule.daysOfWeek = [];
-          schedule.monthDays = undefined;
-          schedule.yearMonth = undefined;
-          schedule.yearDay = undefined;
-          schedule.time = null;
-          schedule.endTime = null;
-          schedule.weeklyTimes = undefined;
-          schedule.monthlyTimes = undefined;
-        }
-        return {
-          ...habit,
-          timeOverrides: overrides,
-          schedule,
-          isAllDay: true,
-          habitFreq: 'single',
-        };
-      }));
-    }
-    setCellMenu(null);
-  }, [addHabit, cellMenu, createTarget.folder, createTarget.ymd, setHabits, table.color]);
-
-  const startColumnEditFromMenu = useCallback(() => {
-    if (!cellMenu) return;
-    const colIndex = cellMenu.colIndex;
-    setCellMenu(null);
     requestAnimationFrame(() => {
-      beginEditColumn(colIndex);
+      onClose();
+      requestAnimationFrame(() => {
+        router.push({
+          pathname: '/modal',
+          params: {
+            type: 'new',
+            folder: createTarget.folder,
+            ymd: createTarget.ymd,
+            initialText: title,
+            lockTitle: '1',
+          },
+        });
+      });
     });
-  }, [beginEditColumn, cellMenu]);
+  }, [createTarget.folder, createTarget.ymd, labels, onClose, router]);
 
   const showInfo = useCallback(() => {
     Alert.alert(
@@ -535,26 +503,6 @@ function SpreadsheetView({
           </View>
         </View>
 
-        <Modal visible={cellMenu != null} transparent animationType="fade" onRequestClose={() => setCellMenu(null)}>
-          <View style={sheet.createBackdrop}>
-            <View style={sheet.createCard}>
-              <Text style={sheet.createEyebrow}>Menu casella</Text>
-              <Text style={sheet.createTitle}>{cellMenu?.title ?? ''}</Text>
-              <Text style={sheet.createHint}>Il titolo resta fisso. Da qui puoi creare la task oppure modificare la colonna.</Text>
-              <View style={sheet.createActions}>
-                <TouchableOpacity style={[sheet.createButton, sheet.createButtonGhost]} onPress={startColumnEditFromMenu}>
-                  <Text style={sheet.createButtonGhostText}>Modifica</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[sheet.createButton, sheet.createButtonPrimary]} onPress={confirmCreateTask}>
-                  <Text style={sheet.createButtonPrimaryText}>Crea</Text>
-                </TouchableOpacity>
-              </View>
-              <TouchableOpacity style={sheet.createCancelRow} onPress={() => setCellMenu(null)}>
-                <Text style={sheet.createCancelText}>Annulla</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
       </View>
     </Modal>
   );
@@ -653,73 +601,6 @@ const sheet = StyleSheet.create({
   },
   cellOn: {
     backgroundColor: C.cellOn,
-  },
-  createBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  createCard: {
-    backgroundColor: '#111111',
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  createEyebrow: {
-    color: C.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  createTitle: {
-    color: C.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  createHint: {
-    color: C.muted,
-    fontSize: 13,
-    marginTop: 10,
-  },
-  createActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 18,
-  },
-  createCancelRow: {
-    marginTop: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createCancelText: {
-    color: C.muted,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  createButton: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  createButtonGhost: {
-    backgroundColor: '#1A1A1A',
-  },
-  createButtonGhostText: {
-    color: C.text,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  createButtonPrimary: {
-    backgroundColor: SKETCH_PLANNER.highlight,
-  },
-  createButtonPrimaryText: {
-    color: '#000000',
-    fontSize: 15,
-    fontWeight: '800',
   },
 });
 
