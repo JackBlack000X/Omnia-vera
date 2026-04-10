@@ -1,14 +1,15 @@
 import { SKETCH_PLANNER } from '@/constants/sketchPlanner';
-import { styles as indexStyles } from '@/components/index/indexStyles';
+import { PADDED_SCREEN_FAB_RIGHT, styles as indexStyles } from '@/components/index/indexStyles';
 import { TableTaskCreateOverlay } from '@/components/index/TableTaskCreateOverlay';
 import { useHabits } from '@/lib/habits/Provider';
 import type { UserTable } from '@/lib/habits/schema';
 import { DOMANI_TOMORROW_KEY, IERI_YESTERDAY_KEY, OGGI_TODAY_KEY, TUTTE_KEY } from '@/lib/index/indexTypes';
 import Slider from '@react-native-community/slider';
+import { MenuView } from '@react-native-menu/menu';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassView } from 'expo-glass-effect';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -67,6 +68,14 @@ type CreateTarget = {
   ymd?: string;
 };
 
+type TableSortMode =
+  | 'createdAtDesc'
+  | 'createdAtAsc'
+  | 'alphabeticalAsc'
+  | 'alphabeticalDesc'
+  | 'sizeDesc'
+  | 'sizeAsc';
+
 const GLASS_EFFECT = { style: 'regular', animate: true, animationDuration: 0.26 } as const;
 
 function normalizeChecked(table: UserTable): boolean[][] {
@@ -117,6 +126,21 @@ function getInitialModalRows(table?: UserTable | null): number {
   if (!table) return 4;
   return Math.max(1, Array.isArray(table.cells) ? table.cells.length : 4);
 }
+
+function getTableSize(table: UserTable): number {
+  const cols = getColumnLabels(table).length;
+  const rows = table.cells.length;
+  return rows * cols;
+}
+
+const SORT_OPTIONS: { mode: TableSortMode; title: string; subtitle?: string }[] = [
+  { mode: 'createdAtDesc', title: 'Più recenti', subtitle: 'Data di aggiunta' },
+  { mode: 'createdAtAsc', title: 'Meno recenti', subtitle: 'Data di aggiunta' },
+  { mode: 'alphabeticalAsc', title: 'Nome A-Z' },
+  { mode: 'alphabeticalDesc', title: 'Nome Z-A' },
+  { mode: 'sizeDesc', title: 'Più grandi', subtitle: 'Dimensione tabella' },
+  { mode: 'sizeAsc', title: 'Più piccole', subtitle: 'Dimensione tabella' },
+];
 
 function resizeTablePatch(table: UserTable, name: string, color: string, cols: number, rows: number): Partial<Omit<UserTable, 'id' | 'createdAt'>> {
   const safeCols = Math.max(1, Math.min(10, Math.floor(cols)));
@@ -206,6 +230,16 @@ function TableThumbnail({
   );
 }
 
+function SortDecreasingLinesIcon() {
+  return (
+    <View style={sortGlyph.root}>
+      <View style={[sortGlyph.line, sortGlyph.top]} />
+      <View style={[sortGlyph.line, sortGlyph.middle]} />
+      <View style={[sortGlyph.line, sortGlyph.bottom]} />
+    </View>
+  );
+}
+
 function TableCard({
   table,
   cardWidth,
@@ -225,30 +259,33 @@ function TableCard({
   const rows = table.cells.length;
   const previewWidth = Math.max(0, cardWidth - 24);
   return (
-    <TouchableOpacity
-      style={[
-        cards.card,
-        { width: cardWidth, borderTopColor: table.color },
-        selected && cards.cardSelected,
-      ]}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={450}
-      activeOpacity={0.82}
-    >
-      {selectionMode ? (
-        <View style={[cards.selectionBadge, selected && cards.selectionBadgeActive]}>
-          <Ionicons name={selected ? 'checkmark' : 'ellipse-outline'} size={14} color="#FFFFFF" />
+    <View style={[cards.cardWrap, { width: cardWidth }, selected && cards.cardWrapSelected]}>
+      {selected ? <View pointerEvents="none" style={cards.selectionOutline} /> : null}
+      <TouchableOpacity
+        style={[
+          cards.card,
+          { borderTopColor: table.color },
+          selected && cards.cardSelected,
+        ]}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={450}
+        activeOpacity={0.82}
+      >
+        {selectionMode ? (
+          <View style={[cards.selectionBadge, selected && cards.selectionBadgeActive]}>
+            <Ionicons name={selected ? 'checkmark' : 'ellipse-outline'} size={14} color="#FFFFFF" />
+          </View>
+        ) : null}
+        <View style={cards.preview}>
+          <TableThumbnail table={table} availableWidth={previewWidth} />
         </View>
-      ) : null}
-      <View style={cards.preview}>
-        <TableThumbnail table={table} availableWidth={previewWidth} />
-      </View>
-      <View style={cards.footer}>
-        <Text style={cards.name} numberOfLines={1}>{table.name}</Text>
-        <Text style={cards.meta} numberOfLines={1}>{rows}/{cols}</Text>
-      </View>
-    </TouchableOpacity>
+        <View style={cards.footer}>
+          <Text style={cards.name} numberOfLines={1}>{table.name}</Text>
+          <Text style={cards.meta} numberOfLines={1}>{rows}/{cols}</Text>
+        </View>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -279,6 +316,16 @@ const thumbnail = StyleSheet.create({
 });
 
 const cards = StyleSheet.create({
+  cardWrap: {
+    position: 'relative',
+    overflow: 'visible',
+  },
+  cardWrapSelected: {
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+  },
   card: {
     backgroundColor: C.surface,
     borderRadius: 14,
@@ -288,12 +335,17 @@ const cards = StyleSheet.create({
     overflow: 'hidden',
   },
   cardSelected: {
-    borderColor: '#FFFFFF',
+  },
+  selectionOutline: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    bottom: -2,
+    left: -2,
+    borderRadius: 16,
     borderWidth: 1.5,
-    shadowColor: '#FFFFFF',
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 0 },
+    borderColor: '#FFFFFF',
+    zIndex: 1,
   },
   selectionBadge: {
     position: 'absolute',
@@ -339,6 +391,30 @@ const cards = StyleSheet.create({
     color: C.text,
     fontSize: 12,
     flexShrink: 0,
+  },
+});
+
+const sortGlyph = StyleSheet.create({
+  root: {
+    width: 15,
+    height: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2.65,
+  },
+  line: {
+    height: 1,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
+  top: {
+    width: 14,
+  },
+  middle: {
+    width: 11.5,
+  },
+  bottom: {
+    width: 8.5,
   },
 });
 
@@ -675,6 +751,8 @@ function SpreadsheetView({
   const [editingCol, setEditingCol] = useState<number | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [taskModalTitle, setTaskModalTitle] = useState<string | null>(null);
+  const [actionsExpanded, setActionsExpanded] = useState(false);
+  const actionsProgress = useRef(new Animated.Value(0)).current;
   const gridGap = getAdaptiveGap(labels.length);
   const tenColumnGap = getAdaptiveGap(MAX_TABLE_COLUMNS);
   const rowHeaderWidth = useMemo(() => {
@@ -697,6 +775,11 @@ function SpreadsheetView({
     setEditingCol(null);
     setDraftLabel('');
   }, [columnLabels, table]);
+
+  useEffect(() => {
+    setActionsExpanded(false);
+    actionsProgress.setValue(0);
+  }, [actionsProgress, table.id]);
 
   const persist = useCallback((nextLabels: string[], nextChecked: boolean[][]) => {
     onUpdate({
@@ -771,6 +854,97 @@ function SpreadsheetView({
       'Tocca una casella per farla diventare verde. Tieni premuto su una casella per creare una task con titolo colonna + riga.'
     );
   }, []);
+
+  const setMenuExpanded = useCallback((nextExpanded: boolean) => {
+    setActionsExpanded(nextExpanded);
+    Animated.spring(actionsProgress, {
+      toValue: nextExpanded ? 1 : 0,
+      useNativeDriver: true,
+      damping: 18,
+      mass: 0.9,
+      stiffness: 210,
+    }).start();
+  }, [actionsProgress]);
+
+  const toggleMenu = useCallback(() => {
+    setMenuExpanded(!actionsExpanded);
+  }, [actionsExpanded, setMenuExpanded]);
+
+  const closeMenu = useCallback(() => {
+    setMenuExpanded(false);
+  }, [setMenuExpanded]);
+
+  const rowAddStyle = useMemo(() => ({
+    opacity: actionsProgress,
+    transform: [
+      {
+        translateY: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [132, 0],
+        }),
+      },
+      {
+        scale: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.72, 1],
+        }),
+      },
+    ],
+  }), [actionsProgress]);
+
+  const rowRemoveStyle = useMemo(() => ({
+    opacity: actionsProgress,
+    transform: [
+      {
+        translateY: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [66, 0],
+        }),
+      },
+      {
+        scale: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.8, 1],
+        }),
+      },
+    ],
+  }), [actionsProgress]);
+
+  const colAddStyle = useMemo(() => ({
+    opacity: actionsProgress,
+    transform: [
+      {
+        translateX: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [132, 0],
+        }),
+      },
+      {
+        scale: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.72, 1],
+        }),
+      },
+    ],
+  }), [actionsProgress]);
+
+  const colRemoveStyle = useMemo(() => ({
+    opacity: actionsProgress,
+    transform: [
+      {
+        translateX: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [66, 0],
+        }),
+      },
+      {
+        scale: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.8, 1],
+        }),
+      },
+    ],
+  }), [actionsProgress]);
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -855,42 +1029,118 @@ function SpreadsheetView({
           pointerEvents="box-none"
           style={[
             sheet.floatingActionsWrap,
-            { right: 14, bottom: 6 },
+            { right: 20, bottom: 60 },
           ]}
         >
           <View style={sheet.floatingActions}>
             <View style={sheet.rowActions}>
-              <TouchableOpacity style={sheet.floatingButton} onPress={addRow}>
-                <Ionicons name="add" size={18} color={C.text} />
-                <Text style={sheet.floatingButtonLabel}>Riga</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[sheet.floatingButton, checked.length <= 1 && sheet.floatingButtonDisabled]}
-                onPress={removeRow}
-                disabled={checked.length <= 1}
-              >
-                <Ionicons name="remove" size={18} color={C.text} />
-                <Text style={sheet.floatingButtonLabel}>Riga</Text>
-              </TouchableOpacity>
+              <Animated.View style={[sheet.floatingAnimatedButton, rowAddStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
+                <TouchableOpacity style={sheet.floatingTouch} onPress={addRow} activeOpacity={0.9}>
+                  <GlassView
+                    glassEffectStyle={GLASS_EFFECT}
+                    colorScheme="dark"
+                    isInteractive
+                    style={sheet.floatingButton}
+                  >
+                    <View style={sheet.floatingButtonContent}>
+                      <View style={sheet.floatingButtonSymbolWrap}>
+                        <Ionicons name="add" size={28} color={C.text} />
+                      </View>
+                    </View>
+                  </GlassView>
+                </TouchableOpacity>
+              </Animated.View>
+              <Animated.View style={[sheet.floatingAnimatedButton, rowRemoveStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
+                <TouchableOpacity
+                  style={sheet.floatingTouch}
+                  onPress={removeRow}
+                  disabled={checked.length <= 1}
+                  activeOpacity={0.9}
+                >
+                  <GlassView
+                    glassEffectStyle={GLASS_EFFECT}
+                    colorScheme="dark"
+                    isInteractive
+                    style={[sheet.floatingButton, checked.length <= 1 && sheet.floatingButtonDisabled]}
+                  >
+                    <View style={sheet.floatingButtonContent}>
+                      <View style={sheet.floatingButtonSymbolWrap}>
+                        <Ionicons name="remove" size={28} color={C.text} />
+                      </View>
+                    </View>
+                  </GlassView>
+                </TouchableOpacity>
+              </Animated.View>
             </View>
             <View style={sheet.columnActions}>
-              <TouchableOpacity
-                style={[sheet.floatingButton, labels.length >= 10 && sheet.floatingButtonDisabled]}
-                onPress={addColumn}
-                disabled={labels.length >= 10}
-              >
-                <Ionicons name="add" size={18} color={C.text} />
-                <Text style={sheet.floatingButtonLabel}>Col</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[sheet.floatingButton, labels.length <= 1 && sheet.floatingButtonDisabled]}
-                onPress={removeColumn}
-                disabled={labels.length <= 1}
-              >
-                <Ionicons name="remove" size={18} color={C.text} />
-                <Text style={sheet.floatingButtonLabel}>Col</Text>
-              </TouchableOpacity>
+              <Animated.View style={[sheet.floatingAnimatedButton, colAddStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
+                <TouchableOpacity
+                  style={sheet.floatingTouch}
+                  onPress={addColumn}
+                  disabled={labels.length >= 10}
+                  activeOpacity={0.9}
+                >
+                  <GlassView
+                    glassEffectStyle={GLASS_EFFECT}
+                    colorScheme="dark"
+                    isInteractive
+                    style={[sheet.floatingButton, labels.length >= 10 && sheet.floatingButtonDisabled]}
+                  >
+                    <View style={sheet.floatingButtonContent}>
+                      <View style={sheet.floatingButtonSymbolWrap}>
+                        <Ionicons name="add" size={28} color={C.text} />
+                      </View>
+                    </View>
+                  </GlassView>
+                </TouchableOpacity>
+              </Animated.View>
+              <Animated.View style={[sheet.floatingAnimatedButton, colRemoveStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
+                <TouchableOpacity
+                  style={sheet.floatingTouch}
+                  onPress={removeColumn}
+                  disabled={labels.length <= 1}
+                  activeOpacity={0.9}
+                >
+                  <GlassView
+                    glassEffectStyle={GLASS_EFFECT}
+                    colorScheme="dark"
+                    isInteractive
+                    style={[sheet.floatingButton, labels.length <= 1 && sheet.floatingButtonDisabled]}
+                  >
+                    <View style={sheet.floatingButtonContent}>
+                      <View style={sheet.floatingButtonSymbolWrap}>
+                        <Ionicons name="remove" size={28} color={C.text} />
+                      </View>
+                    </View>
+                  </GlassView>
+                </TouchableOpacity>
+              </Animated.View>
             </View>
+            <TouchableOpacity
+              style={sheet.floatingAnchorTouch}
+              onPress={actionsExpanded ? closeMenu : toggleMenu}
+              activeOpacity={0.9}
+            >
+              <GlassView
+                glassEffectStyle={GLASS_EFFECT}
+                colorScheme="dark"
+                isInteractive
+                style={sheet.floatingButton}
+              >
+                <View style={sheet.floatingButtonContent}>
+                  <View style={sheet.floatingButtonSymbolWrap}>
+                    {actionsExpanded ? (
+                      <View style={sheet.floatingCloseGlyph}>
+                        <View style={sheet.floatingCloseStroke} />
+                        <View style={[sheet.floatingCloseStroke, sheet.floatingCloseStrokeReverse]} />
+                      </View>
+                    ) : (
+                      <Ionicons name="create-outline" size={28} color={C.text} />
+                    )}
+                  </View>
+                </View>
+              </GlassView>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -1008,7 +1258,7 @@ const sheet = StyleSheet.create({
   },
   floatingActions: {
     width: 232,
-    height: 124,
+    height: 190,
   },
   rowActions: {
     position: 'absolute',
@@ -1019,29 +1269,72 @@ const sheet = StyleSheet.create({
   },
   columnActions: {
     position: 'absolute',
-    right: 80,
+    right: 66,
     bottom: 0,
     flexDirection: 'row',
     gap: 8,
   },
   floatingButton: {
-    width: 72,
+    width: 58,
     height: 58,
-    borderRadius: 18,
-    backgroundColor: 'rgba(10,10,10,0.94)',
+    borderRadius: 29,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    overflow: 'hidden',
+  },
+  floatingTouch: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+  },
+  floatingAnchorTouch: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+  },
+  floatingAnimatedButton: {
+    width: 58,
+    height: 58,
+  },
+  floatingButtonContent: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  floatingButtonSymbolWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   floatingButtonDisabled: {
-    opacity: 0.35,
+    opacity: 0.32,
   },
-  floatingButtonLabel: {
-    color: C.text,
-    fontSize: 11,
-    fontWeight: '700',
+  floatingCloseGlyph: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingCloseStroke: {
+    position: 'absolute',
+    width: 22,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: C.text,
+    transform: [{ rotate: '45deg' }],
+  },
+  floatingCloseStrokeReverse: {
+    transform: [{ rotate: '-45deg' }],
   },
 });
 
@@ -1064,7 +1357,10 @@ export default function TabelleView({
   const [openTable, setOpenTable] = useState<UserTable | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedTableIds, setSelectedTableIds] = useState<Set<string>>(new Set());
+  const [sortMode, setSortMode] = useState<TableSortMode>('createdAtDesc');
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [containerWidth, setContainerWidth] = useState(screenWidth);
+  const selectionControlProgress = React.useRef(new Animated.Value(0)).current;
 
   const createTarget = useMemo(
     () => getCreateTarget(activeFolder, todayYmd, tomorrowYmd, yesterdayYmd),
@@ -1075,6 +1371,32 @@ export default function TabelleView({
     const normalizedFolder = activeFolder.trim();
     return tables.filter((table) => (table.folder ?? '').trim() === normalizedFolder);
   }, [activeFolder, tables]);
+  const sortedTables = useMemo(() => {
+    const next = [...filteredTables];
+    next.sort((a, b) => {
+      if (sortMode === 'alphabeticalAsc') {
+        return a.name.localeCompare(b.name, 'it', { sensitivity: 'base' }) || b.id.localeCompare(a.id);
+      }
+      if (sortMode === 'alphabeticalDesc') {
+        return b.name.localeCompare(a.name, 'it', { sensitivity: 'base' }) || b.id.localeCompare(a.id);
+      }
+      if (sortMode === 'sizeDesc') {
+        return getTableSize(b) - getTableSize(a)
+          || b.name.localeCompare(a.name, 'it', { sensitivity: 'base' })
+          || b.id.localeCompare(a.id);
+      }
+      if (sortMode === 'sizeAsc') {
+        return getTableSize(a) - getTableSize(b)
+          || a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+          || b.id.localeCompare(a.id);
+      }
+      if (sortMode === 'createdAtAsc') {
+        return (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id);
+      }
+      return (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id);
+    });
+    return next;
+  }, [filteredTables, sortMode]);
   const cardWidth = useMemo(() => {
     const availableWidth = containerWidth > 0 ? containerWidth : screenWidth;
     const horizontalPadding = 8;
@@ -1150,6 +1472,36 @@ export default function TabelleView({
     openEditModal(table);
   }, [openEditModal, selectionMode, toggleSelectedTable]);
 
+  useEffect(() => {
+    Animated.timing(selectionControlProgress, {
+      toValue: selectionMode ? 1 : 0,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [selectionControlProgress, selectionMode]);
+
+  const selectionControlWidth = selectionControlProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [92, 32],
+  });
+  const selectionLabelOpacity = selectionControlProgress.interpolate({
+    inputRange: [0, 0.55, 1],
+    outputRange: [1, 0.15, 0],
+  });
+  const selectionLabelTranslate = selectionControlProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -8],
+  });
+  const selectionIconOpacity = selectionControlProgress.interpolate({
+    inputRange: [0, 0.45, 1],
+    outputRange: [0, 0.25, 1],
+  });
+  const selectionIconScale = selectionControlProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.82, 1],
+  });
+
   return (
     <View style={main.container} onLayout={handleContainerLayout}>
       <View style={main.toolbar}>
@@ -1164,46 +1516,80 @@ export default function TabelleView({
             <View style={main.toolbarSubPlaceholder} />
           )}
           <View style={main.toolbarActions}>
-            {selectionMode ? (
-              <View style={main.selectionActions}>
-                <TouchableOpacity activeOpacity={0.86} onPress={exitSelectionMode}>
-                  <GlassView
-                    glassEffectStyle={GLASS_EFFECT}
-                    colorScheme="dark"
-                    isInteractive
-                    style={[main.glassButton, main.glassIconButton, main.selectionTopButton]}
-                  >
-                    <Ionicons name="close-outline" size={16} color="#FFFFFF" />
-                  </GlassView>
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={0.86} onPress={handleDeleteSelected} disabled={selectedTableIds.size === 0}>
-                  <GlassView
-                    glassEffectStyle={GLASS_EFFECT}
-                    colorScheme="dark"
-                    isInteractive
-                    style={[main.glassButton, main.glassIconButton, selectedTableIds.size === 0 && main.glassButtonDisabled]}
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
-                  </GlassView>
-                </TouchableOpacity>
+            <MenuView
+              style={main.sortMenuHost}
+              shouldOpenOnLongPress={false}
+              onOpenMenu={() => setSortMenuOpen(true)}
+              onCloseMenu={() => setSortMenuOpen(false)}
+              onPressAction={({ nativeEvent }) => {
+                const nextSortMode = nativeEvent.event as TableSortMode;
+                if (SORT_OPTIONS.some((option) => option.mode === nextSortMode)) {
+                  setSortMode(nextSortMode);
+                }
+              }}
+              actions={SORT_OPTIONS.map((option) => ({
+                id: option.mode,
+                title: option.title,
+                subtitle: option.subtitle,
+                state: sortMode === option.mode ? 'on' : 'off',
+              }))}
+            >
+              <View style={[main.sortMenuTrigger, sortMenuOpen && main.sortMenuTriggerHidden]}>
+                <GlassView
+                  glassEffectStyle={GLASS_EFFECT}
+                  colorScheme="dark"
+                  style={[main.glassButton, main.glassSortButton]}
+                >
+                  <SortDecreasingLinesIcon />
+                </GlassView>
               </View>
-            ) : (
-              <TouchableOpacity activeOpacity={0.86} onPress={() => setSelectionMode(true)}>
+            </MenuView>
+            <Animated.View style={[main.selectionControlWrap, { width: selectionControlWidth }]}>
+              <TouchableOpacity
+                activeOpacity={0.86}
+                onPress={() => {
+                  if (selectionMode) exitSelectionMode();
+                  else setSelectionMode(true);
+                }}
+                style={main.selectionControlTouch}
+              >
                 <GlassView
                   glassEffectStyle={GLASS_EFFECT}
                   colorScheme="dark"
                   isInteractive
-                  style={[main.glassButton, main.glassSelectButton, main.glassButtonRaised]}
+                  style={[main.glassButton, main.glassSelectButton, main.glassButtonRaised, selectionMode && main.closeButtonRaised, main.selectionMorphButton]}
                 >
-                  <Text style={main.glassSelectText}>Seleziona</Text>
+                  <Animated.Text
+                    style={[
+                      main.glassSelectText,
+                      main.selectionLabel,
+                      {
+                        opacity: selectionLabelOpacity,
+                        transform: [{ translateX: selectionLabelTranslate }],
+                      },
+                    ]}
+                  >
+                    Seleziona
+                  </Animated.Text>
+                  <Animated.View
+                    style={[
+                      main.selectionCloseIcon,
+                      {
+                        opacity: selectionIconOpacity,
+                        transform: [{ scale: selectionIconScale }],
+                      },
+                    ]}
+                  >
+                    <Ionicons name="close-outline" size={16} color="rgba(255,255,255,0.72)" />
+                  </Animated.View>
                 </GlassView>
               </TouchableOpacity>
-            )}
+            </Animated.View>
           </View>
         </View>
       </View>
 
-      {filteredTables.length === 0 ? (
+      {sortedTables.length === 0 ? (
         <View style={main.empty}>
           <View style={main.emptyIcon}><Ionicons name="grid-outline" size={44} color="rgba(255,255,255,0.22)" /></View>
           <Text style={main.emptyTitle}>{t('tablesUi.emptyTitle')}</Text>
@@ -1218,7 +1604,7 @@ export default function TabelleView({
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={main.grid}>
-          {filteredTables.map((table) => (
+          {sortedTables.map((table) => (
             <TableCard
               key={table.id}
               table={table}
@@ -1259,8 +1645,34 @@ export default function TabelleView({
         />
       ) : null}
 
-      {!selectionMode ? (
-        <View style={main.fabLayer} pointerEvents="box-none">
+      <View style={main.fabLayer} pointerEvents="box-none">
+        {selectionMode ? (
+          <TouchableOpacity
+            style={main.fabGlassTouch}
+            onPress={handleDeleteSelected}
+            disabled={selectedTableIds.size === 0}
+            activeOpacity={0.9}
+          >
+            <GlassView
+              glassEffectStyle={GLASS_EFFECT}
+              colorScheme="dark"
+              isInteractive
+              style={[
+                indexStyles.fab,
+                main.fab,
+                main.fabGlass,
+                selectedTableIds.size > 0 && main.fabGlassActive,
+                selectedTableIds.size === 0 && main.fabGlassDisabled,
+              ]}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={24}
+                color={selectedTableIds.size > 0 ? '#FF3B30' : '#FFFFFF'}
+              />
+            </GlassView>
+          </TouchableOpacity>
+        ) : (
           <TouchableOpacity
             style={[indexStyles.fab, main.fab]}
             onPress={() => {
@@ -1270,23 +1682,37 @@ export default function TabelleView({
           >
             <Ionicons name="add" size={28} color="#fff" />
           </TouchableOpacity>
-        </View>
-      ) : null}
+        )}
+      </View>
     </View>
   );
 }
 
 const main = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.canvas },
-  toolbar: { paddingHorizontal: 4, paddingTop: 4, paddingBottom: 8 },
+  toolbar: { paddingHorizontal: 4, paddingTop: 4, paddingBottom: 8, marginTop: -20, marginBottom: -25 },
   toolbarRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   toolbarSub: { color: C.muted, fontSize: 13, marginTop: 8 },
   toolbarSubPlaceholder: { flex: 1 },
   toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  selectionActions: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 10,
+  sortMenuHost: {
+    width: 32,
+    height: 32,
+    marginTop: -64,
+    zIndex: 12,
+  },
+  sortMenuTrigger: {
+    overflow: 'visible',
+  },
+  sortMenuTriggerHidden: {
+    opacity: 0,
+  },
+  selectionControlWrap: {
+    minHeight: 32,
+    overflow: 'visible',
+  },
+  selectionControlTouch: {
+    width: '100%',
   },
   glassButton: {
     minHeight: 34,
@@ -1306,10 +1732,19 @@ const main = StyleSheet.create({
     borderRadius: 19,
     justifyContent: 'center',
   },
+  glassSortButton: {
+    width: 32,
+    minHeight: 32,
+    height: 32,
+    paddingHorizontal: 0,
+    borderRadius: 16,
+    justifyContent: 'center',
+  },
   glassSelectButton: {
-    minHeight: 36,
-    paddingHorizontal: 16,
-    borderRadius: 18,
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderColor: 'rgba(255,255,255,0.16)',
     shadowColor: '#000000',
@@ -1318,15 +1753,31 @@ const main = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
   glassSelectText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 12,
     fontWeight: '600',
   },
-  glassButtonRaised: {
-    marginTop: -53,
+  selectionMorphButton: {
+    width: '100%',
+    paddingHorizontal: 0,
+    justifyContent: 'center',
   },
-  selectionTopButton: {
-    marginBottom: 2,
+  selectionLabel: {
+    position: 'absolute',
+    alignSelf: 'center',
+  },
+  selectionCloseIcon: {
+    position: 'absolute',
+    alignSelf: 'center',
+  },
+  glassButtonRaised: {
+    marginTop: -32,
+  },
+  sortButtonRaised: {
+    marginTop: -48,
+  },
+  closeButtonRaised: {
+    marginTop: -32,
   },
   glassButtonDisabled: {
     opacity: 0.4,
@@ -1352,11 +1803,44 @@ const main = StyleSheet.create({
   emptyHint: { color: C.muted, fontSize: 14, textAlign: 'center', paddingHorizontal: 40 },
   emptyButton: { marginTop: 12, backgroundColor: SKETCH_PLANNER.highlight, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 12 },
   emptyButtonText: { color: '#000000', fontSize: 16, fontWeight: '700' },
-  grid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 120, alignContent: 'flex-start' },
+  grid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 120, paddingTop: 0, alignContent: 'flex-start' },
   fabLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   fab: {
-    right: 10,
+    right: PADDED_SCREEN_FAB_RIGHT,
     backgroundColor: '#16a34a',
     shadowColor: '#16a34a',
+  },
+  fabGlassTouch: {
+    position: 'absolute',
+    right: PADDED_SCREEN_FAB_RIGHT,
+    bottom: 0,
+    borderRadius: 999,
+  },
+  fabGlass: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  fabGlassActive: {
+    backgroundColor: 'rgba(255,59,48,0.28)',
+    borderColor: 'rgba(255,99,92,0.5)',
+    shadowColor: '#ff3b30',
+    shadowOpacity: 0.3,
+  },
+  fabGlassDisabled: {
+    opacity: 0.42,
+  },
+  fabDisabled: {
+    opacity: 0.45,
   },
 });

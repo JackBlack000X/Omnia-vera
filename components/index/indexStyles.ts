@@ -6,11 +6,15 @@ const MAX_LAYOUT_SCALE = 1.1;
 const uiScale = Math.min(MAX_LAYOUT_SCALE, Math.max(1, Dimensions.get('window').width / BASE_LAYOUT_WIDTH));
 const s = (value: number) => Math.round(value * uiScale);
 
+export const SCREEN_HORIZONTAL_PADDING = s(10);
+export const FAB_EDGE_INSET = s(20);
+export const PADDED_SCREEN_FAB_RIGHT = Math.max(0, FAB_EDGE_INSET - SCREEN_HORIZONTAL_PADDING);
+
 export const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#000',
-    paddingHorizontal: s(10)
+    paddingHorizontal: SCREEN_HORIZONTAL_PADDING
   },
 
   header: {
@@ -37,7 +41,8 @@ export const styles = StyleSheet.create({
     color: THEME.text,
     fontSize: s(26),
     fontFamily: 'BagelFatOne_400Regular',
-    marginBottom: s(4)
+    marginBottom: 0,
+    marginTop: s(6)
   },
   progressBarContainer: {
     flexDirection: 'row',
@@ -451,7 +456,7 @@ export const styles = StyleSheet.create({
 
   fab: {
     position: 'absolute',
-    right: s(20),
+    right: FAB_EDGE_INSET,
     bottom: 98,
     zIndex: 1000,
     backgroundColor: '#1d4ed8',
