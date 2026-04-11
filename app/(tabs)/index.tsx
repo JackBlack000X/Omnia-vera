@@ -18,7 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, InteractionManager, LayoutAnimation, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Alert, InteractionManager, LayoutAnimation, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -110,7 +110,6 @@ export default function IndexScreen() {
   const [activeSection, setActiveSection] = useState<'tasks' | 'tabelle'>('tasks');
   const [hasMountedTables, setHasMountedTables] = useState(false);
   const [smartTaskPrompt, setSmartTaskPrompt] = useState<SmartTaskPromptState | null>(null);
-  const [headerGuideY, setHeaderGuideY] = useState<number | null>(null);
   const [dismissedSmartTaskIds, setDismissedSmartTaskIds] = useState<string[]>([]);
   const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
   const logicalTodayHistory = history[logicalTodayYmd];
@@ -967,14 +966,7 @@ export default function IndexScreen() {
           },
         ]}
       >
-        <View
-          style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-end' }}
-          onLayout={(event: LayoutChangeEvent) => {
-            const { y, height } = event.nativeEvent.layout;
-            const nextY = y + height / 2;
-            setHeaderGuideY((prev) => (prev !== null && Math.abs(prev - nextY) < 0.5 ? prev : nextY));
-          }}
-        >
+        <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-end' }}>
           <TouchableOpacity onPress={() => setActiveSection('tasks')}>
             <Text
               style={[
@@ -1006,19 +998,6 @@ export default function IndexScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-        {headerGuideY !== null ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              top: headerGuideY,
-              height: 1,
-              backgroundColor: '#ff2d2d',
-            }}
-          />
-        ) : null}
         <Text
           style={[
             styles.progressText,
