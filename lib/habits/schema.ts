@@ -141,8 +141,8 @@ export type UserTable = {
   folder?: string; // custom folder/category name
   headerRows: string[][];  // frozen rows at top  – headerRows[frozenRowIdx][colIdx]
   headerCols: string[][];  // frozen cols on left – headerCols[rowIdx][frozenColIdx]
-  cells: string[][];       // body cells[rowIdx][colIdx]
-  checked?: boolean[][];   // toggled cells shown as green in the planner grid
+  cells: string[][];       // body cells[rowIdx][colIdx], stores '', 'green', 'orange', 'red'
+  checked?: ('green' | 'orange' | 'red' | '')[][];   // color state for each cell
 };
 
 export type HabitsState = {

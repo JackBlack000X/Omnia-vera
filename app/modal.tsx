@@ -1064,15 +1064,12 @@ export default function ModalScreen() {
                       marginLeft: 8,
                       width: 18,
                       height: 18,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: '#64748b',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700' }}>i</Text>
+                    <Ionicons name="information-circle" size={16} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
                 <Switch
@@ -1102,15 +1099,12 @@ export default function ModalScreen() {
                       marginLeft: 8,
                       width: 18,
                       height: 18,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: '#64748b',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Text style={{ color: '#94a3b8', fontSize: 11, fontWeight: '700' }}>i</Text>
+                    <Ionicons name="information-circle" size={16} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
                 <Switch

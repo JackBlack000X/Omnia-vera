@@ -9,6 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { canAskLocationPermission, requestLocationPermissionsAsync } from '@/lib/location';
 
+const EDIT_ICON_CENTERING = { transform: [{ translateX: 2 }, { translateY: -2 }] } as const;
+
 function generateId(): string {
   return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 }
@@ -276,7 +278,7 @@ export default function PlacesScreen() {
                 </View>
                 <View style={styles.placeActions}>
                   <TouchableOpacity onPress={() => startEdit(item)} style={styles.iconBtn}>
-                    <Ionicons name="pencil-outline" size={18} color={THEME.text} />
+                    <Ionicons name="pencil-outline" size={18} color={THEME.text} style={EDIT_ICON_CENTERING} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => confirmDelete(item.id)} style={styles.iconBtn}>
                     <Ionicons name="trash-outline" size={18} color="#f97373" />
@@ -404,4 +406,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-

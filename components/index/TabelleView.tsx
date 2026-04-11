@@ -1,12 +1,15 @@
 import { SKETCH_PLANNER } from '@/constants/sketchPlanner';
 import { PADDED_SCREEN_FAB_RIGHT, styles as indexStyles } from '@/components/index/indexStyles';
 import { TableTaskCreateOverlay } from '@/components/index/TableTaskCreateOverlay';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useHabits } from '@/lib/habits/Provider';
 import type { UserTable } from '@/lib/habits/schema';
+import { toBcp47 } from '@/lib/i18n/bcp47';
+import i18n from '@/lib/i18n/i18n';
 import { DOMANI_TOMORROW_KEY, IERI_YESTERDAY_KEY, OGGI_TODAY_KEY, TUTTE_KEY } from '@/lib/index/indexTypes';
 import Slider from '@react-native-community/slider';
 import { MenuView } from '@react-native-menu/menu';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { GlassView } from 'expo-glass-effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -38,7 +41,9 @@ const C = {
   text: '#FFFFFF',
   muted: 'rgba(255,255,255,0.48)',
   cellOff: '#3A3A3E',
-  cellOn: '#30D158',
+  cellGreen: '#30D158',
+  cellOrange: '#FF9F0A',
+  cellRed: '#FF453A',
 } as const;
 
 const GRID = {
@@ -48,6 +53,8 @@ const GRID = {
   cellHeight: 28,
   gap: 4,
 } as const;
+
+const EDIT_ICON_CENTERING = { transform: [{ translateX: 2 }, { translateY: -2 }] } as const;
 
 const MAX_TABLE_COLUMNS = 10;
 const TABLE_OVERVIEW_CARD_HEIGHT = 152;
@@ -81,11 +88,42 @@ type TableSortMode =
 
 const GLASS_EFFECT = { style: 'regular', animate: true, animationDuration: 0.26 } as const;
 
-function normalizeChecked(table: UserTable): boolean[][] {
+type TableCellState = '' | 'green' | 'orange' | 'red';
+
+function isColoredTableCellState(value: unknown): value is Exclude<TableCellState, ''> {
+  return value === 'green' || value === 'orange' || value === 'red';
+}
+
+function normalizeCellState(value: unknown): TableCellState {
+  if (isColoredTableCellState(value)) return value;
+  if (value === '' || value == null) return '';
+  if (typeof value === 'boolean') return value ? 'green' : '';
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (isColoredTableCellState(normalized)) return normalized;
+    if (normalized === '1' || normalized === 'true') return 'green';
+  }
+  return value ? 'green' : '';
+}
+
+function getCellBackgroundColor(state: TableCellState): string {
+  if (state === 'green') return C.cellGreen;
+  if (state === 'orange') return C.cellOrange;
+  if (state === 'red') return C.cellRed;
+  return C.cellOff;
+}
+
+function getBrushButtonColor(state: Exclude<TableCellState, ''>): string {
+  if (state === 'green') return C.cellGreen;
+  if (state === 'orange') return C.cellOrange;
+  return C.cellRed;
+}
+
+function normalizeChecked(table: UserTable): TableCellState[][] {
   const rowCount = Array.isArray(table.cells) ? table.cells.length : 0;
   const colCount = Array.isArray(table.headerRows?.[0]) ? table.headerRows[0].length : 0;
   return Array.from({ length: rowCount }, (_, ri) =>
-    Array.from({ length: colCount }, (_, ci) => Boolean(table.checked?.[ri]?.[ci] ?? table.cells?.[ri]?.[ci]))
+    Array.from({ length: colCount }, (_, ci) => normalizeCellState(table.checked?.[ri]?.[ci] ?? table.cells?.[ri]?.[ci]))
   );
 }
 
@@ -152,16 +190,18 @@ function getTableCompletionPercentLabel(table: UserTable): string {
   return `${Math.round(getTableCompletionRatio(table) * 100)}%`;
 }
 
-const SORT_OPTIONS: { mode: TableSortMode; title: string; subtitle?: string }[] = [
-  { mode: 'createdAtDesc', title: 'Più recenti', subtitle: 'Data di aggiunta' },
-  { mode: 'createdAtAsc', title: 'Meno recenti', subtitle: 'Data di aggiunta' },
-  { mode: 'alphabeticalAsc', title: 'Nome A-Z' },
-  { mode: 'alphabeticalDesc', title: 'Nome Z-A' },
-  { mode: 'completedDesc', title: 'Più completate', subtitle: 'Percentuale completamento' },
-  { mode: 'completedAsc', title: 'Meno completate', subtitle: 'Percentuale completamento' },
-  { mode: 'sizeDesc', title: 'Più grandi', subtitle: 'Dimensione tabella' },
-  { mode: 'sizeAsc', title: 'Più piccole', subtitle: 'Dimensione tabella' },
-];
+function getSortOptions(t: ReturnType<typeof useTranslation>['t']): { mode: TableSortMode; title: string; subtitle?: string }[] {
+  return [
+    { mode: 'createdAtDesc', title: t('tablesUi.sortCreatedAtDesc'), subtitle: t('tablesUi.sortSubtitleCreatedAt') },
+    { mode: 'createdAtAsc', title: t('tablesUi.sortCreatedAtAsc'), subtitle: t('tablesUi.sortSubtitleCreatedAt') },
+    { mode: 'alphabeticalAsc', title: t('tablesUi.sortAlphabeticalAsc') },
+    { mode: 'alphabeticalDesc', title: t('tablesUi.sortAlphabeticalDesc') },
+    { mode: 'completedDesc', title: t('tablesUi.sortCompletedDesc'), subtitle: t('tablesUi.sortSubtitleCompletion') },
+    { mode: 'completedAsc', title: t('tablesUi.sortCompletedAsc'), subtitle: t('tablesUi.sortSubtitleCompletion') },
+    { mode: 'sizeDesc', title: t('tablesUi.sortSizeDesc'), subtitle: t('tablesUi.sortSubtitleSize') },
+    { mode: 'sizeAsc', title: t('tablesUi.sortSizeAsc'), subtitle: t('tablesUi.sortSubtitleSize') },
+  ];
+}
 
 function resizeTablePatch(table: UserTable, name: string, color: string, cols: number, rows: number): Partial<Omit<UserTable, 'id' | 'createdAt'>> {
   const safeCols = Math.max(1, Math.min(10, Math.floor(cols)));
@@ -171,7 +211,7 @@ function resizeTablePatch(table: UserTable, name: string, color: string, cols: n
 
   const nextLabels = Array.from({ length: safeCols }, (_, index) => currentLabels[index] ?? '');
   const nextChecked = Array.from({ length: safeRows }, (_, rowIndex) =>
-    Array.from({ length: safeCols }, (_, colIndex) => Boolean(currentChecked[rowIndex]?.[colIndex]))
+    Array.from({ length: safeCols }, (_, colIndex) => currentChecked[rowIndex]?.[colIndex] ?? '')
   );
 
   return {
@@ -179,7 +219,7 @@ function resizeTablePatch(table: UserTable, name: string, color: string, cols: n
     color,
     headerRows: [nextLabels],
     headerCols: Array.from({ length: safeRows }, (_, index) => [String(index + 1)]),
-    cells: nextChecked.map((row) => row.map((value) => (value ? '1' : ''))),
+    cells: nextChecked.map((row) => row.map((value) => value)),
     checked: nextChecked,
   };
 }
@@ -200,7 +240,7 @@ function TableThumbnail({
   const hasOverflowRows = checked.length > maxPreviewRows;
   const rows = checked
     .slice(0, Math.min(checked.length, maxPreviewRows))
-    .map((row) => Array.from({ length: previewColumns }, (_, index) => Boolean(row[index])));
+    .map((row) => Array.from({ length: previewColumns }, (_, index) => row[index] ?? ''));
   const accent = table.color;
   const thumbnailWidth = Math.max(0, Math.floor(availableWidth));
   const indexCellSize = thumbnailWidth > 0
@@ -229,12 +269,12 @@ function TableThumbnail({
               { width: indexCellSize, height: indexCellSize, backgroundColor: accent },
             ]}
           />
-          {row.map((isOn, ci) => (
+          {row.map((cellState, ci) => (
             <View
               key={ci}
               style={[
                 thumbnail.fillCell,
-                { width: dataCellWidth, height: indexCellSize, backgroundColor: isOn ? C.cellOn : C.cellOff },
+                { width: dataCellWidth, height: indexCellSize, backgroundColor: getCellBackgroundColor(cellState) },
               ]}
             />
           ))}
@@ -258,6 +298,24 @@ function SortDecreasingLinesIcon() {
       <View style={[sortGlyph.line, sortGlyph.middle]} />
       <View style={[sortGlyph.line, sortGlyph.bottom]} />
     </View>
+  );
+}
+
+function FloatingGlassSymbol({
+  name,
+  size = 26,
+}: {
+  name: 'plus' | 'minus' | 'xmark';
+  size?: number;
+}) {
+  return (
+    <IconSymbol
+      name={name}
+      size={size}
+      color={C.text}
+      weight="medium"
+      style={sheet.floatingNativeSymbol}
+    />
   );
 }
 
@@ -419,7 +477,7 @@ const cards = StyleSheet.create({
     flexShrink: 0,
   },
   completionMeta: {
-    color: C.cellOn,
+    color: C.cellGreen,
     fontFamily: 'BagelFatOne_400Regular',
     fontSize: 13,
   },
@@ -780,6 +838,7 @@ function SpreadsheetView({
   createTarget: CreateTarget;
   todayYmd: string;
 }) {
+  const { t } = useTranslation();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const columnLabels = useMemo(() => getColumnLabels(table), [table]);
@@ -789,6 +848,7 @@ function SpreadsheetView({
   const [draftLabel, setDraftLabel] = useState('');
   const [taskModalTitle, setTaskModalTitle] = useState<string | null>(null);
   const [actionsExpanded, setActionsExpanded] = useState(false);
+  const [activeBrushColor, setActiveBrushColor] = useState<Exclude<TableCellState, ''>>('green');
   const actionsProgress = useRef(new Animated.Value(0)).current;
   const gridGap = getAdaptiveGap(labels.length);
   const tenColumnGap = getAdaptiveGap(MAX_TABLE_COLUMNS);
@@ -818,20 +878,20 @@ function SpreadsheetView({
     actionsProgress.setValue(0);
   }, [actionsProgress, table.id]);
 
-  const persist = useCallback((nextLabels: string[], nextChecked: boolean[][]) => {
+  const persist = useCallback((nextLabels: string[], nextChecked: TableCellState[][]) => {
     onUpdate({
       headerRows: [nextLabels],
-      cells: nextChecked.map((row) => row.map((value) => (value ? '1' : ''))),
+      cells: nextChecked.map((row) => row.map((value) => value)),
       checked: nextChecked,
     });
   }, [onUpdate]);
 
   const toggleCell = useCallback((rowIndex: number, colIndex: number) => {
     const next = checked.map((row) => [...row]);
-    next[rowIndex][colIndex] = !next[rowIndex][colIndex];
+    next[rowIndex][colIndex] = next[rowIndex][colIndex] === activeBrushColor ? '' : activeBrushColor;
     setChecked(next);
     persist(labels, next);
-  }, [checked, labels, persist]);
+  }, [activeBrushColor, checked, labels, persist]);
 
   const beginEditColumn = useCallback((colIndex: number) => {
     setEditingCol(colIndex);
@@ -849,7 +909,7 @@ function SpreadsheetView({
   }, [checked, draftLabel, editingCol, labels, persist]);
 
   const addRow = useCallback(() => {
-    const nextChecked = [...checked, Array(labels.length).fill(false)];
+    const nextChecked = [...checked, Array(labels.length).fill('') as TableCellState[]];
     setChecked(nextChecked);
     persist(labels, nextChecked);
   }, [checked, labels, persist]);
@@ -864,7 +924,7 @@ function SpreadsheetView({
   const addColumn = useCallback(() => {
     if (labels.length >= 10) return;
     const nextLabels = [...labels, ''];
-    const nextChecked = checked.map((row) => [...row, false]);
+    const nextChecked = checked.map((row) => [...row, ''] as TableCellState[]);
     setLabels(nextLabels);
     setChecked(nextChecked);
     persist(nextLabels, nextChecked);
@@ -887,10 +947,10 @@ function SpreadsheetView({
 
   const showInfo = useCallback(() => {
     Alert.alert(
-      'Come funziona',
-      'Tocca una casella per farla diventare verde. Tieni premuto su una casella per creare una task con titolo colonna + riga.'
+      t('tablesUi.infoTitle'),
+      t('tablesUi.infoBody')
     );
-  }, []);
+  }, [t]);
 
   const setMenuExpanded = useCallback((nextExpanded: boolean) => {
     setActionsExpanded(nextExpanded);
@@ -910,6 +970,14 @@ function SpreadsheetView({
   const closeMenu = useCallback(() => {
     setMenuExpanded(false);
   }, [setMenuExpanded]);
+
+  const cycleBrushColor = useCallback(() => {
+    setActiveBrushColor((current) => {
+      if (current === 'green') return 'orange';
+      if (current === 'orange') return 'red';
+      return 'green';
+    });
+  }, []);
 
   const rowAddStyle = useMemo(() => ({
     opacity: actionsProgress,
@@ -983,13 +1051,37 @@ function SpreadsheetView({
     ],
   }), [actionsProgress]);
 
+  const brushStyle = useMemo(() => ({
+    opacity: actionsProgress,
+    transform: [
+      {
+        translateX: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [78, 0],
+        }),
+      },
+      {
+        translateY: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [78, 0],
+        }),
+      },
+      {
+        scale: actionsProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.74, 1],
+        }),
+      },
+    ],
+  }), [actionsProgress]);
+
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
       <View style={sheet.container}>
         <View style={sheet.topBar}>
           <TouchableOpacity style={sheet.backButton} onPress={onClose}>
             <Ionicons name="chevron-back" size={22} color={table.color} />
-            <Text style={[sheet.backText, { color: table.color }]}>Tabelle</Text>
+            <Text style={[sheet.backText, { color: table.color }]}>{t('tablesUi.back')}</Text>
           </TouchableOpacity>
           <Text style={sheet.title} numberOfLines={1}>{table.name}</Text>
           <View style={sheet.topActions}>
@@ -1047,10 +1139,13 @@ function SpreadsheetView({
                   <View style={[sheet.rowHeader, { width: rowHeaderWidth, height: cellSize, backgroundColor: table.color }]}>
                     <Text style={sheet.rowHeaderText}>{rowIndex + 1}</Text>
                   </View>
-                  {row.map((isOn, colIndex) => (
+                  {row.map((cellState, colIndex) => (
                     <Pressable
                       key={`cell-${rowIndex}-${colIndex}`}
-                      style={[sheet.cell, { width: columnWidth, height: cellSize }, isOn ? sheet.cellOn : sheet.cellOff]}
+                      style={[
+                        sheet.cell,
+                        { width: columnWidth, height: cellSize, backgroundColor: getCellBackgroundColor(cellState) },
+                      ]}
                       onPress={() => toggleCell(rowIndex, colIndex)}
                       onLongPress={() => openCreateTask(rowIndex, colIndex)}
                       delayLongPress={340}
@@ -1072,22 +1167,6 @@ function SpreadsheetView({
           <View style={sheet.floatingActions}>
             <View style={sheet.rowActions}>
               <Animated.View style={[sheet.floatingAnimatedButton, rowAddStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
-                <TouchableOpacity style={sheet.floatingTouch} onPress={addRow} activeOpacity={0.9}>
-                  <GlassView
-                    glassEffectStyle={GLASS_EFFECT}
-                    colorScheme="dark"
-                    isInteractive
-                    style={sheet.floatingButton}
-                  >
-                    <View style={sheet.floatingButtonContent}>
-                      <View style={sheet.floatingButtonSymbolWrap}>
-                        <Ionicons name="add" size={28} color={C.text} />
-                      </View>
-                    </View>
-                  </GlassView>
-                </TouchableOpacity>
-              </Animated.View>
-              <Animated.View style={[sheet.floatingAnimatedButton, rowRemoveStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
                 <TouchableOpacity
                   style={sheet.floatingTouch}
                   onPress={removeRow}
@@ -1098,11 +1177,30 @@ function SpreadsheetView({
                     glassEffectStyle={GLASS_EFFECT}
                     colorScheme="dark"
                     isInteractive
-                    style={[sheet.floatingButton, checked.length <= 1 && sheet.floatingButtonDisabled]}
+                    style={[
+                      sheet.floatingButton,
+                      checked.length <= 1 && sheet.floatingButtonDisabled,
+                    ]}
                   >
                     <View style={sheet.floatingButtonContent}>
                       <View style={sheet.floatingButtonSymbolWrap}>
-                        <Ionicons name="remove" size={28} color={C.text} />
+                        <FloatingGlassSymbol name="minus" />
+                      </View>
+                    </View>
+                  </GlassView>
+                </TouchableOpacity>
+              </Animated.View>
+              <Animated.View style={[sheet.floatingAnimatedButton, rowRemoveStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
+                <TouchableOpacity style={sheet.floatingTouch} onPress={addRow} activeOpacity={0.9}>
+                  <GlassView
+                    glassEffectStyle={GLASS_EFFECT}
+                    colorScheme="dark"
+                    isInteractive
+                    style={sheet.floatingButton}
+                  >
+                    <View style={sheet.floatingButtonContent}>
+                      <View style={sheet.floatingButtonSymbolWrap}>
+                        <FloatingGlassSymbol name="plus" />
                       </View>
                     </View>
                   </GlassView>
@@ -1113,27 +1211,6 @@ function SpreadsheetView({
               <Animated.View style={[sheet.floatingAnimatedButton, colAddStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
                 <TouchableOpacity
                   style={sheet.floatingTouch}
-                  onPress={addColumn}
-                  disabled={labels.length >= 10}
-                  activeOpacity={0.9}
-                >
-                  <GlassView
-                    glassEffectStyle={GLASS_EFFECT}
-                    colorScheme="dark"
-                    isInteractive
-                    style={[sheet.floatingButton, labels.length >= 10 && sheet.floatingButtonDisabled]}
-                  >
-                    <View style={sheet.floatingButtonContent}>
-                      <View style={sheet.floatingButtonSymbolWrap}>
-                        <Ionicons name="add" size={28} color={C.text} />
-                      </View>
-                    </View>
-                  </GlassView>
-                </TouchableOpacity>
-              </Animated.View>
-              <Animated.View style={[sheet.floatingAnimatedButton, colRemoveStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
-                <TouchableOpacity
-                  style={sheet.floatingTouch}
                   onPress={removeColumn}
                   disabled={labels.length <= 1}
                   activeOpacity={0.9}
@@ -1142,17 +1219,67 @@ function SpreadsheetView({
                     glassEffectStyle={GLASS_EFFECT}
                     colorScheme="dark"
                     isInteractive
-                    style={[sheet.floatingButton, labels.length <= 1 && sheet.floatingButtonDisabled]}
+                    style={[
+                      sheet.floatingButton,
+                      labels.length <= 1 && sheet.floatingButtonDisabled,
+                    ]}
                   >
                     <View style={sheet.floatingButtonContent}>
                       <View style={sheet.floatingButtonSymbolWrap}>
-                        <Ionicons name="remove" size={28} color={C.text} />
+                        <FloatingGlassSymbol name="minus" />
+                      </View>
+                    </View>
+                  </GlassView>
+                </TouchableOpacity>
+              </Animated.View>
+              <Animated.View style={[sheet.floatingAnimatedButton, colRemoveStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
+                <TouchableOpacity
+                  style={sheet.floatingTouch}
+                  onPress={addColumn}
+                  disabled={labels.length >= 10}
+                  activeOpacity={0.9}
+                >
+                  <GlassView
+                    glassEffectStyle={GLASS_EFFECT}
+                    colorScheme="dark"
+                    isInteractive
+                    style={[
+                      sheet.floatingButton,
+                      labels.length >= 10 && sheet.floatingButtonDisabled,
+                    ]}
+                  >
+                    <View style={sheet.floatingButtonContent}>
+                      <View style={sheet.floatingButtonSymbolWrap}>
+                        <FloatingGlassSymbol name="plus" />
                       </View>
                     </View>
                   </GlassView>
                 </TouchableOpacity>
               </Animated.View>
             </View>
+            <Animated.View style={[sheet.brushAction, brushStyle]} pointerEvents={actionsExpanded ? 'auto' : 'none'}>
+              <TouchableOpacity
+                style={sheet.floatingTouch}
+                onPress={cycleBrushColor}
+                activeOpacity={0.9}
+              >
+                <GlassView
+                  glassEffectStyle={GLASS_EFFECT}
+                  colorScheme="dark"
+                  isInteractive
+                  style={[
+                    sheet.floatingButton,
+                    { backgroundColor: getBrushButtonColor(activeBrushColor) },
+                  ]}
+                >
+                  <View style={sheet.floatingButtonContent}>
+                    <View style={sheet.floatingButtonSymbolWrap}>
+                      <MaterialCommunityIcons name="brush" size={28} color={C.text} />
+                    </View>
+                  </View>
+                </GlassView>
+              </TouchableOpacity>
+            </Animated.View>
             <TouchableOpacity
               style={sheet.floatingAnchorTouch}
               onPress={actionsExpanded ? closeMenu : toggleMenu}
@@ -1167,12 +1294,9 @@ function SpreadsheetView({
                 <View style={sheet.floatingButtonContent}>
                   <View style={sheet.floatingButtonSymbolWrap}>
                     {actionsExpanded ? (
-                      <View style={sheet.floatingCloseGlyph}>
-                        <View style={sheet.floatingCloseStroke} />
-                        <View style={[sheet.floatingCloseStroke, sheet.floatingCloseStrokeReverse]} />
-                      </View>
+                      <FloatingGlassSymbol name="xmark" />
                     ) : (
-                      <Ionicons name="create-outline" size={28} color={C.text} />
+                      <Ionicons name="create-outline" size={28} color={C.text} style={EDIT_ICON_CENTERING} />
                     )}
                   </View>
                 </View>
@@ -1214,9 +1338,6 @@ const sheet = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: C.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1284,12 +1405,6 @@ const sheet = StyleSheet.create({
     height: GRID.cellHeight,
     borderRadius: 4,
   },
-  cellOff: {
-    backgroundColor: C.cellOff,
-  },
-  cellOn: {
-    backgroundColor: C.cellOn,
-  },
   floatingActionsWrap: {
     position: 'absolute',
   },
@@ -1310,6 +1425,11 @@ const sheet = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     gap: 8,
+  },
+  brushAction: {
+    position: 'absolute',
+    right: 68,
+    bottom: 68,
   },
   floatingButton: {
     width: 58,
@@ -1353,25 +1473,11 @@ const sheet = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  floatingNativeSymbol: {
+    opacity: 0.96,
+  },
   floatingButtonDisabled: {
     opacity: 0.32,
-  },
-  floatingCloseGlyph: {
-    width: 22,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  floatingCloseStroke: {
-    position: 'absolute',
-    width: 22,
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: C.text,
-    transform: [{ rotate: '45deg' }],
-  },
-  floatingCloseStrokeReverse: {
-    transform: [{ rotate: '-45deg' }],
   },
 });
 
@@ -1389,6 +1495,8 @@ export default function TabelleView({
   const { t } = useTranslation();
   const { tables, addTable, updateTable, deleteTable } = useHabits();
   const { width: screenWidth } = useWindowDimensions();
+  const titleScale = Math.min(1.1, Math.max(1, screenWidth / 393));
+  const toolbarMarginTop = titleScale < 1.07 ? -20 : -19;
   const [showCreate, setShowCreate] = useState(false);
   const [editingTable, setEditingTable] = useState<UserTable | null>(null);
   const [openTable, setOpenTable] = useState<UserTable | null>(null);
@@ -1398,6 +1506,8 @@ export default function TabelleView({
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [containerWidth, setContainerWidth] = useState(screenWidth);
   const selectionControlProgress = React.useRef(new Animated.Value(0)).current;
+  const sortOptions = useMemo(() => getSortOptions(t), [t]);
+  const sortLocale = toBcp47(i18n.language);
 
   const createTarget = useMemo(
     () => getCreateTarget(activeFolder, todayYmd, tomorrowYmd, yesterdayYmd),
@@ -1412,31 +1522,31 @@ export default function TabelleView({
     const next = [...filteredTables];
     next.sort((a, b) => {
       if (sortMode === 'alphabeticalAsc') {
-        return a.name.localeCompare(b.name, 'it', { sensitivity: 'base' }) || b.id.localeCompare(a.id);
+        return a.name.localeCompare(b.name, sortLocale, { sensitivity: 'base' }) || b.id.localeCompare(a.id);
       }
       if (sortMode === 'alphabeticalDesc') {
-        return b.name.localeCompare(a.name, 'it', { sensitivity: 'base' }) || b.id.localeCompare(a.id);
+        return b.name.localeCompare(a.name, sortLocale, { sensitivity: 'base' }) || b.id.localeCompare(a.id);
       }
       if (sortMode === 'completedDesc') {
         return getTableCompletionRatio(b) - getTableCompletionRatio(a)
           || getTableCompletedCount(b) - getTableCompletedCount(a)
-          || b.name.localeCompare(a.name, 'it', { sensitivity: 'base' })
+          || b.name.localeCompare(a.name, sortLocale, { sensitivity: 'base' })
           || b.id.localeCompare(a.id);
       }
       if (sortMode === 'completedAsc') {
         return getTableCompletionRatio(a) - getTableCompletionRatio(b)
           || getTableCompletedCount(a) - getTableCompletedCount(b)
-          || a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+          || a.name.localeCompare(b.name, sortLocale, { sensitivity: 'base' })
           || b.id.localeCompare(a.id);
       }
       if (sortMode === 'sizeDesc') {
         return getTableSize(b) - getTableSize(a)
-          || b.name.localeCompare(a.name, 'it', { sensitivity: 'base' })
+          || b.name.localeCompare(a.name, sortLocale, { sensitivity: 'base' })
           || b.id.localeCompare(a.id);
       }
       if (sortMode === 'sizeAsc') {
         return getTableSize(a) - getTableSize(b)
-          || a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+          || a.name.localeCompare(b.name, sortLocale, { sensitivity: 'base' })
           || b.id.localeCompare(a.id);
       }
       if (sortMode === 'createdAtAsc') {
@@ -1445,7 +1555,7 @@ export default function TabelleView({
       return (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id);
     });
     return next;
-  }, [filteredTables, sortMode]);
+  }, [filteredTables, sortLocale, sortMode]);
   const cardWidth = useMemo(() => {
     const availableWidth = containerWidth > 0 ? containerWidth : screenWidth;
     const horizontalPadding = 8;
@@ -1480,7 +1590,9 @@ export default function TabelleView({
     const idsToDelete = Array.from(selectedTableIds);
     Alert.alert(
       t('index.tableDeleteTitle'),
-      idsToDelete.length === 1 ? 'Eliminare la tabella selezionata?' : `Eliminare ${idsToDelete.length} tabelle selezionate?`,
+      idsToDelete.length === 1
+        ? t('tablesUi.deleteSelectedOne')
+        : t('tablesUi.deleteSelectedMany', { count: idsToDelete.length }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -1553,13 +1665,15 @@ export default function TabelleView({
 
   return (
     <View style={main.container} onLayout={handleContainerLayout}>
-      <View style={main.toolbar}>
+      <View style={[main.toolbar, { marginTop: toolbarMarginTop }]}>
         <View style={main.toolbarRow}>
           {selectionMode ? (
             <Text style={main.toolbarSub}>
               {selectedTableIds.size > 0
-                ? `${selectedTableIds.size} selezionate`
-                : 'Seleziona tabelle'}
+                ? selectedTableIds.size === 1
+                  ? t('tablesUi.selectionCountOne')
+                  : t('tablesUi.selectionCountMany', { count: selectedTableIds.size })
+                : t('tablesUi.selectionEmpty')}
             </Text>
           ) : (
             <View style={main.toolbarSubPlaceholder} />
@@ -1572,11 +1686,11 @@ export default function TabelleView({
               onCloseMenu={() => setSortMenuOpen(false)}
               onPressAction={({ nativeEvent }) => {
                 const nextSortMode = nativeEvent.event as TableSortMode;
-                if (SORT_OPTIONS.some((option) => option.mode === nextSortMode)) {
+                if (sortOptions.some((option) => option.mode === nextSortMode)) {
                   setSortMode(nextSortMode);
                 }
               }}
-              actions={SORT_OPTIONS.map((option) => ({
+              actions={sortOptions.map((option) => ({
                 id: option.mode,
                 title: option.title,
                 subtitle: option.subtitle,
@@ -1618,7 +1732,7 @@ export default function TabelleView({
                       },
                     ]}
                   >
-                    Seleziona
+                    {t('tablesUi.select')}
                   </Animated.Text>
                   <Animated.View
                     style={[
@@ -1739,7 +1853,7 @@ export default function TabelleView({
 
 const main = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.canvas },
-  toolbar: { paddingHorizontal: 4, paddingTop: 4, paddingBottom: 8, marginTop: -20, marginBottom: -25 },
+  toolbar: { paddingHorizontal: 4, paddingTop: 4, paddingBottom: 8, marginBottom: -25 },
   toolbarRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   toolbarSub: { color: C.muted, fontSize: 13, marginTop: 8 },
   toolbarSubPlaceholder: { flex: 1 },

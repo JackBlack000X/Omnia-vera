@@ -5,6 +5,7 @@ import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
 import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { useAppTheme } from '@/lib/theme-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import LottieView from 'lottie-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -498,9 +499,7 @@ export default function CalendarScreen() {
               <View style={styles.headerTitleRow}>
                 <Text style={styles.title}>{t('calendarScreen.title')}</Text>
                 <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButtonInline}>
-                  <View style={styles.infoCircleSmall}>
-                    <Text style={styles.infoTextSmall}>i</Text>
-                  </View>
+                  <Ionicons name="information-circle" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
             )}
@@ -513,9 +512,7 @@ export default function CalendarScreen() {
             </View>
             {activeTheme === 'futuristic' && (
               <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
-                <View style={styles.infoCircle}>
-                  <Text style={styles.infoText}>i</Text>
-                </View>
+                <Ionicons name="information-circle" size={24} color="#FFFFFF" />
               </TouchableOpacity>
             )}
           </View>
@@ -589,39 +586,8 @@ const styles = StyleSheet.create({
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { color: '#FFFFFF', fontSize: 28, fontWeight: 'bold', letterSpacing: -1 },
-  infoButton: { marginLeft: 12, marginTop: 4 },
-  infoButtonInline: { marginLeft: 2 },
-  infoCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#9CA3AF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  infoText: {
-    color: '#9CA3AF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  infoCircleSmall: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: '#9CA3AF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    transform: [{ translateY: 2 }],
-  },
-  infoTextSmall: {
-    color: '#9CA3AF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
+  infoButton: { marginLeft: 12, marginTop: 4, minWidth: 28, minHeight: 28, alignItems: 'center', justifyContent: 'center' },
+  infoButtonInline: { marginLeft: 2, minWidth: 18, minHeight: 18, alignItems: 'center', justifyContent: 'center' },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',

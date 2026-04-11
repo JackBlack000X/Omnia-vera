@@ -177,7 +177,7 @@ function ToggleRow({
           <Text style={styles.toggleTitle}>{title}</Text>
           {onInfoPress ? (
             <TouchableOpacity onPress={onInfoPress} style={styles.infoButton}>
-              <Text style={styles.infoButtonText}>i</Text>
+              <Ionicons name="information-circle" size={16} color="#FFFFFF" />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -1287,15 +1287,8 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  infoButtonText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 11,
-    fontWeight: '700',
   },
   notificationPills: {
     flexDirection: 'row',

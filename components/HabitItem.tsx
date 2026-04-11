@@ -38,6 +38,8 @@ type Props = {
 };
 
 // Colori delle card come nella foto
+const EDIT_ICON_CENTERING = { transform: [{ translateX: 2 }, { translateY: -2 }] } as const;
+
 const CARD_COLORS = [
   '#fbbf24', // Giallo
   '#ef4444', // Rosso  
@@ -278,7 +280,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
         onPress={() => onSchedule(habit)}
         style={[styles.actionBtnTallLeft, styles.renameBtn]}
       >
-        <Ionicons name="create" size={24} color="white" />
+        <Ionicons name="create" size={24} color="white" style={EDIT_ICON_CENTERING} />
       </TouchableOpacity>
     </View>
   );

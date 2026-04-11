@@ -1346,7 +1346,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     const headerRows = [Array.from({ length: cols }, () => '')];
     const headerCols = Array.from({ length: rowCount }, (_, i) => [String(i + 1)]);
     const cells: string[][] = Array.from({ length: rowCount }, () => Array(cols).fill(''));
-    const checked = Array.from({ length: rowCount }, () => Array(cols).fill(false));
+    const checked = Array.from({ length: rowCount }, () => Array(cols).fill(''));
     const newTable: UserTable = {
       id: newId,
       name,
