@@ -6,7 +6,8 @@ const MAX_LAYOUT_SCALE = 1.1;
 const uiScale = Math.min(MAX_LAYOUT_SCALE, Math.max(1, Dimensions.get('window').width / BASE_LAYOUT_WIDTH));
 const s = (value: number) => Math.round(value * uiScale);
 
-export const SCREEN_HORIZONTAL_PADDING = s(10);
+export const SCREEN_HORIZONTAL_PADDING = s(14);
+export const TOP_SECTION_HORIZONTAL_PADDING = 10;
 export const FAB_EDGE_INSET = s(20);
 export const PADDED_SCREEN_FAB_RIGHT = Math.max(0, FAB_EDGE_INSET - SCREEN_HORIZONTAL_PADDING);
 
@@ -24,6 +25,9 @@ export const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
+  topSectionInset: {
+    paddingHorizontal: TOP_SECTION_HORIZONTAL_PADDING,
+  },
   title: {
     fontSize: s(28),
     fontWeight: '700',
@@ -33,6 +37,7 @@ export const styles = StyleSheet.create({
   /** Raggruppa barra progresso + cartelle/Oggi e li sposta insieme verso l’alto */
   tasksProgressAndFoldersWrap: {
     marginTop: -10,
+    paddingHorizontal: TOP_SECTION_HORIZONTAL_PADDING,
   },
   progressSection: {
     marginBottom: 8
@@ -442,7 +447,8 @@ export const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20
+    marginTop: 20,
+    marginHorizontal: 4,
   },
   emptyText: {
     color: THEME.textMuted,
@@ -452,6 +458,9 @@ export const styles = StyleSheet.create({
 
   listContainer: {
     paddingBottom: 100
+  },
+  taskRowInset: {
+    marginHorizontal: 4,
   },
 
   fab: {

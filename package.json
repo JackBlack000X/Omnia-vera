@@ -9,6 +9,9 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "test": "npm run test:unit && npm run test:weather",
+    "test:unit": "tsx --test lib/date.test.ts lib/oggi/eventLayout.test.ts scripts/widgetSnapshot.test.ts",
+    "test:weather": "tsx scripts/weather-cache.test.ts && tsx scripts/weather-forecast.test.ts && tsx scripts/weather-symbols.test.ts",
     "test:widgets": "tsx --test scripts/widgetSnapshot.test.ts",
     "postinstall": "patch-package"
   },

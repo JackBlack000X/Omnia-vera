@@ -24,7 +24,10 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 prepare_react_native_project!
 
 target 'Tothemoon' do
-  use_expo_modules!
+  # The widget package is only needed as a config plugin / extension scaffold here.
+  # Excluding it from Expo autolinking prevents ExpoModulesProvider from importing
+  # a module that isn't linked into the main app target.
+  use_expo_modules!(exclude: ['react-native-widget-extension'])
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];

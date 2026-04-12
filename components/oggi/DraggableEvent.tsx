@@ -60,7 +60,7 @@ export type DraggableEventProps = {
     newEndTime: string;
     previousRankSnapshot?: { ranks: Record<string, number>; counter: number };
   }) => void;
-  getRecurringDragButtons?: (args: { event: OggiEvent; ymd: string; startTime: string; endTime: string }) => Array<{ text: string; onPress: () => void }>;
+  getRecurringDragButtons?: (args: { event: OggiEvent; ymd: string; startTime: string; endTime: string }) => { text: string; onPress: () => void }[];
   shouldOpenRecurringDragMenu?: (args: { event: OggiEvent; ymd: string; startTime: string; endTime: string }) => boolean;
 };
 

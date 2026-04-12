@@ -6,7 +6,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  View,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 
@@ -21,6 +20,7 @@ type Props = {
 export default function IntroVideo({ onDone }: Props) {
   const { t } = useTranslation();
   const [videoEnded, setVideoEnded] = useState(false);
+  const playingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Animated values
   const containerOpacity = useRef(new Animated.Value(1)).current;
@@ -32,30 +32,32 @@ export default function IntroVideo({ onDone }: Props) {
   });
 
   useEffect(() => {
-    const sub = player.addListener('statusChange', (payload) => {
-      if (payload.status === 'idle' && !videoEnded) {
-        // Video has finished playing – 'idle' fires after playback ends
-        // We also check that it played at least a bit to avoid the initial idle
-      }
-    });
-    return () => sub.remove();
-  }, [player, videoEnded]);
-
-  useEffect(() => {
     const sub = player.addListener('playingChange', (payload) => {
       // When playing becomes false and status becomes idle, video ended
       if (!payload.isPlaying) {
         // Small delay to confirm it's actually finished (not buffering)
-        const timer = setTimeout(() => {
-          if (player.currentTime > 0 && !videoEnded) {
-            setVideoEnded(true);
+        if (playingStopTimerRef.current) {
+          clearTimeout(playingStopTimerRef.current);
+        }
+        playingStopTimerRef.current = setTimeout(() => {
+          if (player.currentTime > 0) {
+            setVideoEnded((current) => current || true);
           }
+          playingStopTimerRef.current = null;
         }, 300);
-        return () => clearTimeout(timer);
+      } else if (playingStopTimerRef.current) {
+        clearTimeout(playingStopTimerRef.current);
+        playingStopTimerRef.current = null;
       }
     });
-    return () => sub.remove();
-  }, [player, videoEnded]);
+    return () => {
+      sub.remove();
+      if (playingStopTimerRef.current) {
+        clearTimeout(playingStopTimerRef.current);
+        playingStopTimerRef.current = null;
+      }
+    };
+  }, [player]);
 
   // Fade in the Enter button when video ends
   useEffect(() => {

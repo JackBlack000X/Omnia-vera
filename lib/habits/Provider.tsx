@@ -1,6 +1,7 @@
 import i18n from '@/lib/i18n/i18n';
 import { canAskLocationPermission, getLocationPermissionStatusAsync, startGeofencingForRegions, stopGeofencingAsync } from '@/lib/location';
 import { loadPlaces } from '@/lib/places';
+import { createStableId } from '@/lib/createStableId';
 import { getItemWithLegacy, LEGACY_STORAGE_KEYS, STORAGE_KEYS } from '@/lib/storageKeys';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -97,10 +98,6 @@ function formatYmd(date = new Date(), tz = TZ): string {
     const dd = String(d.getUTCDate()).padStart(2, '0');
     return `${d.getUTCFullYear()}-${m}-${dd}`;
   }
-}
-
-function generateUUID(): string {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
 function prevYmd(ymd: string): string {
@@ -812,7 +809,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, [checkEventAutoComplete]);
 
   const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: Habit['isAllDay']; habitFreq?: Habit['habitFreq']; label?: string }) => {
-    const newId = generateUUID();
+    const newId = createStableId();
     const base = { id: newId, text, order: 0, color: color ?? '#4A148C', createdAt: formatYmd(), createdAtMs: Date.now(), folder, tipo };
     setHabits((prev) => {
       const newOrder = prev.length;
@@ -835,7 +832,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     setHabits((prev) => {
       const source = prev.find(h => h.id === id);
       if (!source) return prev;
-      newId = generateUUID();
+      newId = createStableId();
       const copy: Habit = {
         ...cloneHabitForDuplicate(source),
         id: newId,
@@ -868,7 +865,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addTrackerEntry = useCallback((entry: Omit<TrackerEntry, 'id' | 'createdAt'>): string => {
-    const newId = generateUUID();
+    const newId = createStableId();
     const now = formatYmd();
     const newEntry: TrackerEntry = { ...entry, id: newId, createdAt: now };
     setTrackerEntries(prev => {
@@ -1341,7 +1338,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addTable = useCallback((name: string, color: string, cols = 4, rowCount = 4, folder?: string): string => {
-    const newId = generateUUID();
+    const newId = createStableId();
     const now = formatYmd();
     const headerRows = [Array.from({ length: cols }, () => '')];
     const headerCols = Array.from({ length: rowCount }, (_, i) => [String(i + 1)]);

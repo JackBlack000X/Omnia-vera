@@ -1,4 +1,5 @@
 import type { Habit } from '@/lib/habits/schema';
+import { createStableId } from '@/lib/createStableId';
 import i18n from '@/lib/i18n/i18n';
 import { toBcp47 } from '@/lib/i18n/bcp47';
 import * as Calendar from 'expo-calendar';
@@ -38,13 +39,6 @@ function dateToHHMM(d: Date): string {
   } catch {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
-}
-
-function generateUUID(): string {
-  return (
-    Math.random().toString(36).substring(2, 15) +
-    Math.random().toString(36).substring(2, 15)
-  );
 }
 
 /** True if the app can ask for calendar access (iOS/Android only). */
@@ -129,7 +123,7 @@ export function calendarEventsToHabits(
   return events
     .filter((e) => e.id && !existingIds.has(e.id))
     .map((event, i) => {
-      const id = generateUUID();
+      const id = createStableId();
       const start =
         typeof event.startDate === 'string'
           ? new Date(event.startDate)

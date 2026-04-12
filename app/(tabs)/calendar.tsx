@@ -1,4 +1,5 @@
 import { buildStreakFireAnimation } from '@/constants/streakFire';
+import { SCREEN_HORIZONTAL_PADDING, TOP_SECTION_HORIZONTAL_PADDING } from '@/components/index/indexStyles';
 import { getCalendarDays, getMonthName, getMonthYear } from '@/lib/date';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { useHabits } from '@/lib/habits/Provider';
@@ -11,7 +12,7 @@ import LottieView from 'lottie-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const CALENDAR_UI_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 const STREAK_BORDER_COLOR = '#FFD700';
@@ -288,6 +289,7 @@ export default function CalendarScreen() {
   const { habits, history, getDay, dayResetTime } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const weekHeaders = useMemo(
     () => CALENDAR_UI_DAY_KEYS.map((k) => t(`calendarUi.${k}`)),
@@ -445,7 +447,7 @@ export default function CalendarScreen() {
     }
     perfectDates.sort().reverse();
 
-    if (perfectDates.length === 0) return 0;
+    if (perfectDates.length < 2) return 0;
 
     let streak = 0;
     let prevDate: Date | null = null;
@@ -463,7 +465,7 @@ export default function CalendarScreen() {
       prevDate = d;
     }
 
-    return streak;
+    return streak >= 2 ? streak : 0;
   }, [recentHistory, habits, logicalTodayYmd, dayResetTime]);
 
   const streakBadgeValue = STREAK_TEST_OVERRIDE ?? currentPerfectStreak;
@@ -491,7 +493,17 @@ export default function CalendarScreen() {
   ), [currentYear, currentMonth, logicalTodayYmd, habits, recentHistory, streakInfo, handleDayPress, dayResetTime, weekHeaders, fmt]);
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <View
+      style={[
+        styles.screen,
+        {
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
+    >
       <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 60 }]}>
         <View style={styles.headerTop}>
           <View style={styles.headerText}>
@@ -574,13 +586,13 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#000', paddingHorizontal: 0 },
-  header: { marginTop: 15, marginBottom: 15, paddingHorizontal: 16 },
+  screen: { flex: 1, backgroundColor: '#000', paddingHorizontal: SCREEN_HORIZONTAL_PADDING },
+  header: { marginTop: 8, marginBottom: 15, paddingHorizontal: TOP_SECTION_HORIZONTAL_PADDING },
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },

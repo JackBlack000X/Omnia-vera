@@ -1,4 +1,5 @@
 import { THEME } from '@/constants/theme';
+import { createStableId } from '@/lib/createStableId';
 import { Place, loadPlaces, savePlaces } from '@/lib/places';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -10,10 +11,6 @@ import * as Location from 'expo-location';
 import { canAskLocationPermission, requestLocationPermissionsAsync } from '@/lib/location';
 
 const EDIT_ICON_CENTERING = { transform: [{ translateX: 2 }, { translateY: -2 }] } as const;
-
-function generateId(): string {
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-}
 
 export default function PlacesScreen() {
   const { t } = useTranslation();
@@ -114,7 +111,7 @@ export default function PlacesScreen() {
       await persist(next);
     } else {
       const next: Place = {
-        id: generateId(),
+        id: createStableId(),
         name: trimmedName,
         lat: latNum,
         lng: lngNum,

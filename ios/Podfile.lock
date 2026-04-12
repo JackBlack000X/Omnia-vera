@@ -2347,8 +2347,6 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ReactNativeWidgetExtension (0.2.0):
-    - ExpoModulesCore
   - rn-group-preferences (2.0.4):
     - hermes-engine
     - RCTRequired
@@ -2763,7 +2761,6 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
   - "ReactNativeHealthkit (from `../node_modules/@kingstinct/react-native-healthkit`)"
-  - ReactNativeWidgetExtension (from `../node_modules/react-native-widget-extension/ios`)
   - rn-group-preferences (from `../node_modules/rn-group-preferences`)
   - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
   - "RNDateTimePicker (from `../node_modules/@react-native-community/datetimepicker`)"
@@ -3023,8 +3020,6 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
   ReactNativeHealthkit:
     :path: "../node_modules/@kingstinct/react-native-healthkit"
-  ReactNativeWidgetExtension:
-    :path: "../node_modules/react-native-widget-extension/ios"
   rn-group-preferences:
     :path: "../node_modules/rn-group-preferences"
   RNCAsyncStorage:
@@ -3167,7 +3162,6 @@ SPEC CHECKSUMS:
   ReactCommon: 8868269b67561136a7970be188b40738135af077
   ReactNativeDependencies: 0516e866c42e7e25aa55ab8ff4b513b9a2de12ca
   ReactNativeHealthkit: c1106ec34bde52359639f109fb49edcfcfbf3ec1
-  ReactNativeWidgetExtension: 373e304d35c3ce95ae410baffe3064a2a381b1e3
   rn-group-preferences: dce8395b6e9f9211330eb032602833b62d419217
   RNCAsyncStorage: 3a4f5e2777dae1688b781a487923a08569e27fe4
   RNDateTimePicker: 9c0a849bbe1c256f0854fea255734b715f5ea876
@@ -3182,6 +3176,6 @@ SPEC CHECKSUMS:
   UMAppLoader: 71b50bcc31d86495e52c0b4cd17e2708bf297be3
   Yoga: dd994d8c85dca5cc9b10f5df8c01f9ef1d0da191
 
-PODFILE CHECKSUM: d5413d3c44e49abc4329fd1d3fb7810429ea7c0d
+PODFILE CHECKSUM: cbd644206d932cce7aa7931a0630673fe27099af
 
 COCOAPODS: 1.16.2

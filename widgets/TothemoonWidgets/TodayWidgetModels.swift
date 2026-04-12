@@ -13,10 +13,18 @@ struct TodayWidgetCommand: Codable {
   let logicalDate: String
 }
 
+struct TodayWidgetOccurrenceSlot: Codable {
+  let start: Int
+  let end: Int
+  let isTimed: Bool
+}
+
 struct TodayWidgetItem: Codable, Identifiable {
   let id: String
   let title: String
   let color: String?
+  let timeLabel: String?
+  let occurrenceSlots: [TodayWidgetOccurrenceSlot]
   let currentCount: Int
   let targetCount: Int
   let isComplete: Bool
@@ -33,6 +41,7 @@ struct TodayWidgetProgress: Codable {
 struct TodayWidgetSnapshot: Codable {
   let version: Int
   let logicalDate: String
+  let dayResetTime: String
   let generatedAt: String
   let openAppDeeplink: String
   let progress: TodayWidgetProgress
@@ -41,6 +50,7 @@ struct TodayWidgetSnapshot: Codable {
   static let placeholder = TodayWidgetSnapshot(
     version: 1,
     logicalDate: "2026-04-07",
+    dayResetTime: "02:00",
     generatedAt: "2026-04-07T12:00:00.000Z",
     openAppDeeplink: "habitchecknative://oggi",
     progress: TodayWidgetProgress(completedCount: 1, totalCount: 3),
@@ -49,6 +59,8 @@ struct TodayWidgetSnapshot: Codable {
         id: "placeholder-1",
         title: "Bere acqua",
         color: "#3b82f6",
+        timeLabel: "Adesso",
+        occurrenceSlots: [TodayWidgetOccurrenceSlot(start: 840, end: 960, isTimed: true)],
         currentCount: 2,
         targetCount: 3,
         isComplete: false,
@@ -60,6 +72,8 @@ struct TodayWidgetSnapshot: Codable {
         id: "placeholder-2",
         title: "Leggere",
         color: "#8b5cf6",
+        timeLabel: "Alle 18:30",
+        occurrenceSlots: [TodayWidgetOccurrenceSlot(start: 1110, end: 1170, isTimed: true)],
         currentCount: 0,
         targetCount: 1,
         isComplete: false,
@@ -71,6 +85,8 @@ struct TodayWidgetSnapshot: Codable {
         id: "placeholder-3",
         title: "Camminare",
         color: "#10b981",
+        timeLabel: "In giornata",
+        occurrenceSlots: [TodayWidgetOccurrenceSlot(start: 120, end: 1560, isTimed: false)],
         currentCount: 1,
         targetCount: 1,
         isComplete: true,
@@ -84,6 +100,7 @@ struct TodayWidgetSnapshot: Codable {
   static let previewSmall = TodayWidgetSnapshot(
     version: 1,
     logicalDate: "2026-04-07",
+    dayResetTime: "02:00",
     generatedAt: "2026-04-07T22:00:00.000Z",
     openAppDeeplink: "habitchecknative://oggi",
     progress: TodayWidgetProgress(completedCount: 1, totalCount: 3),
@@ -92,6 +109,8 @@ struct TodayWidgetSnapshot: Codable {
         id: "preview-small-1",
         title: "Bere acqua",
         color: "#f59e0b",
+        timeLabel: "Adesso",
+        occurrenceSlots: [TodayWidgetOccurrenceSlot(start: 840, end: 960, isTimed: true)],
         currentCount: 2,
         targetCount: 3,
         isComplete: false,
@@ -103,6 +122,8 @@ struct TodayWidgetSnapshot: Codable {
         id: "preview-small-2",
         title: "Hetze",
         color: "#7c3aed",
+        timeLabel: "Alle 18:30",
+        occurrenceSlots: [TodayWidgetOccurrenceSlot(start: 1110, end: 1170, isTimed: true)],
         currentCount: 0,
         targetCount: 1,
         isComplete: false,
@@ -116,6 +137,7 @@ struct TodayWidgetSnapshot: Codable {
   static let previewMedium = TodayWidgetSnapshot(
     version: 1,
     logicalDate: "2026-04-07",
+    dayResetTime: "02:00",
     generatedAt: "2026-04-07T22:00:00.000Z",
     openAppDeeplink: "habitchecknative://oggi",
     progress: TodayWidgetProgress(completedCount: 2, totalCount: 4),
@@ -124,6 +146,8 @@ struct TodayWidgetSnapshot: Codable {
         id: "preview-medium-1",
         title: "Stujfe",
         color: "#f59e0b",
+        timeLabel: "Adesso",
+        occurrenceSlots: [TodayWidgetOccurrenceSlot(start: 840, end: 960, isTimed: true)],
         currentCount: 0,
         targetCount: 1,
         isComplete: false,
@@ -135,6 +159,8 @@ struct TodayWidgetSnapshot: Codable {
         id: "preview-medium-2",
         title: "Hetze",
         color: "#7c3aed",
+        timeLabel: "Alle 18:30",
+        occurrenceSlots: [TodayWidgetOccurrenceSlot(start: 1110, end: 1170, isTimed: true)],
         currentCount: 0,
         targetCount: 1,
         isComplete: false,
@@ -146,6 +172,8 @@ struct TodayWidgetSnapshot: Codable {
         id: "preview-medium-3",
         title: "Allenamento",
         color: "#22c55e",
+        timeLabel: "In giornata",
+        occurrenceSlots: [TodayWidgetOccurrenceSlot(start: 120, end: 1560, isTimed: false)],
         currentCount: 1,
         targetCount: 1,
         isComplete: true,
@@ -159,6 +187,7 @@ struct TodayWidgetSnapshot: Codable {
   static let previewEmpty = TodayWidgetSnapshot(
     version: 1,
     logicalDate: "2026-04-07",
+    dayResetTime: "02:00",
     generatedAt: "2026-04-07T22:00:00.000Z",
     openAppDeeplink: "habitchecknative://oggi",
     progress: TodayWidgetProgress(completedCount: 0, totalCount: 0),
@@ -228,6 +257,8 @@ enum TodayWidgetStore {
         id: item.id,
         title: item.title,
         color: item.color,
+        timeLabel: item.timeLabel,
+        occurrenceSlots: item.occurrenceSlots,
         currentCount: nextCurrentCount,
         targetCount: item.targetCount,
         isComplete: nextIsComplete,
@@ -240,6 +271,7 @@ enum TodayWidgetStore {
     let nextSnapshot = TodayWidgetSnapshot(
       version: currentSnapshot.version,
       logicalDate: currentSnapshot.logicalDate,
+      dayResetTime: currentSnapshot.dayResetTime,
       generatedAt: ISO8601DateFormatter().string(from: Date()),
       openAppDeeplink: currentSnapshot.openAppDeeplink,
       progress: TodayWidgetProgress(

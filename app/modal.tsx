@@ -262,7 +262,7 @@ function WheelColumn({
   React.useEffect(() => {
     ref.current?.scrollTo({ y: selectedIndex * REPEAT_END_ITEM_HEIGHT, animated: false });
     setLiveIndex(selectedIndex);
-  }, []);
+  }, [selectedIndex]);
 
   return (
     <View style={{ width, height: REPEAT_END_ITEM_HEIGHT * 5, overflow: 'hidden' }}>
@@ -436,8 +436,6 @@ export default function ModalScreen() {
     ? HEALTH_HABIT_OPTIONS
     : (selectedHealthOption ? [selectedHealthOption] : []);
   const shouldShowSaluteDetails = m.tipo !== 'salute' || Boolean(m.healthMetric);
-  const extraTypeOptions: ('vacanza' | 'salute')[] =
-    healthFeatureEnabled || m.tipo === 'salute' ? ['vacanza', 'salute'] : ['vacanza'];
 
   const refreshHealthConnection = React.useCallback(async () => {
     try {

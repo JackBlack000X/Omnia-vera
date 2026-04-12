@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, InteractionManager, LayoutAnimation, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { Layout, runOnUI, SharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Soglia in px per mostrare i puntini “c’è altro da scorrere” sulla barra cartelle */
 const FOLDER_BAR_SCROLL_SLACK = 6;
@@ -221,8 +221,6 @@ export default function IndexScreen() {
     habits,
     removeHabit,
     resetToday,
-    dayResetTime,
-    setDayResetTime,
     closingMenuId,
     sortMode,
     setSortMode,
@@ -257,9 +255,7 @@ export default function IndexScreen() {
     lastMergeHoverTimeSV,
     lastMergeHoverExitTimeSV,
     mergeDirectionSV,
-    overlapHoverStateRef,
     overlapHoverState,
-    animVals,
     setAnimVals,
     folderHeightsSV,
     displayList,
@@ -288,14 +284,12 @@ export default function IndexScreen() {
     toggleHabitDone,
     toggleSelect,
     recordDragStartSelection,
-    buildCollapsedListIfMultiSelect,
     selectionOrder,
     toggleFolderCollapsed,
     updateFoldersScrollEnabled,
     handleSectionedDragEnd,
     preDragSnapshotRef,
     isPostDragRef,
-    resetStorage,
     collapsedFolderIds,
     menuToday,
     menuTomorrow,
@@ -451,7 +445,7 @@ export default function IndexScreen() {
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
   const lastFolderTapRef = useRef<{ id: string; time: number } | null>(null);
   const isDraggingRef = useRef(false);
-  const [isDraggingFolder, setIsDraggingFolder] = React.useState(false);
+  const [, setIsDraggingFolder] = React.useState(false);
   const dragInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.createInteractionHandle> | null>(null);
   const lastPlaceholderIndexRef = useRef<number | null>(null);
   const dropCoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -488,7 +482,7 @@ export default function IndexScreen() {
   // keys and handle the visual collapse in renderItem.
   const listData = useMemo(() => {
     return pendingDisplayRef.current ?? displayList ?? sectionedList;
-  }, [displayList, sectionedList]);
+  }, [displayList, pendingDisplayRef, sectionedList]);
 
   // Forziamo il re-render delle celle durante il drag quando l'overlap cambia
   const extraDataForDrag = useMemo(() => ({
@@ -544,7 +538,7 @@ export default function IndexScreen() {
   const renderDropCoverTaskCard = useCallback((habit: Habit, key: string, inFolder = false) => {
     const completion = getHabitCompletionProps(habit);
     return (
-      <View key={key} style={inFolder ? styles.taskInFolder : undefined}>
+      <View key={key} style={[styles.taskRowInset, inFolder ? styles.taskInFolder : undefined]}>
         <HabitItem
           habit={habit}
           index={0}
@@ -633,40 +627,6 @@ export default function IndexScreen() {
       const label = typeof item.folderName === 'string' ? item.folderName : t('common.tutte');
       const isCollapsed = collapsedFolderIds.has(item.folderId);
       const overlapState = overlapHoverState;
-      let hasTouchingNeighbor = false;
-
-      if (
-        !isCollapsed &&
-        isDraggingFolder &&
-        overlapState.isOverlapping &&
-        typeof getIndex === 'function'
-      ) {
-        const idx = getIndex() ?? -1;
-        const activeIdx = overlapState.activeIndex;
-        const dir = overlapState.direction;
-        if (idx >= 0 && dir !== 0) {
-          const neighborIdx = activeIdx + dir;
-          if (
-            neighborIdx >= 0 &&
-            neighborIdx < listData.length &&
-            (idx === activeIdx || idx === neighborIdx)
-          ) {
-            const activeItem = listData[activeIdx];
-            const neighborItem = listData[neighborIdx];
-            const activeIsFolder =
-              activeItem &&
-              activeItem.type === 'folderBlock' &&
-              !collapsedFolderIds.has(activeItem.folderId);
-            const neighborIsFolder =
-              neighborItem &&
-              neighborItem.type === 'folderBlock' &&
-              !collapsedFolderIds.has(neighborItem.folderId);
-            if (activeIsFolder && neighborIsFolder) {
-              hasTouchingNeighbor = true;
-            }
-          }
-        }
-      }
 
       let debugAboveCount: number | string | null = null;
       let debugBelowCount: number | string | null = null;
@@ -781,7 +741,7 @@ export default function IndexScreen() {
                     return (
                       <View
                         key={h.id}
-                        style={styles.taskInFolder}
+                        style={[styles.taskRowInset, styles.taskInFolder]}
                       >
                         <HabitItem
                           habit={h}
@@ -827,27 +787,28 @@ export default function IndexScreen() {
                 {multiDragHabits.map((habit) => {
                   const completion = getHabitCompletionProps(habit);
                   return (
-                    <HabitItem
-                      key={habit.id}
-                      habit={habit}
-                      index={0}
-                      isDone={completion.isDone}
-                      completionMode={completion.completionMode}
-                      completionDate={completion.completionDate}
-                      onToggleDone={toggleHabitDone}
-                      onRename={handleSchedule}
-                      onSchedule={handleSchedule}
-                      onColor={handleSchedule}
-                      shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
-                      onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
-                      selectionMode={selectionMode}
-                      isSelected={selectedIds.has(habit.id)}
-                      onToggleSelect={toggleSelect}
-                      onLongPress={drag}
-                      onMenuOpen={handleMenuOpen}
-                      onMenuClose={handleMenuClose}
-                      onSmartTaskCompleted={handleSmartTaskCompleted}
-                    />
+                    <View key={habit.id} style={styles.taskRowInset}>
+                      <HabitItem
+                        habit={habit}
+                        index={0}
+                        isDone={completion.isDone}
+                        completionMode={completion.completionMode}
+                        completionDate={completion.completionDate}
+                        onToggleDone={toggleHabitDone}
+                        onRename={handleSchedule}
+                        onSchedule={handleSchedule}
+                        onColor={handleSchedule}
+                        shouldCloseMenu={closingMenuId === habit.id || closingMenuId === 'all'}
+                        onMoveToFolder={activeFolder === null ? handleMoveToFolder : undefined}
+                        selectionMode={selectionMode}
+                        isSelected={selectedIds.has(habit.id)}
+                        onToggleSelect={toggleSelect}
+                        onLongPress={drag}
+                        onMenuOpen={handleMenuOpen}
+                        onMenuClose={handleMenuClose}
+                        onSmartTaskCompleted={handleSmartTaskCompleted}
+                      />
+                    </View>
                   );
                 })}
               </View>
@@ -874,6 +835,7 @@ export default function IndexScreen() {
       const taskCard = (
         <ScaleDecorator>
           <Pressable
+            style={styles.taskRowInset}
             onLongPress={canStartDrag ? drag : undefined}
             disabled={isActive || !canStartDrag}
             delayLongPress={200}
@@ -928,7 +890,6 @@ export default function IndexScreen() {
     handleSchedule,
     closingMenuId,
     activeFolder,
-    sortMode,
     folders,
     handleMoveToFolder,
     handleMenuOpen,
@@ -943,24 +904,33 @@ export default function IndexScreen() {
     toggleFolderCollapsed,
     multiDragAnchorId,
     multiDragHabits,
-    isDraggingFolder,
     listData,
     overlapHoverState,
     handleDuplicate,
     handleSmartTaskCompleted,
     isPostDragRef,
+    folderHeightsSV,
     toggleHabitDone,
     t,
   ]);
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+    <View
+      style={[
+        styles.screen,
+        {
+          paddingTop: insets.top,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
+    >
       <View
         style={[
           styles.header,
+          styles.topSectionInset,
           activeTheme === 'futuristic' && {
             marginTop: 55,
-            paddingHorizontal: 6,
             paddingBottom: 6,
             marginBottom: 8,
           },
@@ -1399,8 +1369,8 @@ export default function IndexScreen() {
                 `task-${item.habit.id}`}
               renderItem={renderSectionItem}
               extraData={extraDataForDrag}
-              contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: -16 }]}
-              style={[activeTheme === 'futuristic' && { marginHorizontal: -16 }]}
+              contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: 6 }]}
+              style={[activeTheme === 'futuristic' && { marginHorizontal: -6 }]}
               containerStyle={styles.dragListContainer}
               showsVerticalScrollIndicator={false}
               dragItemOverflow
@@ -1626,6 +1596,6 @@ export default function IndexScreen() {
         onSelect={handleSmartTaskFeedback}
         onClose={handleSmartTaskPromptClose}
       />
-    </SafeAreaView>
+    </View>
   );
 }

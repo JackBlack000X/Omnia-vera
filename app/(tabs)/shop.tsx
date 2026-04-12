@@ -1,28 +1,45 @@
+import { SCREEN_HORIZONTAL_PADDING, TOP_SECTION_HORIZONTAL_PADDING } from '@/components/index/indexStyles';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassView } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ShopScreen() {
   const { t } = useTranslation();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.background}>
-      <SafeAreaView style={styles.container}>
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: insets.top,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          },
+        ]}
+      >
         <View style={styles.header}>
           <Text style={styles.title}>{t('shop.title')}</Text>
-          <View style={styles.headerRight}>
-            <TouchableOpacity 
-              onPress={() => router.push('/profile')}
-              style={styles.profileBtn}
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => router.push('/profile')}
+            style={styles.profileButton}
+          >
+            <GlassView
+              glassEffectStyle="regular"
+              colorScheme="dark"
+              isInteractive
+              style={styles.profileGlass}
             >
-              <Ionicons name="person-outline" size={24} color="white" />
-            </TouchableOpacity>
-          </View>
+              <Ionicons name="person-outline" size={22} color="white" />
+            </GlassView>
+          </TouchableOpacity>
         </View>
         
         <View style={styles.content}>
@@ -45,7 +62,7 @@ export default function ShopScreen() {
             </View>
           </View>
         </View>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -58,13 +75,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'transparent',
+    paddingHorizontal: SCREEN_HORIZONTAL_PADDING,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginTop: 12,
+    paddingHorizontal: TOP_SECTION_HORIZONTAL_PADDING,
+    marginTop: 8,
     marginBottom: 15,
   },
   coinsWrap: {
@@ -100,30 +118,35 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
   title: {
     fontSize: 28,
     fontWeight: '700',
     color: 'white',
   },
-  profileBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'white',
-    justifyContent: 'center',
+  profileButton: {
+    borderRadius: 24,
+    marginTop: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+  },
+  profileGlass: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: TOP_SECTION_HORIZONTAL_PADDING,
     justifyContent: 'center',
+    paddingBottom: 56,
   },
   optionsContainer: {
     gap: 16,

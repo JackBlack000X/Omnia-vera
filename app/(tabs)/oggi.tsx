@@ -5,9 +5,9 @@ import TrackerModal from '@/components/oggi/TrackerModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { THEME } from '@/constants/theme';
 import { isToday, parseYmdSafe } from '@/lib/date';
-import { getLogicalDayKey, useHabits } from '@/lib/habits/Provider';
+import { useHabits } from '@/lib/habits/Provider';
 import { isTravelLikeTipo, type Habit } from '@/lib/habits/schema';
-import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate } from '@/lib/habits/occurrences';
+import { getDailyOccurrenceTotalForDate } from '@/lib/habits/occurrences';
 import {
   appearsOnDateRaw,
   getHabitsAppearingOnDate,
@@ -32,7 +32,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Dimensions, LayoutChangeEvent, Modal, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const HOLD_DELAY_MS = 400;
 const HOLD_INTERVAL_MS = 150;
@@ -129,13 +129,6 @@ function formatDateLong(date: Date, tz: string): string {
   }
 }
 
-function shortPlaceLabel(name: string | null | undefined): string {
-  const trimmed = (name ?? '').trim();
-  if (!trimmed) return '';
-  const first = trimmed.split(',')[0];
-  return first ? first.trim() : trimmed;
-}
-
 function diffDays(fromYmd: string, toYmd: string): number {
   const from = new Date(fromYmd + 'T12:00:00.000Z');
   const to = new Date(toYmd + 'T12:00:00.000Z');
@@ -185,7 +178,8 @@ function prevYmd(ymd: string): string {
 
 export default function OggiScreen() {
   const { t } = useTranslation();
-  const { habits, history, getDay, getResetTimeForDay, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleFromDate, setHabits, reviewedDates, markDateReviewed, saveDayReview, dayResetTime, setDayResetTime, isLoaded, trackerEntries } = useHabits();
+  const insets = useSafeAreaInsets();
+  const { habits, history, getDay, getResetTimeForDay, setTimeOverrideRange, setMultipleOccurrenceSlotOverrides, updateScheduleFromDate, setHabits, reviewedDates, markDateReviewed, saveDayReview, dayResetTime, setDayResetTime, isLoaded, trackerEntries } = useHabits();
   const { activeTheme } = useAppTheme();
   const router = useRouter();
   const { ymd } = useLocalSearchParams<{ ymd?: string }>();
@@ -212,7 +206,7 @@ export default function OggiScreen() {
   const [recentlyMovedEventId, setRecentlyMovedEventId] = useState<string | null>(null);
   const [currentDragPosition, setCurrentDragPosition] = useState<number | null>(null);
   const [dragClearedOriginalOverlap, setDragClearedOriginalOverlap] = useState(false);
-  const [dragSizingLocked, setDragSizingLocked] = useState(false);
+  const [, setDragSizingLocked] = useState(false);
   const [dragAreaHeight, setDragAreaHeight] = useState(0);
   const dragY = useSharedValue(0);
   const dragInitialTop = useSharedValue(0);
@@ -309,8 +303,7 @@ export default function OggiScreen() {
   const isPastReset = useMemo(() => {
     if (!dayResetTime || dayResetTime === '00:00') return false;
     const [rh, rm] = dayResetTime.split(':').map(Number);
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const nowMin = currentTime.getHours() * 60 + currentTime.getMinutes();
     return nowMin >= rh * 60 + rm;
   }, [dayResetTime, currentTime]);
   const todayDate = useMemo(() => formatDateLong(currentDate, TZ), [currentDate]);
@@ -551,7 +544,7 @@ export default function OggiScreen() {
             ? t('oggi.annual')
             : null;
 
-    const buttons: Array<{ text: string; onPress: () => void }> = [
+    const buttons: { text: string; onPress: () => void }[] = [
       { text: t('oggi.onlyToday'), onPress: () => setTimeOverrideRange(habitId, ymd, startTime, endTime) },
     ];
 
@@ -609,8 +602,6 @@ export default function OggiScreen() {
 
   const weekday = useMemo(() => currentDate.getDay(), [currentDate]);
   const dayOfMonth = useMemo(() => currentDate.getDate(), [currentDate]);
-  const monthIndex1 = useMemo(() => currentDate.getMonth() + 1, [currentDate]);
-
   // -- Meteo collegato ai viaggi --
   useEffect(() => {
     let cancelled = false;
@@ -678,7 +669,7 @@ export default function OggiScreen() {
   const { timedEvents, allDayEvents, vacationHighlightRanges } = useMemo(() => {
     const items: OggiEvent[] = [];
     const allDay: OggiEvent[] = [];
-    const vacationRanges: Array<{ start: number; end: number }> = [];
+    const vacationRanges: { start: number; end: number }[] = [];
     const logicalYmd = selectedDayYmd;
     const resetMin = dayResetTime && dayResetTime !== '00:00' ? toMinutes(currentDayResetTime) : 0;
     const nextResetMin = dayResetTime && dayResetTime !== '00:00' ? toMinutes(nextDayResetTime) : 0;
@@ -867,7 +858,7 @@ export default function OggiScreen() {
             dayOv[0] && isValidTimeString(dayOv[0].start)
               ? toMinutes(dayOv[0].start)
               : startM;
-          const slotTimes: Array<{ slotIndex: number; start: number; end: number }> = [];
+          const slotTimes: { slotIndex: number; start: number; end: number }[] = [];
           for (let i = 0; i < nOcc; i++) {
             const slotOv = dayOv[i];
             let sM: number;
@@ -941,7 +932,7 @@ export default function OggiScreen() {
       }
     }
     return { timedEvents: items, allDayEvents: allDay, vacationHighlightRanges: vacationRanges };
-  }, [habits, selectedDayYmd, prevDayYmd, dayResetTime, currentDayResetTime, nextDayResetTime, nextDayYmd, todayYmd]);
+  }, [habits, selectedDayYmd, prevDayYmd, dayResetTime, currentDayResetTime, nextDayResetTime, nextDayYmd, detectHabitFreq]);
 
   const handleOccurrenceSlotDragEnd = useCallback(
     ({
@@ -1092,8 +1083,6 @@ export default function OggiScreen() {
 
         const targetWeekday = targetDate.getDay();
         const targetDayOfMonth = targetDate.getDate();
-        const targetMonth = targetDate.getMonth() + 1;
-
         setHabits(prev => prev.map(h => {
           if (h.id !== habitId) return h;
 
@@ -1373,11 +1362,11 @@ export default function OggiScreen() {
   }, [ymd]);
 
   const yesterdayYmd = useMemo(() => {
-    const logicalToday = getDay(new Date());
+    const logicalToday = getDay(currentTime);
     const d = new Date(logicalToday + 'T12:00:00.000Z');
     d.setUTCDate(d.getUTCDate() - 1);
     return d.toISOString().slice(0, 10);
-  }, [getDay, dayResetTime, currentTime]);
+  }, [currentTime, getDay]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -1593,6 +1582,8 @@ export default function OggiScreen() {
   // --- LAYOUT MANAGEMENT ---
   
   const layoutById = useMemo<Record<string, LayoutInfo>>(() => {
+    // rankVersion is an explicit invalidation token when column-rank order changes.
+    void rankVersion;
     const events = layoutEvents.map(e => {
       if ((e as any).tipo === 'tracker') {
         const startM = toMinutes(e.startTime);
@@ -1738,7 +1729,7 @@ export default function OggiScreen() {
       width: (colWidth * draggedLayout.span) - 2,
       left,
     };
-  }, [layoutEvents, layoutById, calculateLayoutCallback, lastMovedEventId]);
+  }, [layoutEvents, calculateLayoutCallback, lastMovedEventId]);
 
   const getEventStyle = (event: OggiEvent) => {
     const originalStart = toMinutes(event.startTime);
@@ -1822,7 +1813,16 @@ export default function OggiScreen() {
   const todayWeather = travelTodayWeather ?? baseTodayWeather;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
+    >
       {/* Header */}
       <View style={[styles.header, activeTheme === 'futuristic' && { marginTop: 50 }]}>
         <TouchableOpacity onPress={() => navigateDate('prev')} style={styles.navButton}>
@@ -1969,16 +1969,6 @@ export default function OggiScreen() {
                const light = isLightColor(bg);
                const iconColor = light ? '#000' : '#FFF';
                const titleParts = e.title.split('\n');
-               const mezzoIconMap: Record<string, string> = {
-                 aereo: 'airplane-outline',
-                 treno: 'train-outline',
-                 auto: 'car-outline',
-                 nave: 'boat-outline',
-                 bici: 'bicycle-outline',
-                 bus: 'bus-outline',
-                 altro: 'ellipsis-horizontal-outline',
-               };
-               const mezzoIcon = (mezzoIconMap[e.travelMezzo ?? ''] ?? 'arrow-down-outline') as any;
                // 3 righe (~42px) servono per il formato verticale (da / icona / a).
                // Se non c'è spazio, usiamo una riga con freccia orizzontale.
                const useMultiLine = style.height >= 55;
@@ -2094,7 +2084,6 @@ export default function OggiScreen() {
                }
                const style = getEventStyle(e);
                if (!style) return null;
-               const bg = e.color;
                
                const baseTop = style.top + BASE_VERTICAL_OFFSET;
 
@@ -2392,7 +2381,7 @@ export default function OggiScreen() {
         </TouchableOpacity>
       </View>
 
-    </SafeAreaView>
+    </View>
   );
 }
 
