@@ -6,6 +6,7 @@ export const modalEn = {
   titleEdit: 'Edit task',
   titleColor: 'Choose color',
   placeholderName: 'Name',
+  tableLinkedTitleHint: 'This title comes from the table and updates if you rename the table or column.',
   sectionType: 'Type',
   tipoTask: 'Task',
   tipoHabit: 'Habit',

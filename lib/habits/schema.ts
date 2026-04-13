@@ -70,6 +70,8 @@ export type TableSeriesLink = {
   columnIndex: number;
   rowIndex: number;
   seriesId: string;
+  /** `cell` = task singola creata da una casella; `columnSeries` = serie della colonna. */
+  source?: 'cell' | 'columnSeries';
 };
 
 export type TableSeriesIntervalUnit = 'days' | 'weeks' | 'months';
@@ -99,7 +101,8 @@ export type Habit = {
   createdAtMs?: number; // Unix timestamp ms at creation for precise ordering
   isAllDay?: boolean; // explicit all-day flag
   habitFreq?: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual'; // explicit frequency flag
-  folder?: string; // custom folder/category name
+  folder?: string; // primary custom folder/category name (legacy-compatible)
+  folders?: string[]; // all custom folder/category names for multi-folder tasks
   label?: string; // free-form label/tag
   tipo?: HabitTipo; // task type
   notification?: NotificationConfig;

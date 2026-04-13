@@ -636,18 +636,25 @@ export default function ModalScreen() {
           </Text>
 
           {(type === 'new' || type === 'rename' || type === 'edit') && !((m.tipo === 'viaggio' || m.tipo === 'salute' || m.tipo === 'vacanza') && (type === 'new' || type === 'edit')) && (
-            <TextInput
-              value={m.text}
-              onChangeText={(v) => !m.isTextLocked && v.length <= 100 && m.setText(v)}
-              onSubmitEditing={m.save}
-              placeholder={t('modal.placeholderName')}
-              placeholderTextColor="#64748b"
-              editable={!m.isTextLocked}
-              style={[styles.input, m.isTextLocked && { opacity: 0.75 }]}
-            />
+            <>
+              <TextInput
+                value={m.text}
+                onChangeText={(v) => !m.isTextLocked && v.length <= 100 && m.setText(v)}
+                onSubmitEditing={m.save}
+                placeholder={t('modal.placeholderName')}
+                placeholderTextColor="#64748b"
+                editable={!m.isTextLocked}
+                style={[styles.input, m.isTextLocked && { opacity: 0.75 }]}
+              />
+              {m.isTableLinkedTitleLocked ? (
+                <Text style={[styles.subtle, { marginTop: 8 }]}>
+                  {t('modal.tableLinkedTitleHint')}
+                </Text>
+              ) : null}
+            </>
           )}
 
-          {(type === 'new' || type === 'edit') && (
+          {(type === 'new' || type === 'edit') && !m.isTableLinkedTask && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>{t('modal.sectionType')}</Text>
               <View style={[styles.row, { marginTop: 8 }]}>
@@ -849,18 +856,18 @@ export default function ModalScreen() {
               <Text style={styles.sectionTitle}>{t('modal.sectionFolder')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
                 <TouchableOpacity
-                  onPress={() => m.setSelectedFolder(null)}
-                  style={[styles.chip, m.selectedFolder === null ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                  onPress={m.clearSelectedFolders}
+                  style={[styles.chip, m.selectedFolders.length === 0 ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
                 >
-                  <Text style={m.selectedFolder === null ? styles.chipActiveText : styles.chipGhostText}>{t('common.tutte')}</Text>
+                  <Text style={m.selectedFolders.length === 0 ? styles.chipActiveText : styles.chipGhostText}>{t('common.tutte')}</Text>
                 </TouchableOpacity>
                 {m.availableFolders.map(folderName => (
                   <TouchableOpacity
                     key={folderName}
-                    onPress={() => m.setSelectedFolder(folderName)}
-                    style={[styles.chip, m.selectedFolder === folderName ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                    onPress={() => m.toggleSelectedFolder(folderName)}
+                    style={[styles.chip, m.selectedFolders.includes(folderName) ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
                   >
-                    <Text style={m.selectedFolder === folderName ? styles.chipActiveText : styles.chipGhostText}>{folderName}</Text>
+                    <Text style={m.selectedFolders.includes(folderName) ? styles.chipActiveText : styles.chipGhostText}>{folderName}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -1135,7 +1142,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (m.tipo === 'task' || m.tipo === 'abitudine') && (
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (m.tipo === 'task' || m.tipo === 'abitudine') && !m.isTableLinkedTask && (
             <View style={{ marginTop: 16 }}>
               <Text style={styles.sectionTitle}>{t('modal.timeLabel')}</Text>
               <View style={[styles.row, { marginTop: 8 }]}>
@@ -2166,7 +2173,7 @@ export default function ModalScreen() {
             </View>
           )}
 
-          {shouldShowSaluteDetails && (m.tipo !== 'viaggio' && m.tipo !== 'vacanza') && (type === 'schedule' || ((type === 'new' || type === 'edit') && ((m.tipo !== 'task' && m.tipo !== 'abitudine') || m.taskHasTime))) && (
+          {shouldShowSaluteDetails && (m.tipo !== 'viaggio' && m.tipo !== 'vacanza') && (type === 'schedule' || ((type === 'new' || type === 'edit') && ((m.tipo !== 'task' && m.tipo !== 'abitudine') || m.taskHasTime || m.isTableLinkedTask))) && (
             <View>
               <>
                   {/* Giorno / Data inizio: sempre visibile sopra Ripetizione */}
@@ -2221,67 +2228,71 @@ export default function ModalScreen() {
                     )}
                   </View>
 
-                  <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>{t('modal.sectionRepeat')}</Text></View>
-                  <View style={styles.row}>
-                    <TouchableOpacity onPress={() => m.setFreqWithConfirmation('single')} style={[styles.chip, m.freq === 'single' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'single' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqSingle')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => m.setFreqWithConfirmation('daily')} style={[styles.chip, m.freq === 'daily' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'daily' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqDaily')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={[styles.row, { marginTop: 8 }]}>
-                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('weekly'); }} style={[styles.chip, m.freq === 'weekly' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'weekly' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqWeekly')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('monthly'); }} style={[styles.chip, m.freq === 'monthly' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'monthly' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqMonthly')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('annual'); }} style={[styles.chip, m.freq === 'annual' ? styles.chipActive : styles.chipGhost]}>
-                      <Text style={m.freq === 'annual' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqAnnual')}</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {m.freq === 'weekly' && (
-                    <View style={{ marginTop: 12 }}>
-                      <Text style={styles.subtle}>{t('modal.weekdaysPick')}</Text>
-                      <View style={[styles.daysWrap, useCompactWeekdays && styles.daysWrapCompact]}>
-                        {(['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'] as const).map((dowKey, i) => {
-                          const sundayIndex = (i + 1) % 7; // map Mon->1 ... Sun->0
-                          const selected = m.daysOfWeek.includes(sundayIndex);
-                          return (
-                            <TouchableOpacity
-                              key={i}
-                              onPress={() => m.toggleDow(sundayIndex)}
-                              style={[
-                                styles.dayPill,
-                                useCompactWeekdays && styles.dayPillCompact,
-                                selected ? styles.dayPillOn : styles.dayPillOff,
-                              ]}
-                            >
-                              <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{t(`weekdaysShort.${dowKey}`)}</Text>
-                            </TouchableOpacity>
-                          );
-                        })}
+                  {!m.isTableLinkedTask && (
+                    <>
+                      <View style={[styles.sectionHeader, { marginTop: 16 }]}><Text style={styles.sectionTitle}>{t('modal.sectionRepeat')}</Text></View>
+                      <View style={styles.row}>
+                        <TouchableOpacity onPress={() => m.setFreqWithConfirmation('single')} style={[styles.chip, m.freq === 'single' ? styles.chipActive : styles.chipGhost]}>
+                          <Text style={m.freq === 'single' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqSingle')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => m.setFreqWithConfirmation('daily')} style={[styles.chip, m.freq === 'daily' ? styles.chipActive : styles.chipGhost]}>
+                          <Text style={m.freq === 'daily' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqDaily')}</Text>
+                        </TouchableOpacity>
                       </View>
-                    </View>
-                  )}
-
-                  {m.freq === 'monthly' && (
-                    <View style={{ marginTop: 12 }}>
-                      <Text style={styles.subtle}>{t('modal.monthDaysPick')}</Text>
-                      <View style={styles.monthlyDaysWrap}>
-                        {Array.from({ length: 31 }).map((_, i) => (
-                          <TouchableOpacity key={i} onPress={() => m.toggleMonthDay(i + 1)} style={[styles.monthlyDayPill, m.monthDays.includes(i + 1) ? styles.dayPillOn : styles.dayPillOff]}>
-                            <Text style={m.monthDays.includes(i + 1) ? styles.dayTextOn : styles.dayTextOff}>{i + 1}</Text>
-                          </TouchableOpacity>
-                        ))}
+                      <View style={[styles.row, { marginTop: 8 }]}>
+                        <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('weekly'); }} style={[styles.chip, m.freq === 'weekly' ? styles.chipActive : styles.chipGhost]}>
+                          <Text style={m.freq === 'weekly' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqWeekly')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('monthly'); }} style={[styles.chip, m.freq === 'monthly' ? styles.chipActive : styles.chipGhost]}>
+                          <Text style={m.freq === 'monthly' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqMonthly')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => { m.setFreqWithConfirmation('annual'); }} style={[styles.chip, m.freq === 'annual' ? styles.chipActive : styles.chipGhost]}>
+                          <Text style={m.freq === 'annual' ? styles.chipActiveText : styles.chipGhostText}>{t('modal.freqAnnual')}</Text>
+                        </TouchableOpacity>
                       </View>
-                    </View>
+
+                      {m.freq === 'weekly' && (
+                        <View style={{ marginTop: 12 }}>
+                          <Text style={styles.subtle}>{t('modal.weekdaysPick')}</Text>
+                          <View style={[styles.daysWrap, useCompactWeekdays && styles.daysWrapCompact]}>
+                            {(['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'] as const).map((dowKey, i) => {
+                              const sundayIndex = (i + 1) % 7; // map Mon->1 ... Sun->0
+                              const selected = m.daysOfWeek.includes(sundayIndex);
+                              return (
+                                <TouchableOpacity
+                                  key={i}
+                                  onPress={() => m.toggleDow(sundayIndex)}
+                                  style={[
+                                    styles.dayPill,
+                                    useCompactWeekdays && styles.dayPillCompact,
+                                    selected ? styles.dayPillOn : styles.dayPillOff,
+                                  ]}
+                                >
+                                  <Text style={selected ? styles.dayTextOn : styles.dayTextOff}>{t(`weekdaysShort.${dowKey}`)}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      )}
+
+                      {m.freq === 'monthly' && (
+                        <View style={{ marginTop: 12 }}>
+                          <Text style={styles.subtle}>{t('modal.monthDaysPick')}</Text>
+                          <View style={styles.monthlyDaysWrap}>
+                            {Array.from({ length: 31 }).map((_, i) => (
+                              <TouchableOpacity key={i} onPress={() => m.toggleMonthDay(i + 1)} style={[styles.monthlyDayPill, m.monthDays.includes(i + 1) ? styles.dayPillOn : styles.dayPillOff]}>
+                                <Text style={m.monthDays.includes(i + 1) ? styles.dayTextOn : styles.dayTextOff}>{i + 1}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+                      )}
+                    </>
                   )}
                 </>
 
-              {m.freq !== 'single' && (
+              {!m.isTableLinkedTask && m.freq !== 'single' && (
                 <View style={{ marginTop: 16 }}>
                   <TouchableOpacity onPress={() => setRepeatEndOpen(v => !v)} style={[styles.sectionHeader, { flexDirection: 'column', alignItems: 'flex-start' }]}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -2557,68 +2568,74 @@ export default function ModalScreen() {
                           </View>
                         </View>
                         <Text style={styles.duration}>{formatDuration((m.currentEndMin ?? (m.currentStartMin + 60)) - m.currentStartMin)}</Text>
-                        <View style={styles.timeSection}>
-                      <Text style={styles.timeSectionTitle}>{t('modal.repetitions')}</Text>
-                      <View style={[styles.timePicker, { justifyContent: 'center' }]}>
-                        <View style={[styles.timeControls, { flex: 0, minWidth: 160 }]}>
-                          <Text style={styles.timeLabel}>{t('modal.timesPerDay')}</Text>
-                          <View style={styles.timeStepperRow}>
-                            <HoldableStepperButton onPress={() => m.updateCurrentDailyOccurrences(Math.max(1, m.currentDailyOccurrences - 1))}>−</HoldableStepperButton>
-                            <Text style={styles.timeValue}>{m.currentDailyOccurrences}</Text>
-                            <HoldableStepperButton onPress={() => m.updateCurrentDailyOccurrences(Math.min(30, m.currentDailyOccurrences + 1))}>+</HoldableStepperButton>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-                      {m.currentDailyOccurrences > 1 && (() => {
-                        const sgi = m.slotGapInfo;
-                        const displayGap = sgi.kind === 'uniform' ? sgi.gap : m.currentGapMinutes;
-                        const isCustom = sgi.kind === 'custom';
-                        return (
-                          <View style={styles.timeSection}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <Text style={styles.timeSectionTitle}>{t('modal.gapTitle')}</Text>
-                              {isCustom && (
-                                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.18)', borderWidth: 1, borderColor: '#f59e0b' }}>
-                                  <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>{t('common.custom')}</Text>
-                                </View>
-                              )}
-                            </View>
-                            <View style={styles.timePicker}>
-                              <View style={styles.timeControls}>
-                                <Text style={styles.timeLabel}>{t('common.ore')}</Text>
-                                <View style={styles.timeStepperRow}>
-                                  <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g - 60)))}>−</HoldableStepperButton>
-                                  <Text style={styles.timeValue}>{Math.floor(displayGap / 60)}</Text>
-                                  <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g + 60)))}>+</HoldableStepperButton>
-                                </View>
-                              </View>
-                              <View style={styles.timeControls}>
-                                <Text style={styles.timeLabel}>{t('common.min')}</Text>
-                                <View style={styles.timeStepperRow}>
-                                  <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g - 5)))}>−</HoldableStepperButton>
-                                  <Text style={styles.timeValue}>{displayGap % 60}</Text>
-                                  <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g + 5)))}>+</HoldableStepperButton>
+                        {!m.isTableLinkedTask && (
+                          <>
+                            <View style={styles.timeSection}>
+                              <Text style={styles.timeSectionTitle}>{t('modal.repetitions')}</Text>
+                              <View style={[styles.timePicker, { justifyContent: 'center' }]}>
+                                <View style={[styles.timeControls, { flex: 0, minWidth: 160 }]}>
+                                  <Text style={styles.timeLabel}>{t('modal.timesPerDay')}</Text>
+                                  <View style={styles.timeStepperRow}>
+                                    <HoldableStepperButton onPress={() => m.updateCurrentDailyOccurrences(Math.max(1, m.currentDailyOccurrences - 1))}>−</HoldableStepperButton>
+                                    <Text style={styles.timeValue}>{m.currentDailyOccurrences}</Text>
+                                    <HoldableStepperButton onPress={() => m.updateCurrentDailyOccurrences(Math.min(30, m.currentDailyOccurrences + 1))}>+</HoldableStepperButton>
+                                  </View>
                                 </View>
                               </View>
                             </View>
-                            {isCustom && (
-                              <Text style={[styles.subtle, { marginTop: 4, textAlign: 'center', fontSize: 11, color: '#f59e0b' }]}>
-                                {t('modal.gapResetHint')}
-                              </Text>
-                            )}
-                            <Text style={[styles.subtle, { marginTop: 6, textAlign: 'center', fontSize: 11 }]}>
-                              {m.occurrencePreviewSlots.join('  ·  ')}
-                            </Text>
-                          </View>
-                        );
-                      })()}
+                            {m.currentDailyOccurrences > 1 && (() => {
+                              const sgi = m.slotGapInfo;
+                              const displayGap = sgi.kind === 'uniform' ? sgi.gap : m.currentGapMinutes;
+                              const isCustom = sgi.kind === 'custom';
+                              return (
+                                <View style={styles.timeSection}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Text style={styles.timeSectionTitle}>{t('modal.gapTitle')}</Text>
+                                    {isCustom && (
+                                      <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.18)', borderWidth: 1, borderColor: '#f59e0b' }}>
+                                        <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>{t('common.custom')}</Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  <View style={styles.timePicker}>
+                                    <View style={styles.timeControls}>
+                                      <Text style={styles.timeLabel}>{t('common.ore')}</Text>
+                                      <View style={styles.timeStepperRow}>
+                                        <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g - 60)))}>−</HoldableStepperButton>
+                                        <Text style={styles.timeValue}>{Math.floor(displayGap / 60)}</Text>
+                                        <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g + 60)))}>+</HoldableStepperButton>
+                                      </View>
+                                    </View>
+                                    <View style={styles.timeControls}>
+                                      <Text style={styles.timeLabel}>{t('common.min')}</Text>
+                                      <View style={styles.timeStepperRow}>
+                                        <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g - 5)))}>−</HoldableStepperButton>
+                                        <Text style={styles.timeValue}>{displayGap % 60}</Text>
+                                        <HoldableStepperButton onPress={() => m.updateCurrentGapMinutes((g: number) => Math.max(5, Math.min(24 * 60, g + 5)))}>+</HoldableStepperButton>
+                                      </View>
+                                    </View>
+                                  </View>
+                                  {isCustom && (
+                                    <Text style={[styles.subtle, { marginTop: 4, textAlign: 'center', fontSize: 11, color: '#f59e0b' }]}>
+                                      {t('modal.gapResetHint')}
+                                    </Text>
+                                  )}
+                                  <Text style={[styles.subtle, { marginTop: 6, textAlign: 'center', fontSize: 11 }]}>
+                                    {m.occurrencePreviewSlots.join('  ·  ')}
+                                  </Text>
+                                </View>
+                              );
+                            })()}
+                          </>
+                        )}
                       </>
                     )}
                   </View>
-                  <Text style={[styles.subtle, { marginTop: 8, textAlign: 'center', fontSize: 12 }]}>
-                    {t('modal.occurrenceHint')}
-                  </Text>
+                  {!m.isTableLinkedTask ? (
+                    <Text style={[styles.subtle, { marginTop: 8, textAlign: 'center', fontSize: 12 }]}>
+                      {t('modal.occurrenceHint')}
+                    </Text>
+                  ) : null}
                 </View>
               )}
             </View>

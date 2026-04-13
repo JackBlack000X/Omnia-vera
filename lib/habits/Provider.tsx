@@ -3,6 +3,7 @@ import { canAskLocationPermission, getLocationPermissionStatusAsync, startGeofen
 import { loadPlaces } from '@/lib/places';
 import { createStableId } from '@/lib/createStableId';
 import { getItemWithLegacy, LEGACY_STORAGE_KEYS, STORAGE_KEYS } from '@/lib/storageKeys';
+import { ensureHabitFolderFields, withHabitFolders } from '@/lib/habits/folders';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform } from 'react-native';
@@ -187,6 +188,24 @@ function cloneHabitSchedule(schedule: Habit['schedule']): Habit['schedule'] {
   };
 }
 
+function getTableColumnLabels(table: UserTable): string[] {
+  const row = table.headerRows?.[0];
+  if (Array.isArray(row)) return row;
+  const colCount = Array.isArray(table.cells?.[0]) ? table.cells[0].length : 0;
+  return Array.from({ length: colCount }, () => '');
+}
+
+function buildTableTaskTitle(tableName: string, columnLabel: string, rowNumber: number, colNumber: number): string {
+  const safeTable = tableName.trim();
+  const safeColumn = columnLabel.trim() || `C${colNumber}`;
+  return [safeTable, safeColumn, String(rowNumber)].filter(Boolean).join(' ');
+}
+
+function getLinkedTableTaskTitle(table: UserTable, rowIndex: number, columnIndex: number): string {
+  const labels = getTableColumnLabels(table);
+  return buildTableTaskTitle(table.name, labels[columnIndex] ?? '', rowIndex + 1, columnIndex + 1);
+}
+
 function cloneHabitForDuplicate(source: Habit): Omit<Habit, 'id'> {
   const {
     id: _id,
@@ -205,7 +224,7 @@ function cloneHabitForDuplicate(source: Habit): Omit<Habit, 'id'> {
     ...rest
   } = source;
 
-  return {
+  return ensureHabitFolderFields({
     ...rest,
     createdAt: formatYmd(),
     createdAtMs: Date.now(),
@@ -238,7 +257,7 @@ function cloneHabitForDuplicate(source: Habit): Omit<Habit, 'id'> {
     health: health ? { ...health } : undefined,
     smartTask: smartTask ? { ...smartTask } : undefined,
     aggregateCompleted: false,
-  };
+  });
 }
 
 function getLogicalDayKeyWithResolver(
@@ -305,11 +324,11 @@ export type HabitsContextType = {
   dayResetTime: string;
   reviewedDates: string[];
   isLoaded: boolean;
-  addHabit: (text: string, color?: string, folder?: string, tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => string;
+  addHabit: (text: string, color?: string, folder?: string | string[], tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => string;
   duplicateHabit: (id: string) => string | null;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
-  updateHabitFolder: (id: string, folder: string | undefined) => void;
+  updateHabitFolder: (id: string, folder: string | string[] | undefined) => void;
   updateHabitTipo: (id: string, tipo: HabitTipo) => void;
   removeHabit: (id: string) => void;
   toggleDone: (id: string) => void;
@@ -400,7 +419,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         if (rawHabits) {
           try {
             const parsed = JSON.parse(rawHabits);
-            if (Array.isArray(parsed)) setHabits(parsed);
+            if (Array.isArray(parsed)) {
+              setHabits(parsed.map((habit) => ensureHabitFolderFields(habit as Habit)));
+            }
           } catch (e) {
             console.warn('Corrupted habits data, skipping');
           }
@@ -809,20 +830,24 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [checkEventAutoComplete]);
 
-  const addHabit = useCallback((text: string, color?: string, folder?: string, tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: Habit['isAllDay']; habitFreq?: Habit['habitFreq']; label?: string }) => {
+  const addHabit = useCallback((text: string, color?: string, folder?: string | string[], tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: Habit['isAllDay']; habitFreq?: Habit['habitFreq']; label?: string }) => {
     const newId = createStableId();
-    const base = { id: newId, text, order: 0, color: color ?? '#4A148C', createdAt: formatYmd(), createdAtMs: Date.now(), folder, tipo };
     setHabits((prev) => {
       const newOrder = prev.length;
-      const newHabit: Habit = {
-        ...base,
+      const newHabit = withHabitFolders<Habit>({
+        id: newId,
+        text,
         order: newOrder,
+        color: color ?? '#4A148C',
+        createdAt: formatYmd(),
+        createdAtMs: Date.now(),
+        tipo,
         ...(initial?.timeOverrides && { timeOverrides: initial.timeOverrides }),
         ...(initial?.schedule && { schedule: initial.schedule }),
         ...(initial?.isAllDay !== undefined && { isAllDay: initial.isAllDay }),
         ...(initial?.habitFreq && { habitFreq: initial.habitFreq }),
         ...(initial?.label && { label: initial.label }),
-      };
+      }, folder);
       return [...prev, newHabit];
     });
     return newId;
@@ -858,9 +883,9 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const updateHabitFolder = useCallback((id: string, folder: string | undefined) => {
+  const updateHabitFolder = useCallback((id: string, folder: string | string[] | undefined) => {
     setHabits((prev) => {
-      const next = prev.map((h) => (h.id === id ? { ...h, folder: folder?.trim() || undefined } : h));
+      const next = prev.map((h) => (h.id === id ? withHabitFolders(h, folder) : h));
       return next;
     });
   }, []);
@@ -1365,12 +1390,24 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateTable = useCallback((id: string, patch: Partial<Omit<UserTable, 'id' | 'createdAt'>>) => {
+    const currentTable = tables.find((table) => table.id === id);
+    if (!currentTable) return;
+    const nextTable = { ...currentTable, ...patch };
+
     setTables(prev => {
-      const next = prev.map(t => t.id === id ? { ...t, ...patch } : t);
+      const next = prev.map(t => t.id === id ? nextTable : t);
       AsyncStorage.setItem(STORAGE_TABLES, JSON.stringify(next)).catch(() => {});
       return next;
     });
-  }, []);
+    if (patch.name !== undefined || patch.headerRows !== undefined) {
+      setHabits(prev => prev.map((habit) => {
+        const link = habit.tableSeriesLink;
+        if (!link || link.tableId !== id) return habit;
+        const nextTitle = getLinkedTableTaskTitle(nextTable, link.rowIndex, link.columnIndex);
+        return nextTitle === habit.text ? habit : { ...habit, text: nextTitle };
+      }));
+    }
+  }, [setHabits, tables]);
 
   const deleteTable = useCallback((id: string) => {
     setTables(prev => {

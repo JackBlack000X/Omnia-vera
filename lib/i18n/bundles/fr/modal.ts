@@ -5,6 +5,7 @@ export const modalFr = {
   titleEdit: 'Modifier la tâche',
   titleColor: 'Choisir la couleur',
   placeholderName: 'Nom',
+  tableLinkedTitleHint: 'Ce titre vient du tableau et se met à jour si tu renommes le tableau ou la colonne.',
   sectionType: 'Type',
   tipoTask: 'Tâche',
   tipoHabit: 'Habitude',

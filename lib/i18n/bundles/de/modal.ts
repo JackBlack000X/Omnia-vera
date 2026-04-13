@@ -5,6 +5,7 @@ export const modalDe = {
   titleEdit: 'Aufgabe bearbeiten',
   titleColor: 'Farbe wählen',
   placeholderName: 'Name',
+  tableLinkedTitleHint: 'Dieser Titel kommt aus der Tabelle und aktualisiert sich, wenn du Tabelle oder Spalte umbenennst.',
   sectionType: 'Typ',
   tipoTask: 'Aufgabe',
   tipoHabit: 'Gewohnheit',

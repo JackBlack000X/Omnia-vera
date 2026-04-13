@@ -5,6 +5,7 @@ export const modalIt = {
   titleEdit: 'Modifica Task',
   titleColor: 'Scegli Colore',
   placeholderName: 'Nome',
+  tableLinkedTitleHint: 'Questo titolo arriva dalla tabella e si aggiorna se cambi nome tabella o colonna.',
   sectionType: 'Tipo',
   tipoTask: 'Task',
   tipoHabit: 'Abitudine',

@@ -853,6 +853,7 @@ function SpreadsheetView({
   const [editingCol, setEditingCol] = useState<number | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [taskModalTitle, setTaskModalTitle] = useState<string | null>(null);
+  const [taskModalSource, setTaskModalSource] = useState<{ rowIndex: number; columnIndex: number } | null>(null);
   const [seriesColumnIndex, setSeriesColumnIndex] = useState<number | null>(null);
   const [actionsExpanded, setActionsExpanded] = useState(false);
   const [activeBrushColor, setActiveBrushColor] = useState<Exclude<TableCellState, ''>>('green');
@@ -879,6 +880,7 @@ function SpreadsheetView({
     setChecked(normalizeChecked(table));
     setEditingCol(null);
     setDraftLabel('');
+    setTaskModalSource(null);
     setSeriesColumnIndex(null);
   }, [columnLabels, table]);
 
@@ -958,6 +960,7 @@ function SpreadsheetView({
     const rowNumber = rowIndex + 1;
     const title = buildTaskTitle(table.name, labels[colIndex] ?? '', rowNumber, colIndex + 1);
     setTaskModalTitle(title);
+    setTaskModalSource({ rowIndex, columnIndex: colIndex });
   }, [labels, table.name]);
 
   const showInfo = useCallback(() => {
@@ -1331,13 +1334,19 @@ function SpreadsheetView({
           </View>
         </View>
 
-        {taskModalTitle ? (
+        {taskModalTitle && taskModalSource ? (
           <TableTaskCreateOverlay
             title={taskModalTitle}
             defaultFolder={createTarget.folder}
             defaultYmd={createTarget.ymd ?? todayYmd}
             defaultTaskHasTime={Boolean(createTarget.ymd)}
-            onClose={() => setTaskModalTitle(null)}
+            tableId={table.id}
+            columnIndex={taskModalSource.columnIndex}
+            rowIndex={taskModalSource.rowIndex}
+            onClose={() => {
+              setTaskModalTitle(null);
+              setTaskModalSource(null);
+            }}
           />
         ) : null}
 

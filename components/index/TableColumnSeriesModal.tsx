@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -87,12 +88,12 @@ function buildTaskTitle(tableName: string, columnLabel: string, rowNumber: numbe
   return [safeTable, safeColumn, String(rowNumber)].filter(Boolean).join(' ');
 }
 
-function buildSingleTaskSchedule(): NonNullable<Habit['schedule']> {
+function buildSingleTaskSchedule(startTime: string | null, endTime: string | null): NonNullable<Habit['schedule']> {
   return {
     daysOfWeek: [],
     monthDays: undefined,
-    time: null,
-    endTime: null,
+    time: startTime,
+    endTime,
     yearMonth: undefined,
     yearDay: undefined,
     weeklyTimes: undefined,
@@ -197,6 +198,7 @@ export function TableColumnSeriesModal({
   onClose,
   onTablePatch,
 }: TableColumnSeriesModalProps) {
+  const { t } = useTranslation();
   const locale = useFormatLocale();
   const { setHabits, habits } = useHabits();
   const { installMonthStartYmd: minSelectableYmd } = useAppDateBounds();
@@ -207,7 +209,8 @@ export function TableColumnSeriesModal({
       habits.filter(
         (habit) =>
           habit.tableSeriesLink?.tableId === table.id &&
-          habit.tableSeriesLink.columnIndex === columnIndex,
+          habit.tableSeriesLink.columnIndex === columnIndex &&
+          habit.tableSeriesLink.source !== 'cell',
       ),
     [columnIndex, habits, table.id],
   );
@@ -275,6 +278,10 @@ export function TableColumnSeriesModal({
       }),
     [locale, selectedYmd],
   );
+  const resolvedColumnLabel = useMemo(
+    () => columnLabel.trim() || t('tablesUi.columnSeriesColumnFallback', { n: columnIndex + 1 }),
+    [columnIndex, columnLabel, t],
+  );
 
   const previewDates = useMemo(() => {
     const previews = Array.from({ length: Math.min(rowCount, 3) }, (_, index) => {
@@ -290,10 +297,20 @@ export function TableColumnSeriesModal({
   }, [intervalUnit, intervalValue, rowCount, selectedYmd]);
 
   const intervalLabel = useMemo(() => {
-    if (intervalUnit === 'days') return intervalValue === 1 ? 'giorno' : 'giorni';
-    if (intervalUnit === 'weeks') return intervalValue === 1 ? 'settimana' : 'settimane';
-    return intervalValue === 1 ? 'mese' : 'mesi';
-  }, [intervalUnit, intervalValue]);
+    if (intervalUnit === 'days') {
+      return intervalValue === 1
+        ? t('tablesUi.columnSeriesIntervalDayOne')
+        : t('tablesUi.columnSeriesIntervalDayMany');
+    }
+    if (intervalUnit === 'weeks') {
+      return intervalValue === 1
+        ? t('tablesUi.columnSeriesIntervalWeekOne')
+        : t('tablesUi.columnSeriesIntervalWeekMany');
+    }
+    return intervalValue === 1
+      ? t('tablesUi.columnSeriesIntervalMonthOne')
+      : t('tablesUi.columnSeriesIntervalMonthMany');
+  }, [intervalUnit, intervalValue, t]);
 
   const handleSave = useCallback(() => {
     const safeStartYmd = clampYmdNotBeforeYmd(selectedYmd, minSelectableYmd);
@@ -311,7 +328,8 @@ export function TableColumnSeriesModal({
       prev.forEach((habit, index) => {
         if (
           habit.tableSeriesLink?.tableId === table.id &&
-          habit.tableSeriesLink.columnIndex === columnIndex
+          habit.tableSeriesLink.columnIndex === columnIndex &&
+          habit.tableSeriesLink.source !== 'cell'
         ) {
           linkedIndexByRow.set(habit.tableSeriesLink.rowIndex, index);
         }
@@ -321,6 +339,7 @@ export function TableColumnSeriesModal({
         const taskYmd = addIntervalToYmd(safeStartYmd, rowIndex * intervalValue, intervalUnit);
         const taskTitle = buildTaskTitle(table.name, columnLabel, rowIndex + 1, columnIndex + 1);
         const timeOverrides = buildSingleTaskOverride(taskYmd, hasTime, startTime, endTime);
+        const schedule = buildSingleTaskSchedule(startTime, endTime);
         const taskPatch: Partial<Habit> = {
           text: taskTitle,
           color: table.color,
@@ -328,13 +347,14 @@ export function TableColumnSeriesModal({
           tipo: 'task',
           isAllDay: !hasTime,
           habitFreq: 'single',
-          schedule: buildSingleTaskSchedule(),
+          schedule,
           timeOverrides,
           tableSeriesLink: {
             tableId: table.id,
             columnIndex,
             rowIndex,
             seriesId,
+            source: 'columnSeries',
           },
         };
         const existingIndex = linkedIndexByRow.get(rowIndex);
@@ -358,13 +378,14 @@ export function TableColumnSeriesModal({
           tipo: 'task',
           isAllDay: !hasTime,
           habitFreq: 'single',
-          schedule: buildSingleTaskSchedule(),
+          schedule,
           timeOverrides,
           tableSeriesLink: {
             tableId: table.id,
             columnIndex,
             rowIndex,
             seriesId,
+            source: 'columnSeries',
           },
         });
       }
@@ -451,11 +472,11 @@ export function TableColumnSeriesModal({
 
               <View style={styles.header}>
                 <TouchableOpacity onPress={onClose}>
-                  <Text style={styles.headerSide}>Annulla</Text>
+                  <Text style={styles.headerSide}>{t('common.cancel')}</Text>
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Pianifica colonna</Text>
+                <Text style={styles.headerTitle}>{t('tablesUi.columnSeriesTitle')}</Text>
                 <TouchableOpacity onPress={handleSave}>
-                  <Text style={[styles.headerSide, styles.headerAction]}>Salva</Text>
+                  <Text style={[styles.headerSide, styles.headerAction]}>{t('common.save')}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -470,20 +491,24 @@ export function TableColumnSeriesModal({
                   isInteractive
                   style={styles.heroCard}
                 >
-                  <Text style={styles.heroEyebrow}>Tabella</Text>
                   <Text style={styles.heroTitle} numberOfLines={2}>
                     {table.name}
                   </Text>
                   <Text style={styles.heroSubtitle} numberOfLines={2}>
-                    {columnLabel.trim() || `Colonna ${columnIndex + 1}`} · {rowCount} task dalla riga 1
+                    {t('tablesUi.columnSeriesRowsFromFirst', {
+                      column: resolvedColumnLabel,
+                      count: rowCount,
+                    })}
                   </Text>
                   {linkedHabits.length > 0 ? (
                     <Text style={styles.heroHint}>
-                      Serie già presente: aggiornerò {Math.min(linkedHabits.length, rowCount)} task collegati.
+                      {t('tablesUi.columnSeriesExistingHint', {
+                        count: Math.min(linkedHabits.length, rowCount),
+                      })}
                     </Text>
                   ) : (
                     <Text style={styles.heroHint}>
-                      Creo task singoli così ogni riga resta modificabile da sola.
+                      {t('tablesUi.columnSeriesNewHint')}
                     </Text>
                   )}
                 </GlassView>
@@ -496,7 +521,7 @@ export function TableColumnSeriesModal({
                 >
                   <FieldButton
                     icon="calendar-outline"
-                    title="Partenza riga 1"
+                    title={t('tablesUi.columnSeriesFirstRowStart')}
                     value={dateLabel}
                     expanded={showDatePicker}
                     accent="#93C5FD"
@@ -526,10 +551,10 @@ export function TableColumnSeriesModal({
                   ) : null}
 
                   <View style={styles.inlineSection}>
-                    <Text style={styles.inlineSectionTitle}>Orario</Text>
+                    <Text style={styles.inlineSectionTitle}>{t('modal.timeLabel')}</Text>
                     <GlassContainer spacing={10} style={styles.choiceRow}>
                       <ChoicePill
-                        label="Senza orario"
+                        label={t('modal.allDay')}
                         selected={!hasTime}
                         onPress={() => {
                           setHasTime(false);
@@ -539,7 +564,7 @@ export function TableColumnSeriesModal({
                         style={styles.flexChoice}
                       />
                       <ChoicePill
-                        label="Stessa ora"
+                        label={t('modal.specificTime')}
                         selected={hasTime}
                         onPress={() => setHasTime(true)}
                         style={styles.flexChoice}
@@ -551,7 +576,7 @@ export function TableColumnSeriesModal({
                     <>
                       <FieldButton
                         icon="time-outline"
-                        title="Inizio"
+                        title={t('modal.timeStart')}
                         value={startLabel}
                         expanded={showStartPicker}
                         accent="#6EE7B7"
@@ -577,7 +602,7 @@ export function TableColumnSeriesModal({
 
                       <FieldButton
                         icon="flag-outline"
-                        title="Fine"
+                        title={t('modal.timeEnd')}
                         value={endLabel}
                         expanded={showEndPicker}
                         accent="#F9A8D4"
@@ -611,7 +636,7 @@ export function TableColumnSeriesModal({
                   isInteractive
                   style={styles.sectionCard}
                 >
-                  <Text style={styles.sectionTitle}>Distacco tra le righe</Text>
+                  <Text style={styles.sectionTitle}>{t('tablesUi.columnSeriesGapBetweenRows')}</Text>
                   <View style={styles.stepperRow}>
                     <TouchableOpacity
                       style={styles.stepButton}
@@ -633,19 +658,19 @@ export function TableColumnSeriesModal({
 
                   <GlassContainer spacing={10} style={styles.choiceRow}>
                     <ChoicePill
-                      label="Giorni"
+                      label={t('tablesUi.columnSeriesIntervalDayMany')}
                       selected={intervalUnit === 'days'}
                       onPress={() => setIntervalUnit('days')}
                       style={styles.flexChoice}
                     />
                     <ChoicePill
-                      label="Settimane"
+                      label={t('tablesUi.columnSeriesIntervalWeekMany')}
                       selected={intervalUnit === 'weeks'}
                       onPress={() => setIntervalUnit('weeks')}
                       style={styles.flexChoice}
                     />
                     <ChoicePill
-                      label="Mesi"
+                      label={t('tablesUi.columnSeriesIntervalMonthMany')}
                       selected={intervalUnit === 'months'}
                       onPress={() => setIntervalUnit('months')}
                       style={styles.flexChoice}
@@ -659,7 +684,7 @@ export function TableColumnSeriesModal({
                   isInteractive
                   style={styles.sectionCard}
                 >
-                  <Text style={styles.sectionTitle}>Anteprima</Text>
+                  <Text style={styles.sectionTitle}>{t('tablesUi.columnSeriesPreview')}</Text>
                   {previewDates.previews.map((item) => (
                     <View key={item.rowNumber} style={styles.previewRow}>
                       <Text style={styles.previewIndex}>{item.rowNumber}</Text>
@@ -675,12 +700,14 @@ export function TableColumnSeriesModal({
                   ))}
                   {rowCount > 3 ? (
                     <Text style={styles.previewTail}>
-                      Ultima riga: {ymdToDate(previewDates.lastYmd).toLocaleDateString(locale, {
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
+                      {t('tablesUi.columnSeriesLastRow', {
+                        date: ymdToDate(previewDates.lastYmd).toLocaleDateString(locale, {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                        }),
+                        time: hasTime ? ` · ${startLabel}` : '',
                       })}
-                      {hasTime ? ` · ${startLabel}` : ''}
                     </Text>
                   ) : null}
                 </GlassView>

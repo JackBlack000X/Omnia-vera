@@ -1,6 +1,7 @@
 import { useHabits } from '@/lib/habits/Provider';
 import { clampYmdNotBeforeYmd, compareYmd, formatYmd } from '@/lib/date';
 import { getHealthHabitOption, HEALTH_HABIT_OPTIONS } from '@/lib/healthHabits';
+import { getHabitFolders, normalizeFolderName, withHabitFolders } from '@/lib/habits/folders';
 import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
 import { Habit, HabitTipo, HealthMetric, NotificationConfig, TravelMeta, isTravelLikeTipo } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
@@ -16,17 +17,23 @@ import { Alert, ScrollView } from 'react-native';
 export function useModalLogic(params: { type: string; id?: string; folder?: string; ymd?: string; initialText?: string; lockTitle?: string; scrollRef: React.RefObject<ScrollView | null> }) {
   const { t } = useTranslation();
   const { type, id, folder, ymd, initialText, lockTitle, scrollRef } = params;
-  const { habits, addHabit, updateHabit, updateHabitColor, updateHabitFolder, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
+  const { habits, addHabit, updateHabit, updateHabitColor, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
   const router = useRouter();
   const { installMonthStartYmd: minSelectableYmd, nonPastYmd: minNonPastYmd } = useAppDateBounds();
   const existing = useMemo(() => habits.find(h => h.id === id), [habits, id]);
   const VACATION_COLOR = '#4A148C';
 
-  const isTextLocked = type === 'new' && lockTitle === '1' && (initialText ?? '').trim().length > 0;
+  const isTableLinkedTitleLocked = Boolean(existing?.tableSeriesLink);
+  const isTableLinkedTask = isTableLinkedTitleLocked;
+  const isTextLocked =
+    isTableLinkedTitleLocked ||
+    (type === 'new' && lockTitle === '1' && (initialText ?? '').trim().length > 0);
   const [text, setText] = useState(existing?.text ?? initialText ?? '');
   const [color, setColor] = useState<string>(existing?.color ?? '#4A148C');
   const validFolder = (folder && folder !== '__oggi__' && folder !== '__tutte__') ? folder : null;
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(existing?.folder ?? validFolder ?? null);
+  const [selectedFolders, setSelectedFolders] = useState<string[]>(
+    existing ? getHabitFolders(existing) : (validFolder ? [validFolder] : []),
+  );
   const [availableFolders, setAvailableFolders] = useState<string[]>([]);
   const [tipo, setTipo] = useState<HabitTipo>(existing?.tipo ?? 'task');
   const [healthMetric, setHealthMetric] = useState<HealthMetric | null>(existing?.health?.metric ?? null);
@@ -36,6 +43,18 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     if (existing?.tipo) setTipo(existing.tipo);
   }, [existing?.tipo]);
   useEffect(() => {
+    if (existing) {
+      setSelectedFolders(getHabitFolders(existing));
+      return;
+    }
+    setSelectedFolders(validFolder ? [validFolder] : []);
+  }, [existing?.id, existing?.folder, existing?.folders, validFolder]);
+  useEffect(() => {
+    if (isTableLinkedTitleLocked && typeof existing?.text === 'string') {
+      setText(existing.text);
+    }
+  }, [existing?.text, isTableLinkedTitleLocked]);
+  useEffect(() => {
     setHealthMetric(existing?.health?.metric ?? null);
   }, [existing?.health?.metric]);
   useEffect(() => {
@@ -44,6 +63,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   useEffect(() => {
     setHealthGoalValue(existing?.health?.goalValue ?? 0);
   }, [existing?.health?.goalValue]);
+  useEffect(() => {
+    if (!isTableLinkedTask) return;
+    if (tipo !== 'task') setTipo('task');
+  }, [isTableLinkedTask, tipo]);
 
   const inferredExistingTipo: HabitTipo = (existing?.tipo ?? 'task');
   const supportsOptionalTime = (currentTipo: HabitTipo) =>
@@ -252,6 +275,36 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       } catch {}
     })();
   }, []);
+
+  const clearSelectedFolders = useCallback(() => {
+    setSelectedFolders([]);
+  }, []);
+
+  const toggleSelectedFolder = useCallback((folderName: string) => {
+    const normalizedFolder = normalizeFolderName(folderName);
+    if (!normalizedFolder) return;
+
+    setSelectedFolders((prev) =>
+      prev.includes(normalizedFolder)
+        ? prev.filter((name) => name !== normalizedFolder)
+        : [...prev, normalizedFolder],
+    );
+  }, []);
+
+  const normalizedSelectedFolders = useMemo(() => {
+    const uniqueSelected = new Set(selectedFolders);
+    const ordered = availableFolders.filter((folderName) => uniqueSelected.has(folderName));
+    for (const folderName of selectedFolders) {
+      if (!folderName || ordered.includes(folderName)) continue;
+      ordered.push(folderName);
+    }
+    return ordered;
+  }, [availableFolders, selectedFolders]);
+
+  const selectedFolder = normalizedSelectedFolders[0] ?? null;
+  const applySelectedFolders = useCallback((habit: Habit): Habit => {
+    return withHabitFolders(habit, normalizedSelectedFolders);
+  }, [normalizedSelectedFolders]);
 
   const shortenPlaceName = (value: string | null | undefined): string => {
     const trimmed = (value ?? '').trim();
@@ -605,6 +658,12 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       setPerMonthGaps({});
     }
   }, [existing?.id]);
+  useEffect(() => {
+    if (!isTableLinkedTask) return;
+    if (freq !== 'single') setFreq('single');
+    if (!taskHasTime) setTaskHasTime(true);
+    if (dailyOccurrences !== 1) setDailyOccurrences(1);
+  }, [dailyOccurrences, freq, isTableLinkedTask, taskHasTime]);
   // Per-day weekly times (minutes)
   const [perDayTimes, setPerDayTimes] = useState<Record<number, { startMin: number; endMin: number | null }>>(() => {
     const base: Record<number, { startMin: number; endMin: number | null }> = {};
@@ -1362,6 +1421,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   }
 
   function setFreqWithConfirmation(newFreq: 'single' | 'daily' | 'weekly' | 'monthly' | 'annual') {
+    if (isTableLinkedTask) return;
     // Check if we need confirmation when switching between different frequency types
     const hasWeeklyDays = daysOfWeek.length > 0;
     const hasMonthlyDays = monthDays.length > 0;
@@ -1550,14 +1610,13 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         }
 
         if (type === 'new') {
-          const newHabitId = addHabit(vacationTitle, vacationColor, selectedFolder || undefined, tipo, { habitFreq: 'single' });
+          const newHabitId = addHabit(vacationTitle, vacationColor, normalizedSelectedFolders, tipo, { habitFreq: 'single' });
           setHabits(prev => prev.map(h => (
             h.id === newHabitId
-              ? {
+              ? applySelectedFolders({
                   ...h,
                   text: vacationTitle,
                   color: vacationColor,
-                  folder: selectedFolder || undefined,
                   label: undefined,
                   tipo,
                   notification: notificationForVacation,
@@ -1568,17 +1627,16 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                   timeOverrides: {},
                   habitFreq: 'single',
                   isAllDay: false,
-                }
+                })
               : h
           )));
         } else if (existing) {
           setHabits(prev => prev.map(h => (
             h.id === existing.id
-              ? {
+              ? applySelectedFolders({
                   ...h,
                   text: vacationTitle,
                   color: vacationColor,
-                  folder: selectedFolder || undefined,
                   label: undefined,
                   tipo,
                   notification: notificationForVacation,
@@ -1589,7 +1647,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                   timeOverrides: {},
                   habitFreq: 'single',
                   isAllDay: false,
-                }
+                })
               : h
           )));
         }
@@ -1597,8 +1655,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         close();
         return;
       }
+      if (isTableLinkedTitleLocked && existing?.text) {
+        t = existing.text;
+      }
       if (t.length <= 100) {
-        const occNForVal = Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
+        const occNForVal = isTableLinkedTask ? 1 : Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
         if (mode === 'timed' && occNForVal > 1) {
           const gap = Math.max(5, Math.floor(occurrenceGapMinutes));
           if (!occurrenceChainFitsLogicalDay(dayResetTime, startMin, occNForVal, gap)) {
@@ -1652,22 +1713,21 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           habitFreq: (supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq,
           ...(trimmedLabel && { label: trimmedLabel }),
         };
-        const newHabitId = type === 'new' ? addHabit(t, resolvedColor, selectedFolder || undefined, tipo as any, initialForAdd) : existing!.id;
+        const newHabitId = type === 'new' ? addHabit(t, resolvedColor, normalizedSelectedFolders, tipo as any, initialForAdd) : existing!.id;
         if (type === 'edit' && existing) {
           // Single update to avoid React batching overwriting tipo
           setHabits(prev => prev.map(h => {
             if (h.id !== existing.id) return h;
-            const base: Habit = {
+            const base = applySelectedFolders({
               ...patchHabitOccurrences(h),
               text: t,
               color: resolvedColor,
-              folder: selectedFolder || undefined,
               label: trimmedLabel || undefined,
               tipo,
               health: resolvedHealth,
               locationRule: locationRule ?? undefined,
               pauseDuringTravel: !isTravelLikeTipo(tipo) ? pauseDuringTravel : undefined,
-            };
+            });
             if (tipo === 'viaggio') {
               const storedPartenzaNome =
                 travelPartenzaTipo === 'personalizzata'
@@ -2017,11 +2077,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           : null;
       setHabits(prev => prev.map(h => {
         if (h.id !== newHabitId) return h;
-        const base: Habit = {
+        const base = applySelectedFolders({
             ...patchHabitOccurrences(h),
             text: t,
             color: resolvedColor,
-            folder: selectedFolder || undefined,
             label: trimmedLabel || undefined,
             isAllDay: mode === 'allDay',
             habitFreq: (supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq,
@@ -2033,17 +2092,17 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             askReview: !isTravelLikeTipo(tipo) && tipo !== 'avviso' ? askReview : undefined,
             smartTask: resolvedSmartTask
               ? {
-                  enabled: smartTaskEnabled,
-                  intervalDays: resolvedSmartTask.intervalDays,
-                  nextDueDate: resolvedSmartTask.nextDueDate,
-                }
-              : undefined,
+                enabled: smartTaskEnabled,
+                intervalDays: resolvedSmartTask.intervalDays,
+                nextDueDate: resolvedSmartTask.nextDueDate,
+              }
+            : undefined,
             schedule: {
               ...(h.schedule ?? { daysOfWeek: [] }),
               repeatEndDate: computedRepeatEndDateNew,
               repeatStartDate: repeatStartYmd,
             },
-          };
+          });
           if (tipo === 'viaggio') {
             const storedPartenzaNome =
               travelPartenzaTipo === 'personalizzata'
@@ -2076,12 +2135,14 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         }
       }
     } else if (type === 'rename' && existing) {
-      const t = text.trim();
-      if (t.length > 0 && t.length <= 100) updateHabit(existing.id, t);
+      if (!isTableLinkedTitleLocked) {
+        const t = text.trim();
+        if (t.length > 0 && t.length <= 100) updateHabit(existing.id, t);
+      }
     } else if (type === 'color' && existing) {
       updateHabitColor(existing.id, color);
     } else if (type === 'schedule' && existing) {
-      const occNForVal = Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
+      const occNForVal = isTableLinkedTask ? 1 : Math.min(30, Math.max(1, Math.floor(dailyOccurrences)));
       const normalizedRange = mode === 'timed' ? clampTimedRange(startMin, endMin) : null;
       const time = mode === 'timed' ? minutesToHhmm(normalizedRange!.start) as string : null;
       const endTime = mode === 'timed' ? minutesToHhmm(normalizedRange!.end) as string : null;
@@ -2403,10 +2464,14 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     text,
     setText,
     isTextLocked,
+    isTableLinkedTitleLocked,
+    isTableLinkedTask,
     color,
     setColor,
     selectedFolder,
-    setSelectedFolder,
+    selectedFolders: normalizedSelectedFolders,
+    clearSelectedFolders,
+    toggleSelectedFolder,
     availableFolders,
     tipo,
     setTipo,

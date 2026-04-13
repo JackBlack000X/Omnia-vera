@@ -1,3 +1,4 @@
+import { createStableId } from '@/lib/createStableId';
 import { BlurView } from 'expo-blur';
 import { GlassContainer, GlassView } from 'expo-glass-effect';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -311,12 +312,18 @@ export function TableTaskCreateOverlay({
   defaultFolder,
   defaultYmd,
   defaultTaskHasTime,
+  tableId,
+  columnIndex,
+  rowIndex,
   onClose,
 }: {
   title: string;
   defaultFolder?: string;
   defaultYmd: string;
   defaultTaskHasTime: boolean;
+  tableId: string;
+  columnIndex: number;
+  rowIndex: number;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -493,14 +500,14 @@ export function TableTaskCreateOverlay({
     const sanitizedNotification = notification.customDate
       ? { ...notification, customDate: clampYmdNotBeforeYmd(notification.customDate, nonPastYmd) }
       : notification;
+    const normalizedTimedRange = taskHasTime ? clampTimedRange(startMin, endMin) : null;
+    const startTime = normalizedTimedRange ? minutesToHhmm(normalizedTimedRange.start) : null;
+    const endTime = normalizedTimedRange ? minutesToHhmm(normalizedTimedRange.end) : null;
 
     if (taskHasTime) {
-      const normalizedRange = clampTimedRange(startMin, endMin);
-      const start = minutesToHhmm(normalizedRange.start);
-      const end = minutesToHhmm(normalizedRange.end);
-      const duplicate = findDuplicateHabitSlot(habits, lockedTitle, start, end, undefined);
+      const duplicate = findDuplicateHabitSlot(habits, lockedTitle, startTime!, endTime!, undefined);
       if (duplicate) {
-        const interval = `${start}-${end}`;
+        const interval = `${startTime}-${endTime}`;
         const duplicateTitle = duplicate.habit.text?.trim().length ? duplicate.habit.text : lockedTitle;
         Alert.alert(
           t('modalLogic.duplicateSlotTitle'),
@@ -551,8 +558,8 @@ export function TableTaskCreateOverlay({
           monthDays: undefined,
           yearMonth: undefined,
           yearDay: undefined,
-          time: null,
-          endTime: null,
+          time: startTime,
+          endTime,
           weeklyTimes: undefined,
           monthlyTimes: undefined,
           repeatEndDate: undefined,
@@ -560,15 +567,12 @@ export function TableTaskCreateOverlay({
         };
 
         const timeOverrides = taskHasTime
-          ? (() => {
-              const normalizedRange = clampTimedRange(startMin, endMin);
-              return {
-                [targetYmd]: {
-                  start: minutesToHhmm(normalizedRange.start),
-                  end: minutesToHhmm(normalizedRange.end),
-                },
-              };
-            })()
+          ? {
+              [targetYmd]: {
+                start: startTime!,
+                end: endTime!,
+              },
+            }
           : { [targetYmd]: '00:00' as const };
 
         return {
@@ -592,6 +596,13 @@ export function TableTaskCreateOverlay({
             : undefined,
           schedule,
           timeOverrides,
+          tableSeriesLink: {
+            tableId,
+            columnIndex,
+            rowIndex,
+            seriesId: createStableId(),
+            source: 'cell',
+          },
         };
       })
     );

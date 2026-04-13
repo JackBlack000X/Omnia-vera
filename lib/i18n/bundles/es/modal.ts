@@ -5,6 +5,7 @@ export const modalEs = {
   titleEdit: 'Editar tarea',
   titleColor: 'Elegir color',
   placeholderName: 'Nombre',
+  tableLinkedTitleHint: 'Este título viene de la tabla y se actualiza si cambias el nombre de la tabla o de la columna.',
   sectionType: 'Tipo',
   tipoTask: 'Tarea',
   tipoHabit: 'Hábito',

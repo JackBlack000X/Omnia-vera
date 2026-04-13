@@ -1,4 +1,12 @@
 import { useHabits } from '@/lib/habits/Provider';
+import {
+    getHabitFolders,
+    getPrimaryHabitFolder,
+    habitHasFolder,
+    removeHabitFolderMembership,
+    renameHabitFolderMembership,
+    replaceHabitFolderMembership,
+} from '@/lib/habits/folders';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
 import type { Habit } from '@/lib/habits/schema';
@@ -194,7 +202,7 @@ export function useIndexLogic() {
     return [
       habit.id,
       habit.text,
-      habit.folder ?? '',
+      getHabitFolders(habit).join('>'),
       habit.color ?? '',
       habit.tipo ?? '',
       habit.travel?.mezzo ?? '',
@@ -416,7 +424,7 @@ export function useIndexLogic() {
       }
       return next;
     });
-    setHabits(prev => prev.map(h => (h.folder ?? '').trim() === oldName ? { ...h, folder: name } : h));
+    setHabits(prev => prev.map(h => renameHabitFolderMembership(h, oldName, name)));
     if (activeFolder === oldName) setActiveFolder(name);
     setEditFolderVisible(false);
     setEditingFolder(null);
@@ -438,8 +446,9 @@ export function useIndexLogic() {
       if (next) AsyncStorage.setItem('tasks_section_order_v1', JSON.stringify(next.map(n => n === null ? TUTTE_KEY : n))).catch(() => { });
       return next;
     });
+    setHabits(prev => prev.map(h => removeHabitFolderMembership(h, folderName)));
     if (activeFolder === folderName) setActiveFolder(null);
-  }, [activeFolder]);
+  }, [activeFolder, setHabits]);
 
   const handleLongPressFolder = useCallback((folder: FolderItem) => {
     setEditingFolder(folder);
@@ -683,13 +692,21 @@ export function useIndexLogic() {
       });
     }
     if (mode === 'time') {
-      const referenceYmd =
+      const fallbackReferenceYmd =
         activeFolder === DOMANI_TOMORROW_KEY
           ? tomorrow
           : activeFolder === IERI_YESTERDAY_KEY
             ? yesterday
             : today;
       const getStartTime = (h: Habit) => {
+        const referenceYmd =
+          (activeFolder === null ||
+            (activeFolder !== OGGI_TODAY_KEY &&
+              activeFolder !== DOMANI_TOMORROW_KEY &&
+              activeFolder !== IERI_YESTERDAY_KEY)) &&
+          isSingleOccurrenceHabit(h)
+            ? (getSingleOccurrenceDate(h) ?? fallbackReferenceYmd)
+            : fallbackReferenceYmd;
         const override = h.timeOverrides?.[referenceYmd];
         const isAllDayMarker = override === '00:00';
         if (isAllDayMarker || h.isAllDay) return -1;
@@ -712,8 +729,8 @@ export function useIndexLogic() {
     }
     if (mode === 'folder') {
       return [...list].sort((a, b) => {
-        const fa = a.folder ?? '';
-        const fb = b.folder ?? '';
+        const fa = getPrimaryHabitFolder(a) ?? '';
+        const fb = getPrimaryHabitFolder(b) ?? '';
         const cmp = fa.localeCompare(fb);
         return cmp !== 0 ? cmp : (a.order ?? 0) - (b.order ?? 0);
       });
@@ -795,7 +812,7 @@ export function useIndexLogic() {
           folderDef!.filters
         );
       } else {
-        list = habits.filter(h => (h.folder ?? '').trim() === target && !singleHabitsHiddenAfterReset.has(h.id));
+        list = habits.filter(h => habitHasFolder(h, target) && !singleHabitsHiddenAfterReset.has(h.id));
       }
     } else {
       list = habits.filter(h => !singleHabitsHiddenAfterReset.has(h.id));
@@ -857,11 +874,15 @@ export function useIndexLogic() {
     const assignedHabitIds = new Set<string>();
 
     for (const h of sourceHabits) {
-      const explicitFolder = (h.folder ?? '').trim();
-      if (!explicitFolder || hasActiveFilters(explicitFolder) || !folderNames.has(explicitFolder)) continue;
-      const existing = byFolder.get(explicitFolder) ?? [];
-      existing.push(h);
-      byFolder.set(explicitFolder, existing);
+      const explicitFolders = getHabitFolders(h).filter(folderName =>
+        !hasActiveFilters(folderName) && folderNames.has(folderName),
+      );
+      if (explicitFolders.length === 0) continue;
+      for (const explicitFolder of explicitFolders) {
+        const existing = byFolder.get(explicitFolder) ?? [];
+        existing.push(h);
+        byFolder.set(explicitFolder, existing);
+      }
       assignedHabitIds.add(h.id);
     }
 
@@ -1480,7 +1501,12 @@ export function useIndexLogic() {
                   const targetHadFilters = hasSelectedFolderFilters(targetFolderDef?.filters);
                   const targetWasEmpty = actualTarget!.tasks.length === 0;
                   const targetFolder = actualTarget!.folderName === null ? undefined : (actualTarget!.folderName as string);
-                  sourceTasks.forEach(h => updateHabitFolder(h.id, targetFolder));
+                  const sourceTaskIds = new Set(sourceTasks.map(h => h.id));
+                  setHabits(prev => prev.map(h =>
+                    sourceTaskIds.has(h.id)
+                      ? replaceHabitFolderMembership(h, sourceFolderName, targetFolder)
+                      : h,
+                  ));
 
                   if (sourceHadFilters || targetHadFilters) {
                     setFolders(prev => {
@@ -1542,7 +1568,7 @@ export function useIndexLogic() {
     // Simple Folder Reorder
     applyFolderReorder(data);
 
-  }, [updateHabitsOrder, updateHabitFolder, commitDragEnd, activeFolder, isMergeHoverSV, folders]);
+  }, [updateHabitsOrder, commitDragEnd, activeFolder, isMergeHoverSV, folders, setHabits]);
 
   const simulatedIndexRef = useRef<number | null>(null);
 
