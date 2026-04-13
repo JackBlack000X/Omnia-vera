@@ -1,6 +1,6 @@
 import DraggableEvent from '@/components/oggi/DraggableEvent';
 import DayReviewModal, { ReviewHabitItem } from '@/components/oggi/DayReviewModal';
-import { styles as indexStyles } from '@/components/index/indexStyles';
+import { PADDED_SCREEN_FAB_RIGHT, styles as indexStyles } from '@/components/index/indexStyles';
 import TrackerModal from '@/components/oggi/TrackerModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { THEME } from '@/constants/theme';
@@ -2371,7 +2371,7 @@ export default function OggiScreen() {
       <View style={styles.fabLayer} pointerEvents="box-none">
         <TouchableOpacity
           accessibilityRole="button"
-          style={[indexStyles.fab, styles.trackerFab]}
+          style={[indexStyles.fab, styles.trackerFab, { right: PADDED_SCREEN_FAB_RIGHT }]}
           onPress={() => {
             setEditingTrackerEntry(null);
             setShowTrackerModal(true);
