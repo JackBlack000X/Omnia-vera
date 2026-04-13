@@ -187,11 +187,12 @@ function cloneHabitSchedule(schedule: Habit['schedule']): Habit['schedule'] {
   };
 }
 
-function cloneHabitForDuplicate(source: Habit): Habit {
+function cloneHabitForDuplicate(source: Habit): Omit<Habit, 'id'> {
   const {
     id: _id,
     createdAtMs: _createdAtMs,
     calendarEventId: _calendarEventId,
+    tableSeriesLink: _tableSeriesLink,
     schedule,
     timeOverrides,
     occurrenceSlotOverrides,

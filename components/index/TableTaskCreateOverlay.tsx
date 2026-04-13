@@ -8,6 +8,7 @@ import type { NotificationConfig } from '@/lib/habits/schema';
 import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { findDuplicateHabitSlot, formatDuration, minutesToHhmm } from '@/lib/modal/helpers';
 import { inferSmartTaskSeed } from '@/lib/smartTask';
+import { useTaskEditorInfoHints } from '@/lib/taskEditorInfoHints';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -347,6 +348,7 @@ export function TableTaskCreateOverlay({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const showTaskEditorInfoHints = useTaskEditorInfoHints();
 
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backdropOpacity = useSharedValue(0);
@@ -930,26 +932,28 @@ export function TableTaskCreateOverlay({
                     subtitle={t('modal.smartTaskInfoTitle')}
                     value={smartTaskEnabled}
                     onValueChange={setSmartTaskEnabled}
-                    onInfoPress={() =>
-                      Alert.alert(
-                        t('modal.smartTaskInfoTitle'),
-                        t('modal.smartTaskInfoMessage'),
-                        [{ text: t('common.ok'), style: 'default', isPreferred: true }]
-                      )
-                    }
+                    onInfoPress={showTaskEditorInfoHints
+                      ? () =>
+                          Alert.alert(
+                            t('modal.smartTaskInfoTitle'),
+                            t('modal.smartTaskInfoMessage'),
+                            [{ text: t('common.ok'), style: 'default', isPreferred: true }]
+                          )
+                      : undefined}
                   />
                   <ToggleRow
                     icon="airplane-outline"
                     title={t('modal.sectionPauseTravel')}
                     value={pauseDuringTravel}
                     onValueChange={setPauseDuringTravel}
-                    onInfoPress={() =>
-                      Alert.alert(
-                        t('modal.pauseTravelInfoTitle'),
-                        t('modal.pauseTravelInfoMessage'),
-                        [{ text: t('common.ok'), style: 'default', isPreferred: true }]
-                      )
-                    }
+                    onInfoPress={showTaskEditorInfoHints
+                      ? () =>
+                          Alert.alert(
+                            t('modal.pauseTravelInfoTitle'),
+                            t('modal.pauseTravelInfoMessage'),
+                            [{ text: t('common.ok'), style: 'default', isPreferred: true }]
+                          )
+                      : undefined}
                   />
                   <ToggleRow
                     icon="chatbubble-ellipses-outline"

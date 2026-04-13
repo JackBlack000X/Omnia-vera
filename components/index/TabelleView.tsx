@@ -1,4 +1,5 @@
 import { SKETCH_PLANNER } from '@/constants/sketchPlanner';
+import { TableColumnSeriesModal } from '@/components/index/TableColumnSeriesModal';
 import { PADDED_SCREEN_FAB_RIGHT, styles as indexStyles } from '@/components/index/indexStyles';
 import { TableTaskCreateOverlay } from '@/components/index/TableTaskCreateOverlay';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -208,10 +209,14 @@ function resizeTablePatch(table: UserTable, name: string, color: string, cols: n
   const safeRows = Math.max(1, Math.min(20, Math.floor(rows)));
   const currentLabels = getColumnLabels(table);
   const currentChecked = normalizeChecked(table);
+  const currentColumnSeries = table.columnSeries ?? {};
 
   const nextLabels = Array.from({ length: safeCols }, (_, index) => currentLabels[index] ?? '');
   const nextChecked = Array.from({ length: safeRows }, (_, rowIndex) =>
     Array.from({ length: safeCols }, (_, colIndex) => currentChecked[rowIndex]?.[colIndex] ?? '')
+  );
+  const nextColumnSeries = Object.fromEntries(
+    Object.entries(currentColumnSeries).filter(([key]) => Number(key) < safeCols)
   );
 
   return {
@@ -221,6 +226,7 @@ function resizeTablePatch(table: UserTable, name: string, color: string, cols: n
     headerCols: Array.from({ length: safeRows }, (_, index) => [String(index + 1)]),
     cells: nextChecked.map((row) => row.map((value) => value)),
     checked: nextChecked,
+    columnSeries: Object.keys(nextColumnSeries).length ? nextColumnSeries : undefined,
   };
 }
 
@@ -847,8 +853,10 @@ function SpreadsheetView({
   const [editingCol, setEditingCol] = useState<number | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [taskModalTitle, setTaskModalTitle] = useState<string | null>(null);
+  const [seriesColumnIndex, setSeriesColumnIndex] = useState<number | null>(null);
   const [actionsExpanded, setActionsExpanded] = useState(false);
   const [activeBrushColor, setActiveBrushColor] = useState<Exclude<TableCellState, ''>>('green');
+  const suppressNextHeaderPressRef = useRef<number | null>(null);
   const actionsProgress = useRef(new Animated.Value(0)).current;
   const gridGap = getAdaptiveGap(labels.length);
   const tenColumnGap = getAdaptiveGap(MAX_TABLE_COLUMNS);
@@ -871,6 +879,7 @@ function SpreadsheetView({
     setChecked(normalizeChecked(table));
     setEditingCol(null);
     setDraftLabel('');
+    setSeriesColumnIndex(null);
   }, [columnLabels, table]);
 
   useEffect(() => {
@@ -897,6 +906,12 @@ function SpreadsheetView({
     setEditingCol(colIndex);
     setDraftLabel(labels[colIndex] ?? '');
   }, [labels]);
+
+  const openColumnSeries = useCallback((colIndex: number) => {
+    setEditingCol(null);
+    setDraftLabel('');
+    setSeriesColumnIndex(colIndex);
+  }, []);
 
   const saveColumnLabel = useCallback(() => {
     if (editingCol == null) return;
@@ -1103,7 +1118,18 @@ function SpreadsheetView({
                 <Pressable
                   key={`header-${colIndex}`}
                   style={[sheet.columnHeader, { backgroundColor: table.color, width: columnWidth, height: cellSize }]}
-                  onPress={() => beginEditColumn(colIndex)}
+                  onPress={() => {
+                    if (suppressNextHeaderPressRef.current === colIndex) {
+                      suppressNextHeaderPressRef.current = null;
+                      return;
+                    }
+                    beginEditColumn(colIndex);
+                  }}
+                  onLongPress={() => {
+                    suppressNextHeaderPressRef.current = colIndex;
+                    openColumnSeries(colIndex);
+                  }}
+                  delayLongPress={340}
                 >
                   {editingCol === colIndex ? (
                     <TextInput
@@ -1312,6 +1338,21 @@ function SpreadsheetView({
             defaultYmd={createTarget.ymd ?? todayYmd}
             defaultTaskHasTime={Boolean(createTarget.ymd)}
             onClose={() => setTaskModalTitle(null)}
+          />
+        ) : null}
+
+        {seriesColumnIndex !== null ? (
+          <TableColumnSeriesModal
+            visible
+            table={table}
+            columnIndex={seriesColumnIndex}
+            columnLabel={labels[seriesColumnIndex] ?? ''}
+            rowCount={checked.length}
+            onClose={() => {
+              suppressNextHeaderPressRef.current = null;
+              setSeriesColumnIndex(null);
+            }}
+            onTablePatch={onUpdate}
           />
         ) : null}
 

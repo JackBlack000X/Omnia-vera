@@ -14,6 +14,8 @@ export const STORAGE_KEYS = {
   introSeen: 'tothemoon_intro_seen_v1',
   appFirstLaunchYmd: 'tothemoon_app_first_launch_ymd_v1',
   appLocale: 'tothemoon_app_locale_v1',
+  calendarLegendInfoSeen: 'tothemoon_calendar_legend_info_seen_v1',
+  taskEditorInfoHintsSeen: 'tothemoon_task_editor_info_hints_seen_v1',
 } as const;
 
 export const LEGACY_STORAGE_KEYS = {

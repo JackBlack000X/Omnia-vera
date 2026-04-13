@@ -65,6 +65,25 @@ export type SmartTaskConfig = {
   nextDueDate: string; // YYYY-MM-DD
 };
 
+export type TableSeriesLink = {
+  tableId: string;
+  columnIndex: number;
+  rowIndex: number;
+  seriesId: string;
+};
+
+export type TableSeriesIntervalUnit = 'days' | 'weeks' | 'months';
+
+export type TableColumnSeries = {
+  seriesId: string;
+  startDate: string; // YYYY-MM-DD for row 1
+  hasTime: boolean;
+  startTime?: string | null; // 'HH:MM'
+  endTime?: string | null; // 'HH:MM'
+  intervalValue: number;
+  intervalUnit: TableSeriesIntervalUnit;
+};
+
 export function isTravelLikeTipo(tipo?: HabitTipo): boolean {
   return tipo === 'viaggio' || tipo === 'vacanza';
 }
@@ -122,6 +141,8 @@ export type Habit = {
    * ("Solo oggi" / "Da oggi in poi") per quella data.
    */
   occurrenceSlotMenuSource?: Record<string, number>;
+  /** Link opzionale a una colonna tabella che ha generato questo task singolo. */
+  tableSeriesLink?: TableSeriesLink;
 };
 
 export type DayCompletion = {
@@ -143,6 +164,8 @@ export type UserTable = {
   headerCols: string[][];  // frozen cols on left – headerCols[rowIdx][frozenColIdx]
   cells: string[][];       // body cells[rowIdx][colIdx], stores '', 'green', 'orange', 'red'
   checked?: ('green' | 'orange' | 'red' | '')[][];   // color state for each cell
+  /** Configurazione opzionale per pianificare una colonna come serie di task singoli. */
+  columnSeries?: Record<number, TableColumnSeries>;
 };
 
 export type HabitsState = {

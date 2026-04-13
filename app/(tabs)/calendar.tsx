@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { buildStreakFireAnimation } from '@/constants/streakFire';
 import { SCREEN_HORIZONTAL_PADDING, TOP_SECTION_HORIZONTAL_PADDING } from '@/components/index/indexStyles';
 import { getCalendarDays, getMonthName, getMonthYear } from '@/lib/date';
@@ -5,11 +6,12 @@ import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { useHabits } from '@/lib/habits/Provider';
 import type { Habit } from '@/lib/habits/schema';
 import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
+import { STORAGE_KEYS } from '@/lib/storageKeys';
 import { useAppTheme } from '@/lib/theme-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import LottieView from 'lottie-react-native';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -328,6 +330,27 @@ export default function CalendarScreen() {
   }, [history, currentYear, currentMonth]);
 
   const [showLegend, setShowLegend] = useState(false);
+  const [showLegendInfoButton, setShowLegendInfoButton] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const shouldShowButton = (await AsyncStorage.getItem(STORAGE_KEYS.calendarLegendInfoSeen)) !== 'true';
+      if (cancelled) return;
+      setShowLegendInfoButton(shouldShowButton);
+    })().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleOpenLegend = useCallback(() => {
+    setShowLegend(true);
+    setShowLegendInfoButton(false);
+    AsyncStorage.setItem(STORAGE_KEYS.calendarLegendInfoSeen, 'true').catch(() => {});
+  }, []);
 
   const allMonths = useMemo((): MonthData[] => {
     const months: MonthData[] = [];
@@ -510,9 +533,11 @@ export default function CalendarScreen() {
             {activeTheme !== 'futuristic' && (
               <View style={styles.headerTitleRow}>
                 <Text style={styles.title}>{t('calendarScreen.title')}</Text>
-                <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButtonInline}>
-                  <Ionicons name="information-circle" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
+                {showLegendInfoButton ? (
+                  <TouchableOpacity onPress={handleOpenLegend} style={styles.infoButtonInline}>
+                    <Ionicons name="information-circle" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
           </View>
@@ -522,11 +547,11 @@ export default function CalendarScreen() {
               <View style={styles.streakFlameSpacer} />
               <StreakFlameLottie streak={streakBadgeValue} />
             </View>
-            {activeTheme === 'futuristic' && (
-              <TouchableOpacity onPress={() => setShowLegend(true)} style={styles.infoButton}>
+            {activeTheme === 'futuristic' && showLegendInfoButton ? (
+              <TouchableOpacity onPress={handleOpenLegend} style={styles.infoButton}>
                 <Ionicons name="information-circle" size={24} color="#FFFFFF" />
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
         </View>
       </View>

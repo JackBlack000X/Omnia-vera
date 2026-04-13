@@ -14,6 +14,7 @@ import { canAskLocationPermission, getLocationPermissionStatusAsync, type Locati
 import { clampYmdNotBeforeYmd, compareYmd, ymdToDate } from '@/lib/date';
 import { useAppDateBounds } from '@/lib/appDateBounds';
 import type { NotificationConfig } from '@/lib/habits/schema';
+import { useTaskEditorInfoHints } from '@/lib/taskEditorInfoHints';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
@@ -436,6 +437,7 @@ export default function ModalScreen() {
     ? HEALTH_HABIT_OPTIONS
     : (selectedHealthOption ? [selectedHealthOption] : []);
   const shouldShowSaluteDetails = m.tipo !== 'salute' || Boolean(m.healthMetric);
+  const showTaskEditorInfoHints = useTaskEditorInfoHints();
 
   const refreshHealthConnection = React.useCallback(async () => {
     try {
@@ -1050,25 +1052,27 @@ export default function ModalScreen() {
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <View style={{ flex: 1, paddingRight: 12, flexDirection: 'row', alignItems: 'center' }}>
                   <Text style={styles.sectionTitle}>{t('modal.sectionSmartTask')}</Text>
-                  <TouchableOpacity
-                    onPress={() =>
-                      Alert.alert(
-                        t('modal.smartTaskInfoTitle'),
-                        t('modal.smartTaskInfoMessage'),
-                        [{ text: t('common.ok'), style: 'default', isPreferred: true }],
-                      )
-                    }
-                    style={{
-                      marginLeft: 8,
-                      width: 18,
-                      height: 18,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="information-circle" size={16} color="#FFFFFF" />
-                  </TouchableOpacity>
+                  {showTaskEditorInfoHints ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        Alert.alert(
+                          t('modal.smartTaskInfoTitle'),
+                          t('modal.smartTaskInfoMessage'),
+                          [{ text: t('common.ok'), style: 'default', isPreferred: true }],
+                        )
+                      }
+                      style={{
+                        marginLeft: 8,
+                        width: 18,
+                        height: 18,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="information-circle" size={16} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
                 <Switch
                   value={m.smartTaskEnabled}
@@ -1085,25 +1089,27 @@ export default function ModalScreen() {
               <View style={[styles.sectionHeader, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <View style={{ flex: 1, paddingRight: 12, flexDirection: 'row', alignItems: 'center' }}>
                   <Text style={styles.sectionTitle}>{t('modal.sectionPauseTravel')}</Text>
-                  <TouchableOpacity
-                    onPress={() =>
-                      Alert.alert(
-                        t('modal.pauseTravelInfoTitle'),
-                        t('modal.pauseTravelInfoMessage'),
-                        [{ text: t('common.ok'), style: 'default', isPreferred: true }],
-                      )
-                    }
-                    style={{
-                      marginLeft: 8,
-                      width: 18,
-                      height: 18,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="information-circle" size={16} color="#FFFFFF" />
-                  </TouchableOpacity>
+                  {showTaskEditorInfoHints ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        Alert.alert(
+                          t('modal.pauseTravelInfoTitle'),
+                          t('modal.pauseTravelInfoMessage'),
+                          [{ text: t('common.ok'), style: 'default', isPreferred: true }],
+                        )
+                      }
+                      style={{
+                        marginLeft: 8,
+                        width: 18,
+                        height: 18,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="information-circle" size={16} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
                 <Switch
                   value={m.pauseDuringTravel}
