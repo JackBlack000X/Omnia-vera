@@ -983,6 +983,7 @@ export default function IndexScreen() {
         <View style={{ flex: 1, display: activeSection === 'tabelle' ? 'flex' : 'none' }}>
           <TabelleView
             activeFolder={activeFolder}
+            folders={folders}
             todayYmd={menuToday}
             tomorrowYmd={menuTomorrow}
             yesterdayYmd={menuYesterday}
@@ -1020,11 +1021,14 @@ export default function IndexScreen() {
                         folderNameNow === OGGI_TODAY_KEY ||
                         folderNameNow === DOMANI_TOMORROW_KEY ||
                         folderNameNow === IERI_YESTERDAY_KEY;
+                      const hasCustomFolders = folders.some(folder => (folder.name ?? '').trim().length > 0);
                       const baseFallback: typeof sortMode = isDayVirtualTab ? sortMode : 'creation';
-                      const current: typeof sortMode =
+                      const rawCurrent: typeof sortMode =
                         folderNameNow !== null
                           ? (sortModeByFolder[folderNameNow] ?? baseFallback)
                           : sortMode;
+                      const current: typeof sortMode =
+                        !hasCustomFolders && rawCurrent === 'folder' ? 'creation' : rawCurrent;
                       const setCurrent = (mode: typeof sortMode) => {
                         if (folderNameNow !== null) {
                           setSortModeByFolder(prev => ({ ...prev, [folderNameNow]: mode }));
@@ -1053,7 +1057,7 @@ export default function IndexScreen() {
                         { text: sel('Orario', 'time'), onPress: () => setCurrent('time') },
                         { text: sel('Ordine per colore', 'color'), onPress: () => setCurrent('color') },
                       ];
-                      if (!isRealFolder) {
+                      if (!isRealFolder && hasCustomFolders) {
                         options.push({ text: sel('Ordine per cartelle', 'folder'), onPress: () => setCurrent('folder') });
                       }
                       options.push(

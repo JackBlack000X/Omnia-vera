@@ -4,6 +4,8 @@ export type FolderFilters = {
   tipos?: HabitTipo[]; // filter by tipo
   colors?: string[]; // filter by habit color
   frequencies?: ('single' | 'daily' | 'weekly' | 'monthly' | 'annual')[]; // filter by frequency
+  allTables?: boolean; // filter all tasks linked to any table
+  tableIds?: string[]; // filter tasks linked to specific tables
 };
 
 export type FolderItem = { id: string; name: string; color: string; icon?: string; filters?: FolderFilters };

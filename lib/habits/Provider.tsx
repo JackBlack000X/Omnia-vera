@@ -1410,6 +1410,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, [setHabits, tables]);
 
   const deleteTable = useCallback((id: string) => {
+    setHabits(prev => {
+      const next = prev.filter((habit) => habit.tableSeriesLink?.tableId !== id);
+      return next.length === prev.length ? prev : next;
+    });
     setTables(prev => {
       const next = prev.filter(t => t.id !== id);
       AsyncStorage.setItem(STORAGE_TABLES, JSON.stringify(next)).catch(() => {});

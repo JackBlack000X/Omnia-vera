@@ -857,9 +857,9 @@ export default function ModalScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
                 <TouchableOpacity
                   onPress={m.clearSelectedFolders}
-                  style={[styles.chip, m.selectedFolders.length === 0 ? styles.chipActive : styles.chipGhost, { paddingHorizontal: 16, paddingVertical: 8 }]}
+                  style={[styles.chip, styles.chipActive, { paddingHorizontal: 16, paddingVertical: 8 }]}
                 >
-                  <Text style={m.selectedFolders.length === 0 ? styles.chipActiveText : styles.chipGhostText}>{t('common.tutte')}</Text>
+                  <Text style={styles.chipActiveText}>{t('common.tutte')}</Text>
                 </TouchableOpacity>
                 {m.availableFolders.map(folderName => (
                   <TouchableOpacity

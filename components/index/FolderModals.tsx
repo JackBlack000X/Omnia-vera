@@ -1,5 +1,6 @@
 import { styles } from '@/components/index/indexStyles';
 import { FOLDER_COLORS, FOLDER_ICONS, FolderFilters, FolderItem } from '@/lib/index/indexTypes';
+import { useHabits } from '@/lib/habits/Provider';
 import type { HabitTipo } from '@/lib/habits/schema';
 import { COLORS } from '@/components/modal/modalStyles';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +31,7 @@ export type FolderModalsProps = {
 
 function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFilters: (f: FolderFilters) => void }) {
   const { t } = useTranslation();
+  const { tables, habits } = useHabits();
   const tipoOptions = useMemo(
     () =>
       [
@@ -53,8 +55,40 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
       ] as const,
     [t]
   );
+  const availableTables = useMemo(
+    () => tables.filter((table) => table.name.trim().length > 0),
+    [tables]
+  );
+  const availableFilterColors = useMemo(() => {
+    const selectedTableIds = new Set(filters.tableIds ?? []);
+    const includeAllTables = filters.allTables;
+    const dynamicColors = new Set<string>();
+
+    for (const table of tables) {
+      if (includeAllTables || selectedTableIds.has(table.id)) {
+        if (table.color) dynamicColors.add(table.color);
+      }
+    }
+
+    for (const habit of habits) {
+      const linkedTableId = habit.tableSeriesLink?.tableId;
+      if (!linkedTableId) continue;
+      if (includeAllTables || selectedTableIds.has(linkedTableId)) {
+        if (habit.color) dynamicColors.add(habit.color);
+      }
+    }
+
+    const ordered = [...COLORS];
+    for (const color of filters.colors ?? []) {
+      if (!ordered.includes(color)) ordered.push(color);
+    }
+    for (const color of dynamicColors) {
+      if (!ordered.includes(color)) ordered.push(color);
+    }
+    return ordered;
+  }, [filters.allTables, filters.colors, filters.tableIds, habits, tables]);
   const [expanded, setExpanded] = useState(
-    !!(filters.tipos?.length || filters.colors?.length || filters.frequencies?.length)
+    !!(filters.tipos?.length || filters.colors?.length || filters.frequencies?.length || filters.allTables || filters.tableIds?.length)
   );
 
   const toggleTipo = (t: HabitTipo) => {
@@ -75,7 +109,28 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
     setFilters({ ...filters, frequencies: next.length ? next : undefined });
   };
 
-  const hasActiveFilters = !!(filters.tipos?.length || filters.colors?.length || filters.frequencies?.length);
+  const toggleAllTables = () => {
+    if (filters.allTables) {
+      setFilters({ ...filters, allTables: undefined, tableIds: undefined });
+      return;
+    }
+    setFilters({ ...filters, allTables: true, tableIds: undefined });
+  };
+
+  const toggleTable = (tableId: string) => {
+    const current = filters.tableIds ?? [];
+    const next = current.includes(tableId) ? current.filter(id => id !== tableId) : [...current, tableId];
+    setFilters({ ...filters, allTables: undefined, tableIds: next.length ? next : undefined });
+  };
+
+  const hasActiveFilters = !!(
+    filters.tipos?.length ||
+    filters.colors?.length ||
+    filters.frequencies?.length ||
+    filters.allTables ||
+    filters.tableIds?.length
+  );
+  const showTablesFilters = availableTables.length > 0 || filters.allTables || !!filters.tableIds?.length;
 
   return (
     <View style={fStyles.filterSection}>
@@ -108,9 +163,42 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
             })}
           </View>
 
+          {showTablesFilters && (
+            <>
+              <Text style={fStyles.filterLabel}>{t('folderModals.tablesLabel')}</Text>
+              <View style={fStyles.chipRow}>
+                <TouchableOpacity
+                  onPress={toggleAllTables}
+                  style={[fStyles.chip, filters.allTables && fStyles.chipActive]}
+                >
+                  <Ionicons name="grid-outline" size={14} color={filters.allTables ? '#fff' : THEME.textMuted} />
+                  <Text style={[fStyles.chipText, filters.allTables && fStyles.chipTextActive]}>
+                    {t('folderModals.allTables')}
+                  </Text>
+                </TouchableOpacity>
+
+                {availableTables.map((table) => {
+                  const active = filters.tableIds?.includes(table.id);
+                  return (
+                    <TouchableOpacity
+                      key={table.id}
+                      onPress={() => toggleTable(table.id)}
+                      style={[fStyles.chip, active && fStyles.chipActive]}
+                    >
+                      <View style={[fStyles.tableDot, { backgroundColor: table.color }]} />
+                      <Text style={[fStyles.chipText, active && fStyles.chipTextActive]} numberOfLines={1}>
+                        {table.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
           <Text style={fStyles.filterLabel}>{t('modal.sectionColor')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={fStyles.colorFilterRow}>
-            {COLORS.map(c => {
+            {availableFilterColors.map(c => {
               const active = filters.colors?.includes(c);
               return (
                 <TouchableOpacity
@@ -411,6 +499,11 @@ const fStyles = StyleSheet.create({
   chipText: {
     fontSize: 13,
     color: THEME.textMuted,
+  },
+  tableDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
   },
   chipTextActive: {
     color: '#fff',

@@ -1,13 +1,16 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SKETCH_PLANNER } from '@/constants/sketchPlanner';
 import { TableColumnSeriesModal } from '@/components/index/TableColumnSeriesModal';
 import { PADDED_SCREEN_FAB_RIGHT, styles as indexStyles } from '@/components/index/indexStyles';
 import { TableTaskCreateOverlay } from '@/components/index/TableTaskCreateOverlay';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useHabits } from '@/lib/habits/Provider';
+import type { FolderItem } from '@/lib/index/indexTypes';
 import type { UserTable } from '@/lib/habits/schema';
 import { toBcp47 } from '@/lib/i18n/bcp47';
 import i18n from '@/lib/i18n/i18n';
 import { DOMANI_TOMORROW_KEY, IERI_YESTERDAY_KEY, OGGI_TODAY_KEY, TUTTE_KEY } from '@/lib/index/indexTypes';
+import { STORAGE_KEYS } from '@/lib/storageKeys';
 import Slider from '@react-native-community/slider';
 import { MenuView } from '@react-native-menu/menu';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -141,6 +144,16 @@ function getCreateTarget(activeFolder: string | null | undefined, todayYmd: stri
   if (activeFolder === IERI_YESTERDAY_KEY) return { ymd: yesterdayYmd };
   if (activeFolder === OGGI_TODAY_KEY) return { ymd: todayYmd };
   return { folder: activeFolder, ymd: todayYmd };
+}
+
+function hasAnyFolderFilters(filters?: FolderItem['filters']): boolean {
+  return !!(
+    filters?.tipos?.length ||
+    filters?.colors?.length ||
+    filters?.frequencies?.length ||
+    filters?.allTables ||
+    filters?.tableIds?.length
+  );
 }
 
 function isRealFolder(activeFolder: string | null | undefined): activeFolder is string {
@@ -963,11 +976,29 @@ function SpreadsheetView({
     setTaskModalSource({ rowIndex, columnIndex: colIndex });
   }, [labels, table.name]);
 
+  const [showInfoButton, setShowInfoButton] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const shouldShowButton = (await AsyncStorage.getItem(STORAGE_KEYS.tablesInfoSeen)) !== 'true';
+      if (cancelled) return;
+      setShowInfoButton(shouldShowButton);
+    })().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const showInfo = useCallback(() => {
     Alert.alert(
       t('tablesUi.infoTitle'),
       t('tablesUi.infoBody')
     );
+    setShowInfoButton(false);
+    AsyncStorage.setItem(STORAGE_KEYS.tablesInfoSeen, 'true').catch(() => {});
   }, [t]);
 
   const setMenuExpanded = useCallback((nextExpanded: boolean) => {
@@ -1103,13 +1134,15 @@ function SpreadsheetView({
           </TouchableOpacity>
           <Text style={sheet.title} numberOfLines={1}>{table.name}</Text>
           <View style={sheet.topActions}>
-            <TouchableOpacity style={sheet.iconButton} onPress={showInfo}>
-              <Ionicons
-                name={Platform.OS === 'ios' ? 'information-circle' : 'information-circle-outline'}
-                size={20}
-                color={C.text}
-              />
-            </TouchableOpacity>
+            {showInfoButton ? (
+              <TouchableOpacity style={sheet.iconButton} onPress={showInfo}>
+                <Ionicons
+                  name={Platform.OS === 'ios' ? 'information-circle' : 'information-circle-outline'}
+                  size={20}
+                  color={C.text}
+                />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
@@ -1533,11 +1566,13 @@ const sheet = StyleSheet.create({
 
 export default function TabelleView({
   activeFolder,
+  folders,
   todayYmd,
   tomorrowYmd,
   yesterdayYmd,
 }: {
   activeFolder?: string | null;
+  folders: FolderItem[];
   todayYmd: string;
   tomorrowYmd: string;
   yesterdayYmd: string;
@@ -1566,8 +1601,16 @@ export default function TabelleView({
   const filteredTables = useMemo(() => {
     if (!isRealFolder(activeFolder)) return tables;
     const normalizedFolder = activeFolder.trim();
+    const folderDef = folders.find((folder) => (folder.name ?? '').trim() === normalizedFolder);
+
+    // Folder filters apply to the Tasks view only.
+    // In Tables, a filtered folder should not hide unrelated tables.
+    if (hasAnyFolderFilters(folderDef?.filters)) {
+      return tables;
+    }
+
     return tables.filter((table) => (table.folder ?? '').trim() === normalizedFolder);
-  }, [activeFolder, tables]);
+  }, [activeFolder, folders, tables]);
   const sortedTables = useMemo(() => {
     const next = [...filteredTables];
     next.sort((a, b) => {

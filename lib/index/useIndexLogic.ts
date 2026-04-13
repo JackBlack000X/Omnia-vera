@@ -47,8 +47,50 @@ const DEFAULT_OVERLAP_HOVER_STATE: OverlapHoverState = {
   direction: 0,
 };
 
+function getHabitLinkedTableId(habit: Habit): string | undefined {
+  return habit.tableSeriesLink?.tableId;
+}
+
 function hasSelectedFolderFilters(filters?: FolderFilters): boolean {
-  return !!(filters?.tipos?.length || filters?.colors?.length || filters?.frequencies?.length);
+  return !!(
+    filters?.tipos?.length ||
+    filters?.colors?.length ||
+    filters?.frequencies?.length ||
+    filters?.allTables ||
+    filters?.tableIds?.length
+  );
+}
+
+function hasHabitFolderFilters(filters?: FolderFilters): boolean {
+  return hasSelectedFolderFilters(filters);
+}
+
+function cleanFolderFilters(filters: FolderFilters | undefined): FolderFilters | undefined {
+  if (!filters) return undefined;
+
+  const next: FolderFilters = {};
+
+  if (filters.tipos?.length) next.tipos = Array.from(new Set(filters.tipos));
+  if (filters.colors?.length) next.colors = Array.from(new Set(filters.colors));
+  if (filters.frequencies?.length) next.frequencies = Array.from(new Set(filters.frequencies));
+
+  if (filters.allTables) {
+    next.allTables = true;
+  } else if (filters.tableIds?.length) {
+    next.tableIds = Array.from(new Set(filters.tableIds));
+  }
+
+  return hasSelectedFolderFilters(next) ? next : undefined;
+}
+
+function pruneFolderFilterTableIds(filters: FolderFilters | undefined, validTableIds: Set<string>): FolderFilters | undefined {
+  if (!filters) return undefined;
+  if (!filters.tableIds?.length) return cleanFolderFilters(filters);
+  const nextTableIds = filters.tableIds.filter((tableId) => validTableIds.has(tableId));
+  return cleanFolderFilters({
+    ...filters,
+    tableIds: nextTableIds.length ? nextTableIds : undefined,
+  });
 }
 
 function expandSelectedFolderFilters(filters: FolderFilters | undefined, habits: Habit[]): FolderFilters | undefined {
@@ -76,17 +118,31 @@ function expandSelectedFolderFilters(filters: FolderFilters | undefined, habits:
     next.frequencies = Array.from(frequencies);
   }
 
-  return next;
+  if (filters?.allTables) {
+    next.allTables = true;
+    next.tableIds = undefined;
+  } else if (filters?.tableIds?.length) {
+    const tableIds = new Set(filters.tableIds);
+    for (const habit of habits) {
+      const tableId = getHabitLinkedTableId(habit);
+      if (tableId) tableIds.add(tableId);
+    }
+    next.tableIds = Array.from(tableIds);
+  }
+
+  return cleanFolderFilters(next);
 }
 
 function cloneSelectedFolderFilters(filters: FolderFilters | undefined): FolderFilters | undefined {
   if (!filters) return undefined;
 
-  return {
+  return cleanFolderFilters({
     tipos: filters.tipos ? [...filters.tipos] : undefined,
     colors: filters.colors ? [...filters.colors] : undefined,
     frequencies: filters.frequencies ? [...filters.frequencies] : undefined,
-  };
+    allTables: filters.allTables ? true : undefined,
+    tableIds: filters.tableIds ? [...filters.tableIds] : undefined,
+  });
 }
 
 function nextYmd(ymd: string): string {
@@ -118,7 +174,7 @@ function getSingleOccurrenceDate(habit: Habit): string | null {
 
 export function useIndexLogic() {
   const router = useRouter();
-  const { habits, history, getDay, toggleDoneForDate, toggleAggregateDone, removeHabit, updateHabit, addHabit, reorder, updateHabitsOrder, updateHabitFolder, setHabits, resetToday, dayResetTime, setDayResetTime, resetStorage: providerResetStorage } = useHabits();
+  const { habits, history, tables, isLoaded, getDay, toggleDoneForDate, toggleAggregateDone, removeHabit, updateHabit, addHabit, reorder, updateHabitsOrder, updateHabitFolder, setHabits, resetToday, dayResetTime, setDayResetTime, resetStorage: providerResetStorage } = useHabits();
   const [input, setInput] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -319,19 +375,20 @@ export function useIndexLogic() {
               };
               if (typeof f === 'string') return { id: ensureUniqueId(f + Date.now()), name: f, color: '#3b82f6', icon: 'folder-outline' } as FolderItem;
               if (f && typeof f === 'object' && 'name' in f) {
-                const obj = f as { id?: unknown; name?: unknown; color?: string; iconColor?: string; icon?: string };
+                const obj = f as { id?: unknown; name?: unknown; color?: string; iconColor?: string; icon?: string; filters?: FolderFilters };
                 const nameVal = obj.name;
                 if (typeof nameVal !== 'string' || !nameVal.trim()) return null;
                 const rawId = obj.id;
                 const id = typeof rawId === 'string' && rawId ? ensureUniqueId(rawId) : ensureUniqueId(`${nameVal}-${Date.now()}-${idx}`);
                 const color = typeof obj.color === 'string' ? obj.color : (typeof obj.iconColor === 'string' ? obj.iconColor : '#3b82f6');
                 const icon = typeof obj.icon === 'string' ? obj.icon : 'folder-outline';
-                return { id, name: nameVal.trim(), color, icon } as FolderItem;
+                const filters = cleanFolderFilters(obj.filters);
+                return { id, name: nameVal.trim(), color, icon, filters } as FolderItem;
               }
               return null;
             }).filter((f): f is FolderItem => f != null && typeof (f as FolderItem).name === 'string' && (f as FolderItem).name !== '[object Object]') as FolderItem[];
             setFolders(migrated);
-            if (migrated.length !== parsed.length) {
+            if (migrated.length !== parsed.length || JSON.stringify(migrated) !== JSON.stringify(parsed)) {
               AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(migrated)).catch(() => { });
             }
           }
@@ -352,6 +409,27 @@ export function useIndexLogic() {
       }
     }).catch(() => { });
   }, []);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const validTableIds = new Set(tables.map((table) => table.id));
+    setFolders((prev) => {
+      let changed = false;
+      const next = prev.map((folder) => {
+        const nextFilters = pruneFolderFilterTableIds(folder.filters, validTableIds);
+        const sameFilters = JSON.stringify(folder.filters ?? {}) === JSON.stringify(nextFilters ?? {});
+        if (sameFilters) return folder;
+        changed = true;
+        return { ...folder, filters: nextFilters };
+      });
+
+      if (changed) {
+        AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
+      }
+
+      return changed ? next : prev;
+    });
+  }, [isLoaded, tables]);
 
   const addFolderAndPersist = useCallback((newFolder: FolderItem) => {
     setFolders(prev => {
@@ -390,9 +468,7 @@ export function useIndexLogic() {
   const handleCreateFolder = useCallback(() => {
     const name = newFolderName.trim();
     if (!name) return;
-    const cleanFilters: FolderFilters | undefined =
-      (newFolderFilters.tipos?.length || newFolderFilters.colors?.length || newFolderFilters.frequencies?.length)
-        ? newFolderFilters : undefined;
+    const cleanFilters = cleanFolderFilters(newFolderFilters);
     const newFolder: FolderItem = { id: `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, name, color: newFolderColor, icon: newFolderIcon, filters: cleanFilters };
     addFolderAndPersist(newFolder);
     setActiveFolder(name);
@@ -404,9 +480,7 @@ export function useIndexLogic() {
     if (!name || !editingFolder) return;
     const oldName = editingFolder.name.trim();
     setFolders(prev => {
-      const cleanFilters: FolderFilters | undefined =
-        (newFolderFilters.tipos?.length || newFolderFilters.colors?.length || newFolderFilters.frequencies?.length)
-          ? newFolderFilters : undefined;
+      const cleanFilters = cleanFolderFilters(newFolderFilters);
       const next = prev.map(f => f.name.trim() === oldName ? { ...f, name, color: newFolderColor, icon: newFolderIcon, filters: cleanFilters } : f);
       AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
       return next;
@@ -455,7 +529,7 @@ export function useIndexLogic() {
     setNewFolderName(folder.name);
     setNewFolderColor(folder.color);
     setNewFolderIcon(folder.icon ?? 'folder-outline');
-    setNewFolderFilters(folder.filters ?? {});
+    setNewFolderFilters(cloneSelectedFolderFilters(folder.filters) ?? {});
     setEditFolderVisible(true);
   }, []);
 
@@ -644,19 +718,37 @@ export function useIndexLogic() {
     if (filters.frequencies?.length) {
       result = result.filter(h => filters.frequencies!.includes(h.habitFreq ?? 'single'));
     }
+    if (filters.allTables) {
+      result = result.filter((habit) => !!getHabitLinkedTableId(habit));
+    } else if (filters.tableIds?.length) {
+      const tableIds = new Set(filters.tableIds);
+      result = result.filter((habit) => {
+        const tableId = getHabitLinkedTableId(habit);
+        return tableId ? tableIds.has(tableId) : false;
+      });
+    }
     return result;
   }, []);
 
+  const hasCustomFolders = useMemo(
+    () => folders.some(folder => (folder.name ?? '').trim().length > 0),
+    [folders]
+  );
+
   const effectiveSortMode: SortModeType =
-    activeFolder === null
-      ? sortMode
-      : activeFolder === OGGI_TODAY_KEY
-        ? (sortModeByFolder[OGGI_TODAY_KEY] ?? sortMode)
-        : activeFolder === DOMANI_TOMORROW_KEY
-          ? (sortModeByFolder[DOMANI_TOMORROW_KEY] ?? sortMode)
-          : activeFolder === IERI_YESTERDAY_KEY
-            ? (sortModeByFolder[IERI_YESTERDAY_KEY] ?? sortMode)
-        : (sortModeByFolder[activeFolder.trim()] ?? 'creation');
+    (() => {
+      const rawMode =
+        activeFolder === null
+          ? sortMode
+          : activeFolder === OGGI_TODAY_KEY
+            ? (sortModeByFolder[OGGI_TODAY_KEY] ?? sortMode)
+            : activeFolder === DOMANI_TOMORROW_KEY
+              ? (sortModeByFolder[DOMANI_TOMORROW_KEY] ?? sortMode)
+              : activeFolder === IERI_YESTERDAY_KEY
+                ? (sortModeByFolder[IERI_YESTERDAY_KEY] ?? sortMode)
+                : (sortModeByFolder[activeFolder.trim()] ?? 'creation');
+      return !hasCustomFolders && rawMode === 'folder' ? 'creation' : rawMode;
+    })();
 
   const sortHabitsWithMode = useCallback((list: Habit[], mode: SortModeType) => {
     if (mode === 'alphabetical') {
@@ -804,7 +896,7 @@ export function useIndexLogic() {
     } else if (activeFolder) {
       const target = activeFolder.trim();
       const folderDef = folders.find(f => (f.name ?? '').trim() === target);
-      const hasFilters = folderDef?.filters && (folderDef.filters.tipos?.length || folderDef.filters.colors?.length || folderDef.filters.frequencies?.length);
+      const hasFilters = hasHabitFolderFilters(folderDef?.filters);
       if (hasFilters) {
         // Filtered folder: show all habits matching filters (not just ones assigned to this folder)
         list = applyFolderFilters(
@@ -843,19 +935,17 @@ export function useIndexLogic() {
       .filter((entry): entry is { name: string; folder: typeof folders[number] } => !!entry.name);
     const folderNames = new Set(folderEntries.map(entry => entry.name));
     const folderMap = new Map(folderEntries.map(entry => [entry.name, entry.folder]));
-    const hasActiveFilters = (folderName: string | null) => {
-      if (folderName == null) return false;
-      const filters = folderMap.get(folderName)?.filters;
-      return !!(filters?.tipos?.length || filters?.colors?.length || filters?.frequencies?.length);
-    };
-    let resolvedOrder: (string | null)[];
+    let resolvedOrder: string[];
     if (sectionOrder && sectionOrder.length > 0) {
       resolvedOrder = sectionOrder
         .filter(
           n =>
-            n === null ||
-            (folderNames.has(n) && n !== OGGI_TODAY_KEY && n !== DOMANI_TOMORROW_KEY && n !== IERI_YESTERDAY_KEY)
-        );
+            n !== null &&
+            folderNames.has(n) &&
+            n !== OGGI_TODAY_KEY &&
+            n !== DOMANI_TOMORROW_KEY &&
+            n !== IERI_YESTERDAY_KEY
+        ) as string[];
       const orderSet = new Set(resolvedOrder);
       for (const f of folders) {
         const name = (f.name ?? '').trim();
@@ -865,47 +955,48 @@ export function useIndexLogic() {
         }
       }
     } else {
-      resolvedOrder = [null, ...folderEntries.map(entry => entry.name)];
+      resolvedOrder = folderEntries.map(entry => entry.name);
     }
     if (resolvedOrder.length === 0) {
-      resolvedOrder = [null, ...folderEntries.map(entry => entry.name)];
+      resolvedOrder = folderEntries.map(entry => entry.name);
     }
     const byFolder = new Map<string | null, Habit[]>();
-    const assignedHabitIds = new Set<string>();
-
-    for (const h of sourceHabits) {
-      const explicitFolders = getHabitFolders(h).filter(folderName =>
-        !hasActiveFilters(folderName) && folderNames.has(folderName),
-      );
-      if (explicitFolders.length === 0) continue;
-      for (const explicitFolder of explicitFolders) {
-        const existing = byFolder.get(explicitFolder) ?? [];
-        existing.push(h);
-        byFolder.set(explicitFolder, existing);
-      }
-      assignedHabitIds.add(h.id);
-    }
+    const visibleInCustomFolderIds = new Set<string>();
 
     for (const folderName of resolvedOrder) {
-      if (folderName == null || !hasActiveFilters(folderName)) continue;
       const folderDef = folderMap.get(folderName);
-      const matching = applyFolderFilters(
-        sourceHabits.filter(h => !assignedHabitIds.has(h.id)),
-        folderDef?.filters
-      );
-      if (matching.length > 0) {
-        byFolder.set(folderName, matching);
-        for (const h of matching) assignedHabitIds.add(h.id);
+      const explicitMatches = sourceHabits.filter((habit) => habitHasFolder(habit, folderName));
+      const filterMatches = hasHabitFolderFilters(folderDef?.filters)
+        ? applyFolderFilters(sourceHabits, folderDef?.filters)
+        : [];
+
+      const merged: Habit[] = [];
+      const seenIds = new Set<string>();
+
+      for (const habit of explicitMatches) {
+        if (seenIds.has(habit.id)) continue;
+        seenIds.add(habit.id);
+        merged.push(habit);
+        visibleInCustomFolderIds.add(habit.id);
+      }
+
+      for (const habit of filterMatches) {
+        if (seenIds.has(habit.id)) continue;
+        seenIds.add(habit.id);
+        merged.push(habit);
+        visibleInCustomFolderIds.add(habit.id);
+      }
+
+      if (merged.length > 0) {
+        byFolder.set(folderName, merged);
       }
     }
 
-    byFolder.set(
-      null,
-      sourceHabits.filter(h => !assignedHabitIds.has(h.id))
-    );
+    const unassignedTasks = sourceHabits.filter(h => !visibleInCustomFolderIds.has(h.id));
+    byFolder.set(null, unassignedTasks);
 
     const out: SectionItem[] = [];
-    const orderList = [...resolvedOrder];
+    const orderList: (string | null)[] = [null, ...resolvedOrder];
     for (let i = 0; i < orderList.length; i++) {
       const folderName = orderList[i];
       const tasks = byFolder.get(folderName) ?? [];
@@ -1497,8 +1588,8 @@ export function useIndexLogic() {
                   const targetFolderDef = typeof targetFolderName === 'string'
                     ? folders.find(f => (f.name ?? '').trim() === targetFolderName.trim())
                     : undefined;
-                  const sourceHadFilters = hasSelectedFolderFilters(sourceFolderDef?.filters);
-                  const targetHadFilters = hasSelectedFolderFilters(targetFolderDef?.filters);
+                  const sourceHadFilters = hasHabitFolderFilters(sourceFolderDef?.filters);
+                  const targetHadFilters = hasHabitFolderFilters(targetFolderDef?.filters);
                   const targetWasEmpty = actualTarget!.tasks.length === 0;
                   const targetFolder = actualTarget!.folderName === null ? undefined : (actualTarget!.folderName as string);
                   const sourceTaskIds = new Set(sourceTasks.map(h => h.id));

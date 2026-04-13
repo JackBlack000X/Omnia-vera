@@ -305,6 +305,22 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const applySelectedFolders = useCallback((habit: Habit): Habit => {
     return withHabitFolders(habit, normalizedSelectedFolders);
   }, [normalizedSelectedFolders]);
+  const mergeFoldersIntoHabit = useCallback(
+    (habit: Habit, ...extraFolderSets: Array<readonly string[] | undefined>): Habit => {
+      const mergedFolders = getHabitFolders(habit);
+
+      for (const folderSet of extraFolderSets) {
+        if (!folderSet?.length) continue;
+        for (const folderName of folderSet) {
+          if (!folderName || mergedFolders.includes(folderName)) continue;
+          mergedFolders.push(folderName);
+        }
+      }
+
+      return withHabitFolders(habit, mergedFolders);
+    },
+    [],
+  );
 
   const shortenPlaceName = (value: string | null | undefined): string => {
     const trimmed = (value ?? '').trim();
@@ -1855,7 +1871,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
                   // Clear generic time to reflect per-day
                   schedule.time = null;
                   schedule.endTime = null;
-                  return { ...h, schedule };
+                  return mergeFoldersIntoHabit({ ...h, schedule }, normalizedSelectedFolders);
                 }));
                 // Remove the newly created duplicate
                 setHabits(prev => prev.filter(h => h.id !== newHabitId));
@@ -2257,7 +2273,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               }
               schedule.time = null;
               schedule.endTime = null;
-              return { ...h, schedule };
+              return mergeFoldersIntoHabit(
+                { ...h, schedule },
+                existing ? getHabitFolders(existing) : undefined,
+                normalizedSelectedFolders,
+              );
             }));
             // Remove current if it's effectively duplicate and merging into base
             setHabits(prev => prev.filter(h => h.id !== existing.id));

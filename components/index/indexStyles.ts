@@ -231,6 +231,8 @@ export const styles = StyleSheet.create({
     opacity: 0,
   },
   folderSeparator: {
+    marginHorizontal: 4,
+    paddingHorizontal: 5,
     paddingVertical: 4,
     paddingTop: 10,
   },
@@ -311,7 +313,7 @@ export const styles = StyleSheet.create({
     flex: 1,
   },
   folderSeparatorText: {
-    paddingLeft: 3,
+    paddingLeft: 0,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
