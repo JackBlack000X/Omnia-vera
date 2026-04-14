@@ -6,10 +6,11 @@ import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/o
 import { DEFAULT_HABIT_PRIORITY, isTravelLikeTipo, type Habit, type HabitPriority } from '@/lib/habits/schema';
 import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { useAppTheme } from '@/lib/theme-context';
+import { VacationUmbrellaIcon } from '@/components/ui/vacation-umbrella-icon';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
+import { Canvas, Circle, Fill, Shader, Skia } from '@shopify/react-native-skia';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -55,10 +56,33 @@ const CARD_COLORS = [
 const PIXEL_SIZE = 0.625;
 const NOISE_INTENSITY = 35.0; // Increased to make noise more visible
 const BADGE_GAP = 5;
+const BADGE_ICON_REFERENCE_SIZE = 17;
 const META_BADGE_SIZE = 17;
-const META_BADGE_INNER_SIZE = 15;
 const META_BADGE_RIGHT = 10;
 const SMART_BADGE_WIDTH = META_BADGE_SIZE;
+const VACATION_BADGE_WIDTH = META_BADGE_SIZE;
+const VACATION_BADGE_ICON_SIZE = 15;
+
+const SMART_BRAIN_FILL_KEYS = [
+  'core',
+  'topCap',
+  'topLeftCap',
+  'upperLeft',
+  'upperFarLeft',
+  'midLeft',
+  'upperRight',
+  'topLeft',
+  'topCenter',
+  'topRight',
+  'tipRight',
+  'edgeRight',
+  'left',
+  'farLeft',
+  'lowerLeftBridge',
+  'innerRight',
+  'midRight',
+  'stem',
+] as const;
 
 /** Segmenti senza `opacity` sul View: così non si vede il contenuto sotto (icone, lista, ecc.). */
 function occSegmentBackground(cardColor: string, filled: boolean, allDone = false): string {
@@ -116,6 +140,33 @@ function normalizeHexColor(hex?: string | null): string | null {
   return null;
 }
 
+function isOrangeLikeHexColor(hex?: string | null): boolean {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) return false;
+
+  const r = parseInt(normalized.slice(1, 3), 16) / 255;
+  const g = parseInt(normalized.slice(3, 5), 16) / 255;
+  const b = parseInt(normalized.slice(5, 7), 16) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+
+  if (delta < 0.12 || max < 0.35) return false;
+
+  let hue = 0;
+  if (delta !== 0) {
+    if (max === r) hue = ((g - b) / delta) % 6;
+    else if (max === g) hue = (b - r) / delta + 2;
+    else hue = (r - g) / delta + 4;
+    hue *= 60;
+    if (hue < 0) hue += 360;
+  }
+
+  const saturation = max === 0 ? 0 : delta / max;
+  return hue >= 22 && hue <= 58 && saturation >= 0.35;
+}
+
 function getPriorityBadgeColor(priority: HabitPriority): string {
   if (priority === 'maximum') return '#ef4444';
   if (priority === 'minimum') return '#22c55e';
@@ -123,7 +174,9 @@ function getPriorityBadgeColor(priority: HabitPriority): string {
 }
 
 function getMetaBadgeWidth(kind: 'pause-travel' | 'smart-task' | 'priority'): number {
-  return kind === 'smart-task' ? SMART_BADGE_WIDTH : META_BADGE_SIZE;
+  if (kind === 'smart-task') return SMART_BADGE_WIDTH;
+  if (kind === 'pause-travel') return VACATION_BADGE_WIDTH;
+  return META_BADGE_SIZE;
 }
 
 function formatVacationPeriod(habit: Habit): string | null {
@@ -222,6 +275,176 @@ function NoiseOverlay({ width, height, darkColor }: { width: number; height: num
   );
 }
 
+const smartBrainStyles = StyleSheet.create({
+  badge: {
+    width: META_BADGE_SIZE,
+    height: META_BADGE_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  fillBlob: {
+    position: 'absolute',
+    backgroundColor: '#f7b5cf',
+    borderRadius: 999,
+  },
+  outline: {
+    position: 'absolute',
+    top: -0.5,
+    left: -0.5,
+  },
+  stemOverlay: {
+    position: 'absolute',
+    width: 1.35,
+    height: 3.6,
+    top: 10.45,
+    left: 11.65,
+    backgroundColor: '#eea4c5',
+    borderRadius: 1,
+  },
+  inner: {
+    position: 'absolute',
+    top: 1,
+    left: 1,
+  },
+});
+
+const smartBrainFillStyles = StyleSheet.create({
+  core: {
+    width: 8.5,
+    height: 6.5,
+    top: 5,
+    left: 5,
+  },
+  topCap: {
+    width: 3.8,
+    height: 3.8,
+    top: 0.7,
+    left: 6.7,
+  },
+  topLeftCap: {
+    width: 4.9,
+    height: 4.4,
+    top: 0.6,
+    left: 2.8,
+  },
+  upperLeft: {
+    width: 4.7,
+    height: 4.3,
+    top: 2.2,
+    left: 1.6,
+  },
+  upperFarLeft: {
+    width: 2.5,
+    height: 2.8,
+    top: 3.55,
+    left: 0.15,
+  },
+  midLeft: {
+    width: 3.7,
+    height: 3.6,
+    top: 5.2,
+    left: 0.8,
+  },
+  upperRight: {
+    width: 2.8,
+    height: 2.8,
+    top: 2.8,
+    left: 10.4,
+  },
+  topLeft: {
+    width: 4.8,
+    height: 4.8,
+    top: 3.8,
+    left: 3.2,
+  },
+  topCenter: {
+    width: 5.9,
+    height: 4.4,
+    top: 1.8,
+    left: 6.1,
+  },
+  topRight: {
+    width: 3.4,
+    height: 3.8,
+    top: 4.1,
+    left: 9.4,
+  },
+  tipRight: {
+    width: 1.9,
+    height: 1.9,
+    top: 4.15,
+    left: 12.25,
+  },
+  edgeRight: {
+    width: 2.2,
+    height: 2.4,
+    top: 5.05,
+    left: 11.95,
+  },
+  left: {
+    width: 4.8,
+    height: 3.4,
+    top: 6.3,
+    left: 1.8,
+  },
+  farLeft: {
+    width: 3.1,
+    height: 3.7,
+    top: 5.55,
+    left: -0.05,
+  },
+  lowerLeftBridge: {
+    width: 2.3,
+    height: 1.1,
+    top: 7.6,
+    left: 1.8,
+  },
+  innerRight: {
+    width: 2.8,
+    height: 3.2,
+    top: 7,
+    left: 9.4,
+  },
+  midRight: {
+    width: 1.7,
+    height: 2.6,
+    top: 7.1,
+    left: 11.9,
+  },
+  stem: {
+    width: 2.1,
+    height: 3.3,
+    top: 8.7,
+    left: 10.5,
+  },
+});
+
+const SmartBrainBadge = React.memo(function SmartBrainBadge() {
+  return (
+    <View style={smartBrainStyles.badge}>
+      <View style={smartBrainStyles.inner}>
+        {SMART_BRAIN_FILL_KEYS.map((key) => (
+          <View key={key} style={[smartBrainStyles.fillBlob, smartBrainFillStyles[key]]} />
+        ))}
+      </View>
+      <MaterialCommunityIcons name="brain" size={18} color="#b13f72" style={smartBrainStyles.outline} />
+      <View style={smartBrainStyles.stemOverlay} />
+    </View>
+  );
+});
+
+const PriorityDotBadge = React.memo(function PriorityDotBadge({ color }: { color: string }) {
+  const center = META_BADGE_SIZE / 2;
+
+  return (
+    <Canvas style={styles.priorityBadgeCanvas}>
+      <Circle cx={center} cy={center} r={7.85} color="#000000" />
+      <Circle cx={center} cy={center} r={6.4} color={color} />
+    </Canvas>
+  );
+});
+
 export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, completionMode = 'day', completionDate, onToggleDone, onRename, onSchedule, onColor, shouldCloseMenu = false, onMoveToFolder, selectionMode = false, isSelected = false, onToggleSelect, onLongPress, dragBadgeCount, onMenuOpen, onMenuClose, onSmartTaskCompleted }: Props) {
   const { t } = useTranslation();
   const fmt = useFormatLocale();
@@ -306,6 +529,7 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
 
   const cardColor = healthOption?.solidColor ?? habit.color ?? CARD_COLORS[index % CARD_COLORS.length];
   const normalizedCardColor = useMemo(() => normalizeHexColor(cardColor), [cardColor]);
+  const shouldUseBlackVacationIcon = useMemo(() => isOrangeLikeHexColor(normalizedCardColor), [normalizedCardColor]);
   // Calculate noise color matching the task color
   const noiseColor = useMemo(() => getNoiseColor(cardColor), [cardColor]);
   // Only treat exact white as white background; all others use white text
@@ -658,13 +882,13 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
             <View key={badge.key} style={styles.activeBadge}>
               {badge.key === 'notification' ? (
                 <View style={styles.notificationBadgeWrap}>
-                  <Ionicons name={badge.icon} size={17} color={badge.color} />
+                  <Ionicons name={badge.icon} size={BADGE_ICON_REFERENCE_SIZE} color={badge.color} />
                   {habit.tipo === 'avviso' && (
                     <Text style={styles.notificationBadgeOne}>1</Text>
                   )}
                 </View>
               ) : (
-                <Ionicons name={badge.icon} size={17} color={badge.color} />
+                <Ionicons name={badge.icon} size={BADGE_ICON_REFERENCE_SIZE} color={badge.color} />
               )}
             </View>
           ))}
@@ -673,36 +897,26 @@ export const HabitItem = React.memo(function HabitItem({ habit, index, isDone, c
       {metaBadges.length > 0 && (
         <View style={styles.metaBadgesRail} pointerEvents="none">
           {metaBadges.map((badge) => (
-            <View key={badge.key} style={badge.kind === 'smart-task' ? styles.smartBadgeWrap : styles.metaBadgeChip}>
+            <View
+              key={badge.key}
+              style={
+                badge.kind === 'smart-task'
+                  ? styles.smartBadgeWrap
+                  : badge.kind === 'pause-travel'
+                    ? styles.vacationBadgeWrap
+                    : styles.metaBadgeChip
+              }
+            >
               {badge.kind === 'pause-travel' ? (
-                <MaterialCommunityIcons name="beach" size={12} color="#f4d38a" />
+                <View style={styles.vacationBadgeVisualTuning}>
+                  <VacationUmbrellaIcon size={VACATION_BADGE_ICON_SIZE} color={shouldUseBlackVacationIcon ? '#111111' : undefined} />
+                </View>
               ) : badge.kind === 'smart-task' ? (
-                <View style={styles.smartBrainBadge}>
-                  <View style={styles.smartBrainInner}>
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillCore]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillTopCap]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillTopLeftCap]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillUpperLeft]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillUpperFarLeft]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillMidLeft]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillUpperRight]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillTopLeft]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillTopCenter]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillTopRight]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillTipRight]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillEdgeRight]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillLeft]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillFarLeft]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillLowerLeftBridge]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillInnerRight]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillMidRight]} />
-                    <View style={[styles.smartBrainFillBlob, styles.smartBrainFillStem]} />
-                  </View>
-                  <MaterialCommunityIcons name="brain" size={18} color="#b13f72" style={styles.smartBrainOutline} />
-                  <View style={styles.smartBrainStemOverlay} />
+                <View style={styles.smartBadgeVisualTuning}>
+                  <SmartBrainBadge />
                 </View>
               ) : (
-                <View style={[styles.priorityBadgeCore, { backgroundColor: badge.color }]} />
+                <PriorityDotBadge color={badge.color} />
               )}
             </View>
           ))}
@@ -937,6 +1151,8 @@ const styles = StyleSheet.create({
     zIndex: 9,
   },
   activeBadge: {
+    width: META_BADGE_SIZE,
+    height: META_BADGE_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -952,15 +1168,8 @@ const styles = StyleSheet.create({
   metaBadgeChip: {
     width: META_BADGE_SIZE,
     height: META_BADGE_SIZE,
-    borderRadius: META_BADGE_SIZE / 2,
-    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 3,
   },
   smartBadgeWrap: {
     width: SMART_BADGE_WIDTH,
@@ -968,153 +1177,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  smartBrainBadge: {
-    width: META_BADGE_SIZE,
+  smartBadgeVisualTuning: {
+    transform: [{ scale: 1.08 }],
+  },
+  vacationBadgeWrap: {
+    width: VACATION_BADGE_WIDTH,
     height: META_BADGE_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
-  smartBrainFillBlob: {
-    position: 'absolute',
-    backgroundColor: '#f7b5cf',
-    borderRadius: 999,
+  vacationBadgeVisualTuning: {
+    transform: [{ translateX: -0.8 }],
   },
-  smartBrainFillCore: {
-    width: 8.5,
-    height: 6.5,
-    top: 5,
-    left: 5,
-  },
-  smartBrainFillTopCap: {
-    width: 3.8,
-    height: 3.8,
-    top: 0.7,
-    left: 6.7,
-  },
-  smartBrainFillTopLeftCap: {
-    width: 4.9,
-    height: 4.4,
-    top: 0.6,
-    left: 2.8,
-  },
-  smartBrainFillUpperLeft: {
-    width: 4.7,
-    height: 4.3,
-    top: 2.2,
-    left: 1.6,
-  },
-  smartBrainFillUpperFarLeft: {
-    width: 2.5,
-    height: 2.8,
-    top: 3.55,
-    left: 0.15,
-  },
-  smartBrainFillMidLeft: {
-    width: 3.7,
-    height: 3.6,
-    top: 5.2,
-    left: 0.8,
-  },
-  smartBrainFillUpperRight: {
-    width: 2.8,
-    height: 2.8,
-    top: 2.8,
-    left: 10.4,
-  },
-  smartBrainFillTopLeft: {
-    width: 4.8,
-    height: 4.8,
-    top: 3.8,
-    left: 3.2,
-  },
-  smartBrainFillTopCenter: {
-    width: 5.9,
-    height: 4.4,
-    top: 1.8,
-    left: 6.1,
-  },
-  smartBrainFillTopRight: {
-    width: 3.4,
-    height: 3.8,
-    top: 4.1,
-    left: 9.4,
-  },
-  smartBrainFillTipRight: {
-    width: 1.9,
-    height: 1.9,
-    top: 4.15,
-    left: 12.25,
-  },
-  smartBrainFillEdgeRight: {
-    width: 2.2,
-    height: 2.4,
-    top: 5.05,
-    left: 11.95,
-  },
-  smartBrainFillLeft: {
-    width: 4.8,
-    height: 3.4,
-    top: 6.3,
-    left: 1.8,
-  },
-  smartBrainFillFarLeft: {
-    width: 3.1,
-    height: 3.7,
-    top: 5.55,
-    left: -0.05,
-  },
-  smartBrainFillLowerLeftBridge: {
-    width: 2.3,
-    height: 1.1,
-    top: 7.6,
-    left: 1.8,
-  },
-  smartBrainFillInnerRight: {
-    width: 2.8,
-    height: 3.2,
-    top: 7,
-    left: 9.4,
-  },
-  smartBrainFillMidRight: {
-    width: 1.7,
-    height: 2.6,
-    top: 7.1,
-    left: 11.9,
-  },
-  smartBrainFillStem: {
-    width: 2.1,
-    height: 3.3,
-    top: 8.7,
-    left: 10.5,
-  },
-  smartBrainOutline: {
-    position: 'absolute',
-    top: -0.5,
-    left: -0.5,
-  },
-  smartBrainStemOverlay: {
-    position: 'absolute',
-    width: 1.35,
-    height: 3.6,
-    top: 10.45,
-    left: 11.65,
-    backgroundColor: '#eea4c5',
-    borderRadius: 1,
-  },
-  smartBrainInner: {
-    position: 'absolute',
-    top: 1,
-    left: 1,
-  },
-  priorityBadgeCore: {
-    width: META_BADGE_INNER_SIZE,
-    height: META_BADGE_INNER_SIZE,
-    borderRadius: META_BADGE_INNER_SIZE / 2,
+  priorityBadgeCanvas: {
+    width: META_BADGE_SIZE,
+    height: META_BADGE_SIZE,
   },
   notificationBadgeWrap: {
-    width: 18,
-    height: 18,
+    width: META_BADGE_SIZE,
+    height: META_BADGE_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },

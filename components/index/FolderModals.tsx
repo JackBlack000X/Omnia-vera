@@ -1,5 +1,6 @@
 import { styles } from '@/components/index/indexStyles';
 import { FOLDER_COLORS, FOLDER_ICONS, FolderFilters, FolderItem } from '@/lib/index/indexTypes';
+import { VacationUmbrellaIcon } from '@/components/ui/vacation-umbrella-icon';
 import { useHabits } from '@/lib/habits/Provider';
 import { HABIT_PRIORITY_LEVELS, type HabitPriority, type HabitTipo } from '@/lib/habits/schema';
 import { COLORS } from '@/components/modal/modalStyles';
@@ -39,7 +40,7 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
         { value: 'evento' as HabitTipo, label: t('modal.tipoEvent'), icon: 'calendar-outline' },
         { value: 'abitudine' as HabitTipo, label: t('modal.tipoHabit'), icon: 'repeat-outline' },
         { value: 'viaggio' as HabitTipo, label: t('modal.tipoTravel'), icon: 'airplane-outline' },
-        { value: 'vacanza' as HabitTipo, label: t('modal.tipoVacation'), icon: 'sunny-outline' },
+        { value: 'vacanza' as HabitTipo, label: t('modal.tipoVacation'), icon: undefined },
         { value: 'salute' as HabitTipo, label: t('modal.tipoHealth'), icon: 'heart-outline' },
       ] as const,
     [t]
@@ -176,7 +177,11 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
                   onPress={() => toggleTipo(opt.value)}
                   style={[fStyles.chip, active && fStyles.chipActive]}
                 >
-                  <Ionicons name={opt.icon as any} size={14} color={active ? '#fff' : THEME.textMuted} />
+                  {opt.value === 'vacanza' ? (
+                    <VacationUmbrellaIcon size={16} />
+                  ) : (
+                    <Ionicons name={opt.icon as any} size={14} color={active ? '#fff' : THEME.textMuted} />
+                  )}
                   <Text style={[fStyles.chipText, active && fStyles.chipTextActive]}>{opt.label}</Text>
                 </TouchableOpacity>
               );

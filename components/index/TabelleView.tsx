@@ -533,93 +533,96 @@ const sortGlyph = StyleSheet.create({
   },
 });
 
-function hueToHex(hue: number): string {
-  const h = ((hue % 360) + 360) % 360;
-  const c = 1;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  let r = 0;
-  let g = 0;
-  let b = 0;
-
-  if (h < 60) [r, g, b] = [c, x, 0];
-  else if (h < 120) [r, g, b] = [x, c, 0];
-  else if (h < 180) [r, g, b] = [0, c, x];
-  else if (h < 240) [r, g, b] = [0, x, c];
-  else if (h < 300) [r, g, b] = [x, 0, c];
-  else [r, g, b] = [c, 0, x];
-
-  const toHex = (value: number) => Math.round(value * 255).toString(16).padStart(2, '0').toUpperCase();
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-function hexToHue(hex: string): number {
+function normalizeHex(hex: string): string | null {
   const normalized = hex.replace('#', '');
-  if (normalized.length !== 6) return 0;
-  const r = parseInt(normalized.slice(0, 2), 16) / 255;
-  const g = parseInt(normalized.slice(2, 4), 16) / 255;
-  const b = parseInt(normalized.slice(4, 6), 16) / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const delta = max - min;
-  if (delta === 0) return 0;
-  if (max === r) return 60 * (((g - b) / delta + 6) % 6);
-  if (max === g) return 60 * ((b - r) / delta + 2);
-  return 60 * ((r - g) / delta + 4);
+  return normalized.length === 6 ? normalized.toUpperCase() : null;
 }
-
-const MIN_SLIDER_COLOR = '#6B6B72';
-const MAX_SLIDER_COLOR = '#FFFFFF';
-const DEFAULT_TABLE_COLOR = MIN_SLIDER_COLOR;
-const COLOR_SLIDER_MAX = 1000;
-const EDGE_TINT_RANGE = 80;
 
 function mixHexColors(from: string, to: string, amount: number): string {
   const clamp = Math.max(0, Math.min(1, amount));
-  const a = from.replace('#', '');
-  const b = to.replace('#', '');
+  const start = normalizeHex(from);
+  const end = normalizeHex(to);
+  if (!start || !end) return DEFAULT_TABLE_COLOR;
   const channels = [0, 2, 4].map((index) => {
-    const start = parseInt(a.slice(index, index + 2), 16);
-    const end = parseInt(b.slice(index, index + 2), 16);
-    return Math.round(start + (end - start) * clamp).toString(16).padStart(2, '0').toUpperCase();
+    const fromValue = parseInt(start.slice(index, index + 2), 16);
+    const toValue = parseInt(end.slice(index, index + 2), 16);
+    return Math.round(fromValue + (toValue - fromValue) * clamp).toString(16).padStart(2, '0').toUpperCase();
   });
   return `#${channels.join('')}`;
 }
 
+function colorDistance(a: string, b: string): number {
+  const first = normalizeHex(a);
+  const second = normalizeHex(b);
+  if (!first || !second) return Number.POSITIVE_INFINITY;
+  return [0, 2, 4].reduce((total, index) => {
+    const delta = parseInt(first.slice(index, index + 2), 16) - parseInt(second.slice(index, index + 2), 16);
+    return total + delta * delta;
+  }, 0);
+}
+
+const COLOR_SLIDER_STOPS = [
+  { position: 0, color: '#B7C0CC' },
+  { position: 0.08, color: '#FFFFFF' },
+  { position: 0.14, color: '#FF0033' },
+  { position: 0.24, color: '#FF0033' },
+  { position: 0.34, color: '#FF6A00' },
+  { position: 0.46, color: '#FFD400' },
+  { position: 0.58, color: '#B8FF1A' },
+  { position: 0.68, color: '#00E676' },
+  { position: 0.76, color: '#00E5FF' },
+  { position: 0.84, color: '#0047FF' },
+  { position: 0.92, color: '#0047FF' },
+  { position: 0.97, color: '#7C1FFF' },
+  { position: 1, color: '#FF2FD1' },
+] as const;
+
+const DEFAULT_TABLE_COLOR = '#7C1FFF';
+const COLOR_SLIDER_MAX = 1000;
+type GradientColors = [string, string, ...string[]];
+type GradientLocations = [number, number, ...number[]];
+
 function sliderToColor(value: number): string {
   const clamped = Math.max(0, Math.min(COLOR_SLIDER_MAX, value));
-  if (clamped <= EDGE_TINT_RANGE) {
-    return mixHexColors(MIN_SLIDER_COLOR, DEFAULT_TABLE_COLOR, clamped / EDGE_TINT_RANGE);
+  const progress = clamped / COLOR_SLIDER_MAX;
+
+  for (let index = 0; index < COLOR_SLIDER_STOPS.length - 1; index += 1) {
+    const current = COLOR_SLIDER_STOPS[index];
+    const next = COLOR_SLIDER_STOPS[index + 1];
+    if (progress <= next.position) {
+      const range = next.position - current.position || 1;
+      return mixHexColors(current.color, next.color, (progress - current.position) / range);
+    }
   }
-  if (clamped >= COLOR_SLIDER_MAX - EDGE_TINT_RANGE) {
-    return mixHexColors('#BF5AF2', MAX_SLIDER_COLOR, (clamped - (COLOR_SLIDER_MAX - EDGE_TINT_RANGE)) / EDGE_TINT_RANGE);
-  }
-  const hue = ((clamped - EDGE_TINT_RANGE) / (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2)) * 360;
-  return hueToHex(hue);
+
+  return COLOR_SLIDER_STOPS[COLOR_SLIDER_STOPS.length - 1].color;
 }
 
 function colorToSlider(hex: string): number {
-  const normalized = hex.replace('#', '').toUpperCase();
-  if (normalized.length !== 6) return EDGE_TINT_RANGE;
-  if (normalized === MIN_SLIDER_COLOR.replace('#', '')) return 0;
-  if (normalized === MAX_SLIDER_COLOR.replace('#', '')) return COLOR_SLIDER_MAX;
-  const hue = hexToHue(hex);
-  return Math.round(EDGE_TINT_RANGE + (hue / 360) * (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2));
+  const normalized = normalizeHex(hex);
+  if (!normalized) {
+    return Math.round(0.97 * COLOR_SLIDER_MAX);
+  }
+
+  let bestProgress = 0.97;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const steps = 240;
+
+  for (let step = 0; step <= steps; step += 1) {
+    const progress = step / steps;
+    const sampled = sliderToColor(progress * COLOR_SLIDER_MAX);
+    const distance = colorDistance(`#${normalized}`, sampled);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestProgress = progress;
+    }
+  }
+
+  return Math.round(bestProgress * COLOR_SLIDER_MAX);
 }
 
-const COLOR_BAR_STOPS = [
-  0,
-  EDGE_TINT_RANGE,
-  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.16,
-  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.33,
-  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.5,
-  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.66,
-  EDGE_TINT_RANGE + (COLOR_SLIDER_MAX - EDGE_TINT_RANGE * 2) * 0.83,
-  COLOR_SLIDER_MAX - EDGE_TINT_RANGE,
-  COLOR_SLIDER_MAX,
-];
-
-const CHROMATIC_BAR = COLOR_BAR_STOPS.map((stop) => sliderToColor(stop));
-const CHROMATIC_LOCATIONS = COLOR_BAR_STOPS.map((stop) => stop / COLOR_SLIDER_MAX);
+const CHROMATIC_BAR = COLOR_SLIDER_STOPS.map((stop) => stop.color) as GradientColors;
+const CHROMATIC_LOCATIONS = COLOR_SLIDER_STOPS.map((stop) => stop.position) as GradientLocations;
 
 function CreateModal({ visible, onClose, onSubmit, initialTable }: {
   visible: boolean;
@@ -632,10 +635,12 @@ function CreateModal({ visible, onClose, onSubmit, initialTable }: {
   const [cols, setCols] = useState(4);
   const [rows, setRows] = useState(4);
   const [accentSliderValue, setAccentSliderValue] = useState(() => colorToSlider(DEFAULT_TABLE_COLOR));
+  const [hasTouchedAccent, setHasTouchedAccent] = useState(false);
   const [isMounted, setIsMounted] = useState(visible);
   const backdropProgress = React.useRef(new Animated.Value(visible ? 1 : 0)).current;
   const sheetProgress = React.useRef(new Animated.Value(visible ? 1 : 0)).current;
-  const accent = useMemo(() => sliderToColor(accentSliderValue), [accentSliderValue]);
+  const sliderAccent = useMemo(() => sliderToColor(accentSliderValue), [accentSliderValue]);
+  const accent = hasTouchedAccent ? sliderAccent : (initialTable?.color ?? DEFAULT_TABLE_COLOR);
   const isEditing = Boolean(initialTable);
 
   const reset = useCallback(() => {
@@ -643,6 +648,7 @@ function CreateModal({ visible, onClose, onSubmit, initialTable }: {
     setCols(getInitialModalCols(initialTable));
     setRows(getInitialModalRows(initialTable));
     setAccentSliderValue(colorToSlider(initialTable?.color ?? DEFAULT_TABLE_COLOR));
+    setHasTouchedAccent(false);
   }, [initialTable]);
 
   const close = useCallback(() => {
@@ -761,7 +767,10 @@ function CreateModal({ visible, onClose, onSubmit, initialTable }: {
                   minimumTrackTintColor="transparent"
                   maximumTrackTintColor="transparent"
                   thumbTintColor={accent}
-                  onValueChange={setAccentSliderValue}
+                  onValueChange={(value) => {
+                    setHasTouchedAccent(true);
+                    setAccentSliderValue(value);
+                  }}
                 />
               </View>
 
