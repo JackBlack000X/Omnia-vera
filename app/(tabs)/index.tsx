@@ -1049,31 +1049,31 @@ export default function IndexScreen() {
                       const sel = (label: string, mode: typeof sortMode) =>
                         current === mode ? `${label} ✓` : label;
                       const labels: Record<typeof sortMode, string> = {
-                        creation: 'Data di creazione',
-                        time: 'Orario',
-                        color: 'Ordine per colore',
+                        creation: t('index.sortCreationDate'),
+                        time: t('index.sortTime'),
+                        color: t('index.sortColor'),
                         priority: t('index.sortPriority'),
-                        folder: 'Ordine per cartelle',
-                        alphabetical: 'Ordine alfabetico',
-                        custom: 'Ordine libero (Trascina)',
+                        folder: t('index.sortFolder'),
+                        alphabetical: t('index.sortAlphabetical'),
+                        custom: t('index.sortCustom'),
                       };
                       const options: any[] = [
-                        { text: 'Annulla', style: 'cancel' },
-                        { text: sel('Data di creazione', 'creation'), onPress: () => setCurrent('creation') },
-                        { text: sel('Orario', 'time'), onPress: () => setCurrent('time') },
-                        { text: sel('Ordine per colore', 'color'), onPress: () => setCurrent('color') },
-                        { text: sel(t('index.sortPriority'), 'priority'), onPress: () => setCurrent('priority') },
+                        { text: t('common.cancel'), style: 'cancel' },
+                        { text: sel(labels.creation, 'creation'), onPress: () => setCurrent('creation') },
+                        { text: sel(labels.time, 'time'), onPress: () => setCurrent('time') },
+                        { text: sel(labels.color, 'color'), onPress: () => setCurrent('color') },
+                        { text: sel(labels.priority, 'priority'), onPress: () => setCurrent('priority') },
                       ];
                       if (!isRealFolder && hasCustomFolders) {
-                        options.push({ text: sel('Ordine per cartelle', 'folder'), onPress: () => setCurrent('folder') });
+                        options.push({ text: sel(labels.folder, 'folder'), onPress: () => setCurrent('folder') });
                       }
                       options.push(
-                        { text: sel('Ordine alfabetico', 'alphabetical'), onPress: () => setCurrent('alphabetical') },
-                        { text: sel('Ordine libero (Trascina)', 'custom'), onPress: () => setCurrent('custom') }
+                        { text: sel(labels.alphabetical, 'alphabetical'), onPress: () => setCurrent('alphabetical') },
+                        { text: sel(labels.custom, 'custom'), onPress: () => setCurrent('custom') }
                       );
                       Alert.alert(
-                        isRealFolder ? 'Ordina task (in questa cartella)' : 'Ordina task',
-                        `Ordine attuale: ${labels[current] ?? current}`,
+                        isRealFolder ? t('index.sortTasksInFolderTitle') : t('index.sortTasksTitle'),
+                        t('index.sortCurrentOrder', { label: labels[current] ?? current }),
                         options
                       );
                     }
@@ -1088,11 +1088,11 @@ export default function IndexScreen() {
                     key: 'reset', icon: 'refresh-outline' as const, onPress: () => {
                       setOptionsMenuVisible(false);
                       Alert.alert(
-                        'Azzera le task di oggi?',
-                        'Vuoi segnare tutte le task come non completate per oggi?',
+                        t('index.resetTodayTitle'),
+                        t('index.resetTodayMessage'),
                         [
-                          { text: 'Annulla', style: 'cancel' },
-                          { text: 'Conferma', style: 'destructive', onPress: resetToday }
+                          { text: t('common.cancel'), style: 'cancel' },
+                          { text: t('common.confirm'), style: 'destructive', onPress: resetToday }
                         ]
                       );
                     }
@@ -1533,12 +1533,12 @@ export default function IndexScreen() {
             onPress={() => {
               if (selectedIds.size === 0) return;
               Alert.alert(
-                'Elimina task',
-                `Vuoi eliminare ${selectedIds.size} task?`,
+                t('index.bulkDeleteTitle'),
+                t('index.bulkDeleteMessage', { count: selectedIds.size }),
                 [
-                  { text: 'Annulla', style: 'cancel' },
+                  { text: t('common.cancel'), style: 'cancel' },
                   {
-                    text: 'Elimina', style: 'destructive', onPress: () => {
+                    text: t('common.delete'), style: 'destructive', onPress: () => {
                       posthog.capture('habit_deleted', { count: selectedIds.size, bulk: true });
                       selectedIds.forEach(id => removeHabit(id));
                       setSelectedIds(new Set());

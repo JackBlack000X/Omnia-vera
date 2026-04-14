@@ -2282,11 +2282,11 @@ export default function OggiScreen() {
       <Modal visible={showSettings} animationType="slide" transparent onRequestClose={() => setShowSettings(false)}>
          <View style={styles.modalBackdrop}>
             <View style={styles.modalCard}>
-               <Text style={styles.modalTitle}>Impostazioni Vista</Text>
+               <Text style={styles.modalTitle}>{t('oggi.viewSettingsTitle')}</Text>
                
                {/* Start Time Control */}
                <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>Inizio: {windowStart}</Text>
+                  <Text style={styles.settingLabel}>{t('trackerModal.start')}: {windowStart}</Text>
                   <View style={styles.settingControls}>
                       <HoldableButton style={styles.controlBtn} onPress={() => {
                         setWindowStart(prev => {
@@ -2309,7 +2309,7 @@ export default function OggiScreen() {
 
                {/* End Time Control */}
                <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>Fine: {windowEnd}</Text>
+                  <Text style={styles.settingLabel}>{t('trackerModal.end')}: {windowEnd}</Text>
                   <View style={styles.settingControls}>
                      <HoldableButton style={styles.controlBtn} onPress={() => {
                         setWindowEnd(prev => {
@@ -2332,7 +2332,7 @@ export default function OggiScreen() {
                </View>
 
                 <View style={styles.settingRow}>
-                    <Text style={styles.settingLabel}>Ore Visibili: {visibleHours}</Text>
+                    <Text style={styles.settingLabel}>{t('oggi.visibleHours')}: {visibleHours}</Text>
                     <View style={styles.settingControls}>
                        <HoldableButton style={styles.controlBtn} onPress={() => {
                           setVisibleHours(prev => Math.max(5, prev - 1));
@@ -2345,7 +2345,7 @@ export default function OggiScreen() {
 
                {/* Reset Time Control */}
                   <View style={styles.settingRow}>
-                   <Text style={styles.settingLabel}>Reset: {dayResetTime}</Text>
+                   <Text style={styles.settingLabel}>{t('oggi.resetTime')}: {dayResetTime}</Text>
                    <View style={styles.settingControls}>
                       <HoldableButton style={styles.controlBtn} onPress={() => {
                          setDayResetTime(prev => {
@@ -2366,7 +2366,7 @@ export default function OggiScreen() {
 
 
                <TouchableOpacity style={styles.closeBtn} onPress={() => setShowSettings(false)}>
-                  <Text style={styles.closeBtnText}>Chiudi</Text>
+                  <Text style={styles.closeBtnText}>{t('common.close')}</Text>
                </TouchableOpacity>
             </View>
          </View>

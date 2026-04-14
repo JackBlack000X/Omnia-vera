@@ -30,6 +30,31 @@ export type FolderModalsProps = {
   performDeleteFolder: (folderName: string) => void;
 };
 
+function getPriorityChipPalette(priority: HabitPriority) {
+  if (priority === 'maximum') {
+    return {
+      chip: { borderColor: 'rgba(239, 68, 68, 0.55)', backgroundColor: 'rgba(239, 68, 68, 0.12)' },
+      chipActive: { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.28)' },
+      icon: { color: '#fca5a5' },
+      text: { color: '#fecaca' },
+    };
+  }
+  if (priority === 'minimum') {
+    return {
+      chip: { borderColor: 'rgba(34, 197, 94, 0.55)', backgroundColor: 'rgba(34, 197, 94, 0.12)' },
+      chipActive: { borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.28)' },
+      icon: { color: '#86efac' },
+      text: { color: '#bbf7d0' },
+    };
+  }
+  return {
+    chip: { borderColor: 'rgba(245, 158, 11, 0.55)', backgroundColor: 'rgba(245, 158, 11, 0.12)' },
+    chipActive: { borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.28)' },
+    icon: { color: '#fcd34d' },
+    text: { color: '#fde68a' },
+  };
+}
+
 function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFilters: (f: FolderFilters) => void }) {
   const { t } = useTranslation();
   const { tables, habits } = useHabits();
@@ -243,17 +268,37 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
           </ScrollView>
 
           <Text style={fStyles.filterLabel}>{t('folderModals.priorityLabel')}</Text>
-          <View style={fStyles.chipRow}>
+          <View style={fStyles.priorityChipRow}>
             {priorityOptions.map(opt => {
               const active = filters.priorities?.includes(opt.value);
+              const palette = getPriorityChipPalette(opt.value);
               return (
                 <TouchableOpacity
                   key={opt.value}
                   onPress={() => togglePriority(opt.value)}
-                  style={[fStyles.chip, active && fStyles.chipActive]}
+                  style={[
+                    fStyles.priorityChip,
+                    palette.chip,
+                    active && palette.chipActive,
+                  ]}
                 >
-                  <Ionicons name="flag-outline" size={14} color={active ? '#fff' : THEME.textMuted} />
-                  <Text style={[fStyles.chipText, active && fStyles.chipTextActive]}>{opt.label}</Text>
+                  <View
+                    style={[
+                      fStyles.priorityIndicator,
+                      { borderColor: active ? '#ffffff' : palette.icon.color },
+                      active && fStyles.priorityIndicatorActive,
+                    ]}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      fStyles.priorityChipText,
+                      palette.text,
+                      active && fStyles.priorityChipTextActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -526,6 +571,12 @@ const fStyles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
+  priorityChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    gap: 4,
+    marginBottom: 12,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -538,9 +589,37 @@ const fStyles = StyleSheet.create({
   chipActive: {
     backgroundColor: '#3b82f6',
   },
+  priorityChip: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
   chipText: {
     fontSize: 13,
     color: THEME.textMuted,
+  },
+  priorityChipText: {
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  priorityIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  priorityIndicatorActive: {
+    backgroundColor: '#ffffff',
   },
   tableDot: {
     width: 10,
