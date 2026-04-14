@@ -1,11 +1,12 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, useGlobalSearchParams, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Appearance, LogBox, StyleSheet, Text, TextInput, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PostHogProvider } from 'posthog-react-native';
 
 import { HabitsProvider } from '@/lib/habits/Provider';
 import { LocaleProvider } from '@/lib/i18n/LocaleProvider';
@@ -17,9 +18,10 @@ import { STORAGE_KEYS } from '@/lib/storageKeys';
 import IntroVideo from '@/components/IntroVideo';
 import WidgetSyncBridge from '@/components/WidgetSyncBridge';
 import { BagelFatOne_400Regular, useFonts } from '@expo-google-fonts/bagel-fat-one';
-import { Component, ErrorInfo, ReactNode, useCallback, useEffect, useState } from 'react';
+import { Component, ErrorInfo, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import * as SystemUI from 'expo-system-ui';
 import '@/lib/geofenceTask';
+import { posthog } from '@/lib/posthog';
 
 // Forza la finestra rootView a nero (impedisce i lampi bianchi)
 SystemUI.setBackgroundColorAsync('#000');
@@ -95,6 +97,20 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
+  const pathname = usePathname();
+  const params = useGlobalSearchParams();
+  const previousPathname = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (previousPathname.current !== pathname) {
+      posthog.screen(pathname, {
+        previous_screen: previousPathname.current ?? null,
+        ...params,
+      });
+      previousPathname.current = pathname;
+    }
+  }, [pathname, params]);
+
   const [fontsLoaded] = useFonts({
     BagelFatOne_400Regular,
   });
@@ -129,6 +145,7 @@ export default function RootLayout() {
   const handleIntroDone = useCallback(() => {
     setShowIntro(false);
     AsyncStorage.setItem(STORAGE_KEYS.introSeen, 'true').catch(() => {});
+    posthog.capture('intro_completed');
   }, []);
 
   // Keep the app on a black boot screen until both storage and the custom font are ready.
@@ -149,20 +166,29 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000' }}>
-      <LocaleProvider>
-      <SafeAreaProvider>
-        <AppDateBoundsProvider installYmd={appInstallYmd}>
-          <HabitsProvider>
-            <WidgetSyncBridge />
-            <AppThemeProvider>
-              <RootErrorBoundary>
-                <RootNavigator />
-              </RootErrorBoundary>
-            </AppThemeProvider>
-          </HabitsProvider>
-        </AppDateBoundsProvider>
-      </SafeAreaProvider>
-      </LocaleProvider>
+      <PostHogProvider
+        client={posthog}
+        autocapture={{
+          captureScreens: false,
+          captureTouches: true,
+          propsToCapture: ['testID'],
+        }}
+      >
+        <LocaleProvider>
+        <SafeAreaProvider>
+          <AppDateBoundsProvider installYmd={appInstallYmd}>
+            <HabitsProvider>
+              <WidgetSyncBridge />
+              <AppThemeProvider>
+                <RootErrorBoundary>
+                  <RootNavigator />
+                </RootErrorBoundary>
+              </AppThemeProvider>
+            </HabitsProvider>
+          </AppDateBoundsProvider>
+        </SafeAreaProvider>
+        </LocaleProvider>
+      </PostHogProvider>
     </GestureHandlerRootView>
   );
 }

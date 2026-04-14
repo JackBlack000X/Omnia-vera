@@ -1,7 +1,7 @@
 import { styles } from '@/components/index/indexStyles';
 import { FOLDER_COLORS, FOLDER_ICONS, FolderFilters, FolderItem } from '@/lib/index/indexTypes';
 import { useHabits } from '@/lib/habits/Provider';
-import type { HabitTipo } from '@/lib/habits/schema';
+import { HABIT_PRIORITY_LEVELS, type HabitPriority, type HabitTipo } from '@/lib/habits/schema';
 import { COLORS } from '@/components/modal/modalStyles';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
@@ -55,6 +55,19 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
       ] as const,
     [t]
   );
+  const priorityOptions = useMemo(
+    () =>
+      HABIT_PRIORITY_LEVELS.map((priority) => ({
+        value: priority,
+        label:
+          priority === 'maximum'
+            ? t('modal.priorityMaximum')
+            : priority === 'minimum'
+              ? t('modal.priorityMinimum')
+              : t('modal.priorityMedium'),
+      })),
+    [t]
+  );
   const availableTables = useMemo(
     () => tables.filter((table) => table.name.trim().length > 0),
     [tables]
@@ -88,7 +101,7 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
     return ordered;
   }, [filters.allTables, filters.colors, filters.tableIds, habits, tables]);
   const [expanded, setExpanded] = useState(
-    !!(filters.tipos?.length || filters.colors?.length || filters.frequencies?.length || filters.allTables || filters.tableIds?.length)
+    !!(filters.tipos?.length || filters.colors?.length || filters.priorities?.length || filters.frequencies?.length || filters.allTables || filters.tableIds?.length)
   );
 
   const toggleTipo = (t: HabitTipo) => {
@@ -109,6 +122,12 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
     setFilters({ ...filters, frequencies: next.length ? next : undefined });
   };
 
+  const togglePriority = (priority: HabitPriority) => {
+    const current = filters.priorities ?? [];
+    const next = current.includes(priority) ? current.filter(x => x !== priority) : [...current, priority];
+    setFilters({ ...filters, priorities: next.length ? next : undefined });
+  };
+
   const toggleAllTables = () => {
     if (filters.allTables) {
       setFilters({ ...filters, allTables: undefined, tableIds: undefined });
@@ -126,6 +145,7 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
   const hasActiveFilters = !!(
     filters.tipos?.length ||
     filters.colors?.length ||
+    filters.priorities?.length ||
     filters.frequencies?.length ||
     filters.allTables ||
     filters.tableIds?.length
@@ -216,6 +236,23 @@ function FiltersSection({ filters, setFilters }: { filters: FolderFilters; setFi
               );
             })}
           </ScrollView>
+
+          <Text style={fStyles.filterLabel}>{t('folderModals.priorityLabel')}</Text>
+          <View style={fStyles.chipRow}>
+            {priorityOptions.map(opt => {
+              const active = filters.priorities?.includes(opt.value);
+              return (
+                <TouchableOpacity
+                  key={opt.value}
+                  onPress={() => togglePriority(opt.value)}
+                  style={[fStyles.chip, active && fStyles.chipActive]}
+                >
+                  <Ionicons name="flag-outline" size={14} color={active ? '#fff' : THEME.textMuted} />
+                  <Text style={[fStyles.chipText, active && fStyles.chipTextActive]}>{opt.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           <Text style={fStyles.filterLabel}>{t('folderModals.freqLabel')}</Text>
           <View style={fStyles.chipRow}>

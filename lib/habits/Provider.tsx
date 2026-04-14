@@ -9,7 +9,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Alert, AppState, Platform } from 'react-native';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay, migrateOccurrenceCompletionForNewDailyTotal } from './occurrences';
 import { getHabitsAppearingOnDate } from './habitsForDate';
-import { Habit, HabitTipo, HabitsState, TrackerEntry, UserTable } from './schema';
+import { DEFAULT_HABIT_PRIORITY, Habit, HabitPriority, HabitTipo, HabitsState, TrackerEntry, UserTable, isHabitPriority } from './schema';
 
 const STORAGE_HABITS = STORAGE_KEYS.habits;
 const STORAGE_TABLES = STORAGE_KEYS.tables;
@@ -20,6 +20,7 @@ const STORAGE_DAYRESETTIME = STORAGE_KEYS.dayResetTime;
 const STORAGE_DAYRESET_HISTORY = STORAGE_KEYS.dayResetHistory;
 const STORAGE_DAYRESET_HISTORY_LEGACY_V2 = LEGACY_STORAGE_KEYS.dayResetHistoryV2;
 const STORAGE_REVIEWED_DATES = STORAGE_KEYS.reviewedDates;
+const STORAGE_DEFAULT_PRIORITY = STORAGE_KEYS.defaultPriority;
 const TZ = 'Europe/Zurich';
 
 const MAX_HISTORY_DAYS = 180;
@@ -322,9 +323,10 @@ export type HabitsContextType = {
   history: HabitsState['history'];
   lastResetDate: string | null;
   dayResetTime: string;
+  defaultPriority: HabitPriority;
   reviewedDates: string[];
   isLoaded: boolean;
-  addHabit: (text: string, color?: string, folder?: string | string[], tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string }) => string;
+  addHabit: (text: string, color?: string, folder?: string | string[], tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: boolean; habitFreq?: Habit['habitFreq']; label?: string; priority?: HabitPriority }) => string;
   duplicateHabit: (id: string) => string | null;
   updateHabit: (id: string, text: string) => void;
   updateHabitColor: (id: string, color: string) => void;
@@ -350,6 +352,7 @@ export type HabitsContextType = {
   updateScheduleFromDate: (id: string, fromDate: string, startTime: string | null, endTime: string | null) => void;
   updateSchedule: (id: string, daysOfWeek: number[], hhmm: string | null) => void;
   setDayResetTime: (timeOrFn: string | ((prev: string) => string)) => Promise<void>;
+  setDefaultPriority: (priority: HabitPriority) => Promise<void>;
   getResetTimeForDay: (ymd: string) => string;
   setHabits: React.Dispatch<React.SetStateAction<Habit[]>>;
   resetStorage: () => Promise<void>;
@@ -381,6 +384,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = useState<HabitsState['history']>({});
   const [lastResetDate, setLastResetDate] = useState<string | null>(null);
   const [dayResetTime, setDayResetTimeState] = useState<string>('00:00');
+  const [defaultPriority, setDefaultPriorityState] = useState<HabitPriority>(DEFAULT_HABIT_PRIORITY);
   const [reviewedDates, setReviewedDates] = useState<string[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [trackerEntries, setTrackerEntries] = useState<TrackerEntry[]>([]);
@@ -404,7 +408,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [rawHabits, rawHistory, rawLast, rawDayResetTime, rawDayResetHistory, rawLegacyDayResetHistoryV2, rawReviewedDates, rawTracker, rawTables] = await Promise.all([
+        const [rawHabits, rawHistory, rawLast, rawDayResetTime, rawDayResetHistory, rawLegacyDayResetHistoryV2, rawReviewedDates, rawTracker, rawTables, rawDefaultPriority] = await Promise.all([
           getItemWithLegacy(STORAGE_HABITS, LEGACY_STORAGE_KEYS.habits),
           getItemWithLegacy(STORAGE_HISTORY, LEGACY_STORAGE_KEYS.history),
           getItemWithLegacy(STORAGE_LASTRESET, LEGACY_STORAGE_KEYS.lastReset),
@@ -414,13 +418,20 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           getItemWithLegacy(STORAGE_REVIEWED_DATES, LEGACY_STORAGE_KEYS.reviewedDates),
           getItemWithLegacy(STORAGE_TRACKER, LEGACY_STORAGE_KEYS.tracker),
           getItemWithLegacy(STORAGE_TABLES, LEGACY_STORAGE_KEYS.tables),
+          AsyncStorage.getItem(STORAGE_DEFAULT_PRIORITY),
         ]);
 
         if (rawHabits) {
           try {
             const parsed = JSON.parse(rawHabits);
             if (Array.isArray(parsed)) {
-              setHabits(parsed.map((habit) => ensureHabitFolderFields(habit as Habit)));
+              setHabits(parsed.map((habit) => {
+                const parsedHabit = habit as Habit;
+                return ensureHabitFolderFields({
+                  ...parsedHabit,
+                  priority: isHabitPriority(parsedHabit.priority) ? parsedHabit.priority : undefined,
+                });
+              }));
             }
           } catch (e) {
             console.warn('Corrupted habits data, skipping');
@@ -455,6 +466,10 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
           } catch (e) {
             console.warn('Corrupted tracker data, skipping');
           }
+        }
+
+        if (isHabitPriority(rawDefaultPriority)) {
+          setDefaultPriorityState(rawDefaultPriority);
         }
 
         if (rawTables) {
@@ -830,7 +845,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [checkEventAutoComplete]);
 
-  const addHabit = useCallback((text: string, color?: string, folder?: string | string[], tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: Habit['isAllDay']; habitFreq?: Habit['habitFreq']; label?: string }) => {
+  const addHabit = useCallback((text: string, color?: string, folder?: string | string[], tipo?: HabitTipo, initial?: { timeOverrides?: Habit['timeOverrides']; schedule?: Habit['schedule']; isAllDay?: Habit['isAllDay']; habitFreq?: Habit['habitFreq']; label?: string; priority?: HabitPriority }) => {
     const newId = createStableId();
     setHabits((prev) => {
       const newOrder = prev.length;
@@ -847,6 +862,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
         ...(initial?.isAllDay !== undefined && { isAllDay: initial.isAllDay }),
         ...(initial?.habitFreq && { habitFreq: initial.habitFreq }),
         ...(initial?.label && { label: initial.label }),
+        ...(initial?.priority && { priority: initial.priority }),
       }, folder);
       return [...prev, newHabit];
     });
@@ -1313,6 +1329,11 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     ]);
   }, []);
 
+  const setDefaultPriority = useCallback(async (priority: HabitPriority) => {
+    setDefaultPriorityState(priority);
+    await AsyncStorage.setItem(STORAGE_DEFAULT_PRIORITY, priority);
+  }, []);
+
   const markDateReviewed = useCallback(async (ymd: string) => {
     setReviewedDates(prev => {
       if (prev.includes(ymd)) return prev;
@@ -1351,6 +1372,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
       setHistory({});
       setLastResetDate(null);
       setDayResetTimeState('00:00');
+      setDefaultPriorityState(DEFAULT_HABIT_PRIORITY);
       setReviewedDates([]);
       const today = formatYmd();
       dateRef.current = today;
@@ -1422,13 +1444,13 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<HabitsContextType>(() => ({
-    habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded,
+    habits, history, lastResetDate, dayResetTime, defaultPriority, reviewedDates, isLoaded,
     addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, toggleDoneForDate, toggleAggregateDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion,
-    setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, getResetTimeForDay, setHabits, resetStorage,
+    setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setDefaultPriority, getResetTimeForDay, setHabits, resetStorage,
     markDateReviewed, saveDayReview, updateHabitAskReview,
     trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople,
     tables, addTable, updateTable, deleteTable,
-  }), [habits, history, lastResetDate, dayResetTime, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, toggleDoneForDate, toggleAggregateDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, getResetTimeForDay, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
+  }), [habits, history, lastResetDate, dayResetTime, defaultPriority, reviewedDates, isLoaded, addHabit, duplicateHabit, updateHabit, updateHabitColor, updateHabitFolder, updateHabitTipo, removeHabit, migrateTodayCompletionForDailyCountChange, toggleDone, toggleDoneForDate, toggleAggregateDone, reorder, updateHabitsOrder, resetToday, getDay, setDayCompletion, setTimeOverride, setTimeOverrideRange, setOccurrenceSlotTimeRange, setMultipleOccurrenceSlotOverrides, setOccurrenceGapMinutesAndClearDayOverrides, updateScheduleTime, updateScheduleFromDate, updateSchedule, setDayResetTime, setDefaultPriority, getResetTimeForDay, setHabits, resetStorage, markDateReviewed, saveDayReview, updateHabitAskReview, trackerEntries, addTrackerEntry, updateTrackerEntry, deleteTrackerEntry, savedTrackerPeople, tables, addTable, updateTable, deleteTable]);
 
   return <HabitsContext.Provider value={value}>{children}</HabitsContext.Provider>;
 }

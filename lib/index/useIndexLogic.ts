@@ -1,3 +1,4 @@
+import { posthog } from '@/lib/posthog';
 import { useHabits } from '@/lib/habits/Provider';
 import {
     getHabitFolders,
@@ -9,7 +10,7 @@ import {
 } from '@/lib/habits/folders';
 import { getHabitsAppearingOnDate } from '@/lib/habits/habitsForDate';
 import { getDailyOccurrenceTotal, getOccurrenceDoneForDay } from '@/lib/habits/occurrences';
-import type { Habit } from '@/lib/habits/schema';
+import { DEFAULT_HABIT_PRIORITY, type Habit, type HabitPriority } from '@/lib/habits/schema';
 import i18n from '@/lib/i18n/i18n';
 import {
     DOMANI_TOMORROW_KEY,
@@ -55,6 +56,7 @@ function hasSelectedFolderFilters(filters?: FolderFilters): boolean {
   return !!(
     filters?.tipos?.length ||
     filters?.colors?.length ||
+    filters?.priorities?.length ||
     filters?.frequencies?.length ||
     filters?.allTables ||
     filters?.tableIds?.length
@@ -72,6 +74,7 @@ function cleanFolderFilters(filters: FolderFilters | undefined): FolderFilters |
 
   if (filters.tipos?.length) next.tipos = Array.from(new Set(filters.tipos));
   if (filters.colors?.length) next.colors = Array.from(new Set(filters.colors));
+  if (filters.priorities?.length) next.priorities = Array.from(new Set(filters.priorities));
   if (filters.frequencies?.length) next.frequencies = Array.from(new Set(filters.frequencies));
 
   if (filters.allTables) {
@@ -112,6 +115,12 @@ function expandSelectedFolderFilters(filters: FolderFilters | undefined, habits:
     next.colors = Array.from(colors);
   }
 
+  if (filters?.priorities?.length) {
+    const priorities = new Set(filters.priorities);
+    for (const habit of habits) priorities.add(habit.priority ?? DEFAULT_HABIT_PRIORITY);
+    next.priorities = Array.from(priorities);
+  }
+
   if (filters?.frequencies?.length) {
     const frequencies = new Set(filters.frequencies);
     for (const habit of habits) frequencies.add(habit.habitFreq ?? 'single');
@@ -139,10 +148,42 @@ function cloneSelectedFolderFilters(filters: FolderFilters | undefined): FolderF
   return cleanFolderFilters({
     tipos: filters.tipos ? [...filters.tipos] : undefined,
     colors: filters.colors ? [...filters.colors] : undefined,
+    priorities: filters.priorities ? [...filters.priorities] : undefined,
     frequencies: filters.frequencies ? [...filters.frequencies] : undefined,
     allTables: filters.allTables ? true : undefined,
     tableIds: filters.tableIds ? [...filters.tableIds] : undefined,
   });
+}
+
+function getPriorityRank(priority?: HabitPriority): number {
+  switch (priority ?? DEFAULT_HABIT_PRIORITY) {
+    case 'maximum':
+      return 0;
+    case 'medium':
+      return 1;
+    case 'minimum':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function compareHabitsByPriority(a: Habit, b: Habit): number {
+  const rankDiff = getPriorityRank(a.priority) - getPriorityRank(b.priority);
+  if (rankDiff !== 0) return rankDiff;
+  return (a.order ?? 0) - (b.order ?? 0);
+}
+
+function getDefaultSortModeForFolderName(folderName: string | null): SortModeType {
+  if (
+    folderName !== null &&
+    folderName !== OGGI_TODAY_KEY &&
+    folderName !== DOMANI_TOMORROW_KEY &&
+    folderName !== IERI_YESTERDAY_KEY
+  ) {
+    return 'priority';
+  }
+  return 'creation';
 }
 
 function nextYmd(ymd: string): string {
@@ -275,6 +316,17 @@ export function useIndexLogic() {
       habit.travel?.orarioArrivoRitorno ?? '',
       habit.travel?.arrivoRitornoGiornoDopo ? '1' : '0',
       habit.habitFreq ?? '',
+      habit.priority ?? DEFAULT_HABIT_PRIORITY,
+      habit.askReview ? 'review-on' : 'review-off',
+      habit.label?.trim() ?? '',
+      habit.notification?.enabled ? 'notif-on' : 'notif-off',
+      habit.notification?.minutesBefore ?? '',
+      habit.notification?.customTime ?? '',
+      habit.notification?.customDate ?? '',
+      habit.notification?.showAsTaskInOggi ? 'notif-task-on' : 'notif-task-off',
+      habit.locationRule?.type ?? '',
+      habit.locationRule?.placeId ?? '',
+      habit.locationRule?.minOutsideMinutes ?? '',
       habit.isAllDay ? '1' : '0',
       String(habit.dailyOccurrences ?? 1),
       String(habit.occurrenceGapMinutes ?? 360),
@@ -471,6 +523,7 @@ export function useIndexLogic() {
     const cleanFilters = cleanFolderFilters(newFolderFilters);
     const newFolder: FolderItem = { id: `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`, name, color: newFolderColor, icon: newFolderIcon, filters: cleanFilters };
     addFolderAndPersist(newFolder);
+    posthog.capture('folder_created', { has_filters: Boolean(cleanFilters) });
     setActiveFolder(name);
     setCreateFolderVisible(false);
   }, [newFolderName, newFolderColor, newFolderIcon, newFolderFilters, addFolderAndPersist]);
@@ -505,6 +558,7 @@ export function useIndexLogic() {
   }, [newFolderName, newFolderColor, newFolderIcon, newFolderFilters, editingFolder, activeFolder, setHabits]);
 
   const performDeleteFolder = useCallback((folderName: string) => {
+    posthog.capture('folder_deleted');
     setFolders(prev => {
       const next = prev.filter(f => f.name !== folderName);
       AsyncStorage.setItem('tasks_custom_folders_v2', JSON.stringify(next)).catch(() => { });
@@ -551,7 +605,7 @@ export function useIndexLogic() {
 
   useEffect(() => {
     AsyncStorage.getItem('tasks_sort_mode_v1').then((mode) => {
-      if (['alphabetical', 'creation', 'custom', 'time', 'color', 'folder'].includes(mode ?? '')) {
+      if (['alphabetical', 'creation', 'custom', 'time', 'color', 'priority', 'folder'].includes(mode ?? '')) {
         setSortMode(mode as SortModeType);
       }
     }).catch(() => { });
@@ -561,7 +615,7 @@ export function useIndexLogic() {
           const parsed = JSON.parse(data) as Record<string, string>;
           if (parsed && typeof parsed === 'object') {
             const valid: Record<string, SortModeType> = {};
-            const modes: SortModeType[] = ['alphabetical', 'creation', 'custom', 'time', 'color', 'folder'];
+            const modes: SortModeType[] = ['alphabetical', 'creation', 'custom', 'time', 'color', 'priority', 'folder'];
             for (const [k, v] of Object.entries(parsed)) {
               if (typeof v === 'string' && modes.includes(v as SortModeType)) valid[k] = v as SortModeType;
             }
@@ -715,6 +769,9 @@ export function useIndexLogic() {
     if (filters.colors?.length) {
       result = result.filter(h => h.color && filters.colors!.includes(h.color));
     }
+    if (filters.priorities?.length) {
+      result = result.filter(h => filters.priorities!.includes(h.priority ?? DEFAULT_HABIT_PRIORITY));
+    }
     if (filters.frequencies?.length) {
       result = result.filter(h => filters.frequencies!.includes(h.habitFreq ?? 'single'));
     }
@@ -746,7 +803,7 @@ export function useIndexLogic() {
               ? (sortModeByFolder[DOMANI_TOMORROW_KEY] ?? sortMode)
               : activeFolder === IERI_YESTERDAY_KEY
                 ? (sortModeByFolder[IERI_YESTERDAY_KEY] ?? sortMode)
-                : (sortModeByFolder[activeFolder.trim()] ?? 'creation');
+                : (sortModeByFolder[activeFolder.trim()] ?? getDefaultSortModeForFolderName(activeFolder.trim()));
       return !hasCustomFolders && rawMode === 'folder' ? 'creation' : rawMode;
     })();
 
@@ -781,6 +838,13 @@ export function useIndexLogic() {
         const hueB = hexToHue(b.color ?? '#4A148C');
         const diff = hueA - hueB;
         return diff !== 0 ? diff : (a.order ?? 0) - (b.order ?? 0);
+      });
+    }
+    if (mode === 'priority') {
+      return [...list].sort((a, b) => {
+        const diff = compareHabitsByPriority(a, b);
+        if (diff !== 0) return diff;
+        return a.text.localeCompare(b.text);
       });
     }
     if (mode === 'time') {
@@ -1003,7 +1067,9 @@ export function useIndexLogic() {
       if ((isOggiView || isDomaniView || isIeriView) && tasks.length === 0) continue;
       const folderId = folderName === null ? TUTTE_KEY : folders.find(f => (f.name ?? '').trim() === folderName)?.id ?? folderName;
       const folderSortMode: SortModeType =
-        folderName === null ? (sortModeByFolder[TUTTE_KEY] ?? 'creation') : (sortModeByFolder[folderName] ?? 'creation');
+        folderName === null
+          ? (sortModeByFolder[TUTTE_KEY] ?? 'creation')
+          : (sortModeByFolder[folderName] ?? getDefaultSortModeForFolderName(folderName));
       const sorted = sortHabitsWithMode(tasks, folderSortMode);
       out.push({ type: 'folderBlock', folderName, folderId, tasks: sorted });
     }
@@ -1106,13 +1172,19 @@ export function useIndexLogic() {
   }, [history, resolveHabitCompletionTarget]);
 
   const toggleHabitDone = useCallback((habit: Habit) => {
+    const currentState = getHabitCompletionState(habit);
+    const wasCompleted = currentState.isDone;
+    posthog.capture(wasCompleted ? 'habit_uncompleted' : 'habit_completed', {
+      habit_type: habit.tipo ?? 'task',
+      frequency: habit.habitFreq ?? 'single',
+    });
     const target = resolveHabitCompletionTarget(habit);
     if (target.mode === 'day') {
       toggleDoneForDate(habit.id, target.date);
       return;
     }
     toggleAggregateDone(habit.id);
-  }, [resolveHabitCompletionTarget, toggleAggregateDone, toggleDoneForDate]);
+  }, [getHabitCompletionState, resolveHabitCompletionTarget, toggleAggregateDone, toggleDoneForDate]);
 
   const isFolderModeWithSections =
     (activeFolder === null || activeFolder === OGGI_TODAY_KEY || activeFolder === DOMANI_TOMORROW_KEY || activeFolder === IERI_YESTERDAY_KEY) && effectiveSortMode === 'folder';

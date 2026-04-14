@@ -1,3 +1,4 @@
+import { posthog } from '@/lib/posthog';
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -110,6 +111,7 @@ async function completeHabitsForPlace(placeId: string) {
     };
 
     await AsyncStorage.setItem(STORAGE_HISTORY, JSON.stringify(nextHistory));
+    posthog.capture('geofence_habit_autocompleted', { habits_count: targetHabits.length, place_id: placeId });
   } catch {
     // Fail-safe: never crash the task
   }

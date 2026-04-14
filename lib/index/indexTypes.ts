@@ -1,8 +1,9 @@
-import type { Habit, HabitTipo } from '@/lib/habits/schema';
+import type { Habit, HabitPriority, HabitTipo } from '@/lib/habits/schema';
 
 export type FolderFilters = {
   tipos?: HabitTipo[]; // filter by tipo
   colors?: string[]; // filter by habit color
+  priorities?: HabitPriority[]; // filter by priority
   frequencies?: ('single' | 'daily' | 'weekly' | 'monthly' | 'annual')[]; // filter by frequency
   allTables?: boolean; // filter all tasks linked to any table
   tableIds?: string[]; // filter tasks linked to specific tables
@@ -16,7 +17,7 @@ export type TaskItem = { type: 'task'; habit: Habit };
 export type MultiDragBlockItem = { type: 'multiDragBlock'; habits: Habit[] };
 export type SectionItem = FolderBlockItem | TaskItem | MultiDragBlockItem;
 
-export type SortModeType = 'creation' | 'alphabetical' | 'custom' | 'time' | 'color' | 'folder';
+export type SortModeType = 'creation' | 'alphabetical' | 'custom' | 'time' | 'color' | 'priority' | 'folder';
 
 export const FOLDER_COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#ec4899', '#9ca3af'];
 

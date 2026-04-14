@@ -33,6 +33,7 @@ import { Alert, Dimensions, LayoutChangeEvent, Modal, NativeScrollEvent, NativeS
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { posthog } from '@/lib/posthog';
 
 const HOLD_DELAY_MS = 400;
 const HOLD_INTERVAL_MS = 150;
@@ -2219,6 +2220,7 @@ export default function OggiScreen() {
                 saveDayReview(reviewDate, habitId, rating, comment);
               }
               await markDateReviewed(reviewDate);
+              posthog.capture('day_review_completed', { habits_reviewed: Object.keys(reviews).length });
               // la coda si aggiorna automaticamente via effect (reviewedDates cambia)
             }}
             onClose={() => {

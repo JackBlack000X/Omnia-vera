@@ -1,4 +1,5 @@
 import { createStableId } from '@/lib/createStableId';
+import { posthog } from '@/lib/posthog';
 import { BlurView } from 'expo-blur';
 import { GlassContainer, GlassView } from 'expo-glass-effect';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -607,6 +608,7 @@ export function TableTaskCreateOverlay({
       })
     );
 
+    posthog.capture('table_task_created', { has_time: taskHasTime, smart_task: smartTaskEnabled });
     requestClose();
   };
 

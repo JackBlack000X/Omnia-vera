@@ -1,9 +1,10 @@
+import { posthog } from '@/lib/posthog';
 import { useHabits } from '@/lib/habits/Provider';
 import { clampYmdNotBeforeYmd, compareYmd, formatYmd } from '@/lib/date';
 import { getHealthHabitOption, HEALTH_HABIT_OPTIONS } from '@/lib/healthHabits';
 import { getHabitFolders, normalizeFolderName, withHabitFolders } from '@/lib/habits/folders';
 import { getDailyOccurrenceTotal, getDailyOccurrenceTotalForDate, occurrenceChainFitsLogicalDay } from '@/lib/habits/occurrences';
-import { Habit, HabitTipo, HealthMetric, NotificationConfig, TravelMeta, isTravelLikeTipo } from '@/lib/habits/schema';
+import { DEFAULT_HABIT_PRIORITY, Habit, HabitPriority, HabitTipo, HealthMetric, NotificationConfig, TravelMeta, isTravelLikeTipo } from '@/lib/habits/schema';
 import { minutesToHhmm, hhmmToMinutes, findDuplicateHabitSlot } from '@/lib/modal/helpers';
 import { inferSmartTaskSeed } from '@/lib/smartTask';
 import { useAppDateBounds } from '@/lib/appDateBounds';
@@ -17,7 +18,7 @@ import { Alert, ScrollView } from 'react-native';
 export function useModalLogic(params: { type: string; id?: string; folder?: string; ymd?: string; initialText?: string; lockTitle?: string; scrollRef: React.RefObject<ScrollView | null> }) {
   const { t } = useTranslation();
   const { type, id, folder, ymd, initialText, lockTitle, scrollRef } = params;
-  const { habits, addHabit, updateHabit, updateHabitColor, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange } = useHabits();
+  const { habits, addHabit, updateHabit, updateHabitColor, updateSchedule, updateScheduleTime, updateScheduleFromDate, setHabits, getDay, dayResetTime, migrateTodayCompletionForDailyCountChange, defaultPriority, setDefaultPriority: persistDefaultPriority } = useHabits();
   const router = useRouter();
   const { installMonthStartYmd: minSelectableYmd, nonPastYmd: minNonPastYmd } = useAppDateBounds();
   const existing = useMemo(() => habits.find(h => h.id === id), [habits, id]);
@@ -30,6 +31,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     (type === 'new' && lockTitle === '1' && (initialText ?? '').trim().length > 0);
   const [text, setText] = useState(existing?.text ?? initialText ?? '');
   const [color, setColor] = useState<string>(existing?.color ?? '#4A148C');
+  const [priority, setPriority] = useState<HabitPriority>(() => existing?.priority ?? (type === 'new' ? defaultPriority : DEFAULT_HABIT_PRIORITY));
   const validFolder = (folder && folder !== '__oggi__' && folder !== '__tutte__') ? folder : null;
   const [selectedFolders, setSelectedFolders] = useState<string[]>(
     existing ? getHabitFolders(existing) : (validFolder ? [validFolder] : []),
@@ -39,6 +41,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const [healthMetric, setHealthMetric] = useState<HealthMetric | null>(existing?.health?.metric ?? null);
   const [healthGoalHours, setHealthGoalHours] = useState<number>(existing?.health?.goalHours ?? 8);
   const [healthGoalValue, setHealthGoalValue] = useState<number>(existing?.health?.goalValue ?? 0);
+  const skipNextDefaultPrioritySyncRef = useRef(false);
+  const previousDefaultPriorityRef = useRef(defaultPriority);
   useEffect(() => {
     if (existing?.tipo) setTipo(existing.tipo);
   }, [existing?.tipo]);
@@ -54,6 +58,29 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
       setText(existing.text);
     }
   }, [existing?.text, isTableLinkedTitleLocked]);
+  useEffect(() => {
+    const previousDefaultPriority = previousDefaultPriorityRef.current;
+    previousDefaultPriorityRef.current = defaultPriority;
+
+    if (existing?.priority) {
+      setPriority(existing.priority);
+      return;
+    }
+
+    if (type !== 'new') {
+      setPriority(DEFAULT_HABIT_PRIORITY);
+      return;
+    }
+
+    if (skipNextDefaultPrioritySyncRef.current) {
+      skipNextDefaultPrioritySyncRef.current = false;
+      return;
+    }
+
+    setPriority(currentPriority => (
+      currentPriority === previousDefaultPriority ? defaultPriority : currentPriority
+    ));
+  }, [defaultPriority, existing?.id, existing?.priority, type]);
   useEffect(() => {
     setHealthMetric(existing?.health?.metric ?? null);
   }, [existing?.health?.metric]);
@@ -71,6 +98,8 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
   const inferredExistingTipo: HabitTipo = (existing?.tipo ?? 'task');
   const supportsOptionalTime = (currentTipo: HabitTipo) =>
     currentTipo === 'task' || currentTipo === 'abitudine' || currentTipo === 'avviso';
+  const supportsPriority = (currentTipo: HabitTipo) =>
+    currentTipo === 'task' || currentTipo === 'abitudine';
   const todayYmdForInit = useMemo(() => clampYmdNotBeforeYmd(ymd ?? getDay(new Date()), minSelectableYmd), [ymd, getDay, minSelectableYmd]);
   const logicalTodayYmd = useMemo(() => getDay(new Date()), [getDay]);
   const calendarTodayYmd = useMemo(() => formatYmd(new Date()), []);
@@ -186,6 +215,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     }
     setHealthGoalValue(option.defaultGoalValue ?? 0);
   }, []);
+
+  const setDefaultPriority = useCallback(async (nextPriority: HabitPriority) => {
+    skipNextDefaultPrioritySyncRef.current = true;
+    await persistDefaultPriority(nextPriority);
+  }, [persistDefaultPriority]);
 
   // Fine ripetizione
   type RepeatEndType = 'mai' | 'durata' | 'personalizzata';
@@ -1725,9 +1759,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
           AsyncStorage.setItem(STORAGE_LABELS, JSON.stringify(updated)).catch(() => {});
         }
 
-        const initialForAdd = isNewAllDaySingle ? { ...initialAllDaySingle, ...(trimmedLabel && { label: trimmedLabel }) } : {
+        const initialForAdd = isNewAllDaySingle ? { ...initialAllDaySingle, ...(trimmedLabel && { label: trimmedLabel }), ...(supportsPriority(tipo) ? { priority } : {}) } : {
           habitFreq: (supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq,
           ...(trimmedLabel && { label: trimmedLabel }),
+          ...(supportsPriority(tipo) ? { priority } : {}),
         };
         const newHabitId = type === 'new' ? addHabit(t, resolvedColor, normalizedSelectedFolders, tipo as any, initialForAdd) : existing!.id;
         if (type === 'edit' && existing) {
@@ -1738,6 +1773,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
               ...patchHabitOccurrences(h),
               text: t,
               color: resolvedColor,
+              priority: supportsPriority(tipo) ? priority : h.priority,
               label: trimmedLabel || undefined,
               tipo,
               health: resolvedHealth,
@@ -2097,6 +2133,7 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
             ...patchHabitOccurrences(h),
             text: t,
             color: resolvedColor,
+            priority: supportsPriority(tipo) ? priority : h.priority,
             label: trimmedLabel || undefined,
             isAllDay: mode === 'allDay',
             habitFreq: (supportsOptionalTime(tipo) && !taskHasTime) ? 'single' : freq,
@@ -2468,6 +2505,11 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
         },
       } : h));
     }
+    if (type === 'new') {
+      posthog.capture('habit_created', { habit_type: tipo, frequency: freq });
+    } else if (type === 'edit' || type === 'schedule') {
+      posthog.capture('habit_updated', { habit_type: tipo, frequency: freq, edit_type: type });
+    }
     close();
   };
 
@@ -2488,6 +2530,10 @@ export function useModalLogic(params: { type: string; id?: string; folder?: stri
     isTableLinkedTask,
     color,
     setColor,
+    priority,
+    setPriority,
+    defaultPriority,
+    setDefaultPriority,
     selectedFolder,
     selectedFolders: normalizedSelectedFolders,
     clearSelectedFolders,

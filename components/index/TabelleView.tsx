@@ -150,6 +150,7 @@ function hasAnyFolderFilters(filters?: FolderItem['filters']): boolean {
   return !!(
     filters?.tipos?.length ||
     filters?.colors?.length ||
+    filters?.priorities?.length ||
     filters?.frequencies?.length ||
     filters?.allTables ||
     filters?.tableIds?.length

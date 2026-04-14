@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   dayResetTime: 'tothemoon_dayresettime_v1',
   dayResetHistory: 'tothemoon_dayreset_history_v3',
   reviewedDates: 'tothemoon_reviewed_dates_v1',
+  defaultPriority: 'tothemoon_default_priority_v1',
   shopCoinsSpent: 'tothemoon_shop_coins_spent_v1',
   shopFuturisticUnlocked: 'tothemoon_shop_futuristic_unlocked_v1',
   introSeen: 'tothemoon_intro_seen_v1',

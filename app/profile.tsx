@@ -1,3 +1,4 @@
+import { posthog } from '@/lib/posthog';
 import { APP_CONFIG } from '@/constants/app';
 import { THEME } from '@/constants/theme';
 import {
@@ -17,6 +18,7 @@ import {
 import { canAskLocationPermission, getLocationPermissionStatusAsync, requestLocationPermissionsAsync, type LocationPermissionStatus } from '@/lib/location';
 import { buildCsv } from '@/lib/csv';
 import { useHabits } from '@/lib/habits/Provider';
+import { HABIT_PRIORITY_LEVELS, type HabitPriority } from '@/lib/habits/schema';
 import { useFormatLocale } from '@/lib/i18n/useFormatLocale';
 import { useLocaleSettings } from '@/lib/i18n/LocaleProvider';
 import { SUPPORTED_LANGS, type AppLocalePreference } from '@/lib/i18n/resolveLocale';
@@ -53,11 +55,33 @@ function formatSleepMinutes(value: number): string {
   return `${minutes}m`;
 }
 
+function getPriorityAccent(priority: HabitPriority) {
+  if (priority === 'maximum') {
+    return {
+      chip: { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.10)' },
+      main: { backgroundColor: 'rgba(239, 68, 68, 0.18)' },
+      text: { color: '#ffffff' },
+    };
+  }
+  if (priority === 'minimum') {
+    return {
+      chip: { borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.10)' },
+      main: { backgroundColor: 'rgba(34, 197, 94, 0.18)' },
+      text: { color: '#ffffff' },
+    };
+  }
+  return {
+    chip: { borderColor: '#fbbf24', backgroundColor: 'rgba(251, 191, 36, 0.12)' },
+    main: { backgroundColor: 'rgba(251, 191, 36, 0.22)' },
+    text: { color: '#ffffff' },
+  };
+}
+
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const { preference, setPreference } = useLocaleSettings();
   const fmt = useFormatLocale();
-  const { habits, history, setHabits } = useHabits();
+  const { habits, history, setHabits, defaultPriority, setDefaultPriority } = useHabits();
   const router = useRouter();
 
   const formatKm = (value: number) =>
@@ -84,6 +108,12 @@ export default function ProfileScreen() {
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
   const cityInputRef = React.useRef<TextInput>(null);
+
+  const priorityLabel = React.useCallback((priority: HabitPriority) => {
+    if (priority === 'maximum') return t('modal.priorityMaximum');
+    if (priority === 'minimum') return t('modal.priorityMinimum');
+    return t('modal.priorityMedium');
+  }, [t]);
 
   useEffect(() => {
     getFallbackCity().then(c => setWeatherCity(c));
@@ -198,6 +228,7 @@ export default function ProfileScreen() {
     const canOpen = await Linking.canOpenURL(mailto);
     if (canOpen) {
       await Linking.openURL(mailto);
+      posthog.capture('feedback_sent');
       setFeedbackText('');
       Alert.alert(t('profile.feedbackThanks'), t('profile.feedbackMailOpen'));
     } else {
@@ -207,6 +238,7 @@ export default function ProfileScreen() {
 
   async function exportCsv() {
     const csv = buildCsv(history);
+    posthog.capture('data_exported_csv');
     if (Platform.OS === 'web') {
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
@@ -242,6 +274,7 @@ export default function ProfileScreen() {
         return;
       }
       setHabits((prev) => [...prev, ...newHabits]);
+      posthog.capture('calendar_imported', { habits_imported: newHabits.length });
       Alert.alert(t('profile.appleCalendar'), t('profile.calendarImported', { count: newHabits.length }));
     } catch {
       Alert.alert(t('profile.errorAlertTitle'), t('profile.calendarError'));
@@ -290,6 +323,9 @@ export default function ProfileScreen() {
         'background';
       const result = await requestLocationPermissionsAsync(targetKind);
       setLocationStatus(result);
+      if (result === 'foreground' || result === 'background') {
+        posthog.capture('location_permission_granted', { level: result });
+      }
       if (result === 'denied') {
         Alert.alert(
           t('profile.locationOffTitle'),
@@ -316,7 +352,9 @@ export default function ProfileScreen() {
 
     try {
       const granted = await requestHealthAuthorizationAsync();
-      if (!granted) {
+      if (granted) {
+        posthog.capture('health_connected');
+      } else {
         setHealthError(t('profile.healthDenied'));
       }
       await refreshHealthState(granted);
@@ -423,6 +461,7 @@ export default function ProfileScreen() {
                             style={[styles.langRow, selected && styles.langRowActive]}
                             onPress={() => {
                               void setPreference(opt);
+                              posthog.capture('language_changed', { language: opt });
                               setLanguageModalVisible(false);
                             }}
                             activeOpacity={0.85}
@@ -443,6 +482,45 @@ export default function ProfileScreen() {
                   </View>
                 </View>
               </Modal>
+            </View>
+            <View style={styles.feedbackBox}>
+              <Text style={styles.feedbackLabel}>{t('profile.defaultPriorityTitle')}</Text>
+              <Text style={styles.feedbackSublabel}>{t('profile.defaultPrioritySub')}</Text>
+              <View style={styles.priorityRow}>
+                {HABIT_PRIORITY_LEVELS.map((priority) => {
+                  const selected = defaultPriority === priority;
+                  const accent = getPriorityAccent(priority);
+                  return (
+                    <View key={priority} style={[styles.priorityChip, selected && accent.chip]}>
+                      <TouchableOpacity
+                        style={[styles.priorityChipMain, selected && accent.main]}
+                        onPress={() => { void setDefaultPriority(priority); }}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.82}
+                          style={[styles.priorityChipText, selected && styles.priorityChipTextActive, selected && accent.text]}
+                        >
+                          {priorityLabel(priority)}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.priorityChipStarButton}
+                        onPress={() => { void setDefaultPriority(priority); }}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons
+                          name={selected ? 'star' : 'star-outline'}
+                          size={21}
+                          color={selected ? '#fbbf24' : '#94a3b8'}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
             {canAskCalendarPermission() && (
               <View style={styles.feedbackBox}>
@@ -736,6 +814,47 @@ const styles = StyleSheet.create({
 
   content: { flex: 1 },
   contentInner: { paddingBottom: 32 },
+  priorityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  priorityChip: {
+    flex: 1,
+    minWidth: 96,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#314056',
+    backgroundColor: '#121b2b',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  priorityChipActive: {
+    borderColor: THEME.primary,
+    backgroundColor: 'rgba(34, 211, 238, 0.08)',
+  },
+  priorityChipMain: {
+    flex: 1,
+    justifyContent: 'center',
+    minWidth: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 13,
+    borderRadius: 14,
+  },
+  priorityChipText: {
+    color: '#dbe5f5',
+    fontSize: 12,
+    fontWeight: '800',
+    flex: 1,
+    textAlign: 'center',
+  },
+  priorityChipTextActive: { color: '#fff' },
+  priorityChipStarButton: {
+    width: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   cards: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 24 },
   card: { flexBasis: '47%', backgroundColor: '#0a0a0a', borderColor: '#334155', borderWidth: 1, borderRadius: 16, padding: 16 },

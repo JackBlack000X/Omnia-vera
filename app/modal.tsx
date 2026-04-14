@@ -13,7 +13,7 @@ import { searchCities, type CityInfo } from '@/lib/weather';
 import { canAskLocationPermission, getLocationPermissionStatusAsync, type LocationPermissionStatus } from '@/lib/location';
 import { clampYmdNotBeforeYmd, compareYmd, ymdToDate } from '@/lib/date';
 import { useAppDateBounds } from '@/lib/appDateBounds';
-import type { NotificationConfig } from '@/lib/habits/schema';
+import { HABIT_PRIORITY_LEVELS, type HabitPriority, type NotificationConfig } from '@/lib/habits/schema';
 import { useTaskEditorInfoHints } from '@/lib/taskEditorInfoHints';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,6 +29,34 @@ type HoldableStepperButtonProps = {
 
 const HOLD_DELAY_MS = 350;
 const HOLD_INTERVAL_MS = 60;
+
+function getPriorityLabel(t: ReturnType<typeof useTranslation>['t'], priority: HabitPriority): string {
+  if (priority === 'maximum') return t('modal.priorityMaximum');
+  if (priority === 'minimum') return t('modal.priorityMinimum');
+  return t('modal.priorityMedium');
+}
+
+function getPriorityAccent(priority: HabitPriority) {
+  if (priority === 'maximum') {
+    return {
+      chip: { borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.10)' },
+      main: { backgroundColor: 'rgba(239, 68, 68, 0.18)' },
+      text: { color: '#ffffff' },
+    };
+  }
+  if (priority === 'minimum') {
+    return {
+      chip: { borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.10)' },
+      main: { backgroundColor: 'rgba(34, 197, 94, 0.18)' },
+      text: { color: '#ffffff' },
+    };
+  }
+  return {
+    chip: { borderColor: '#fbbf24', backgroundColor: 'rgba(251, 191, 36, 0.12)' },
+    main: { backgroundColor: 'rgba(251, 191, 36, 0.22)' },
+    text: { color: '#ffffff' },
+  };
+}
 
 function HoldableStepperButton({ onPress, children }: HoldableStepperButtonProps) {
   const onPressRef = useRef(onPress);
@@ -893,6 +921,62 @@ export default function ModalScreen() {
                 </View>
               </View>
               {/* no duplicate schedule block here */}
+            </View>
+          )}
+
+          {(type === 'new' || type === 'edit') && shouldShowSaluteDetails && (m.tipo === 'task' || m.tipo === 'abitudine') && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.sectionTitle}>{t('modal.sectionPriority')}</Text>
+              <View style={[styles.priorityRowWrap, { marginTop: 8 }]}>
+                {HABIT_PRIORITY_LEVELS.map((priority) => {
+                  const isSelected = m.priority === priority;
+                  const isDefault = m.defaultPriority === priority;
+                  const accent = getPriorityAccent(priority);
+
+                  return (
+                    <View
+                      key={priority}
+                      style={[
+                        styles.priorityChip,
+                        isSelected && accent.chip,
+                      ]}
+                    >
+                      <TouchableOpacity
+                        onPress={() => m.setPriority(priority)}
+                        style={[
+                          styles.priorityChipMain,
+                          isSelected && accent.main,
+                        ]}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.82}
+                          style={[
+                            styles.priorityChipText,
+                            isSelected && styles.priorityChipTextActive,
+                            isSelected && accent.text,
+                          ]}
+                        >
+                          {getPriorityLabel(t, priority)}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => { void m.setDefaultPriority(priority); }}
+                        style={styles.priorityChipStarButton}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons
+                          name={isDefault ? 'star' : 'star-outline'}
+                          size={21}
+                          color={isDefault ? '#fbbf24' : '#94a3b8'}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
           )}
 

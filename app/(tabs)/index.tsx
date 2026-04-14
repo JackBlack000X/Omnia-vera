@@ -1,3 +1,4 @@
+import { posthog } from '@/lib/posthog';
 import SmartTaskFeedbackModal from '@/components/SmartTaskFeedbackModal';
 import { HabitItem } from '@/components/HabitItem';
 import { MorphingFolderAddIcon, MORPHING_FOLDER_ADD_FIRST_PIXEL_OFFSET } from '@/components/index/MorphingFolderAddIcon';
@@ -196,6 +197,7 @@ export default function IndexScreen() {
       };
     }));
 
+    posthog.capture('smart_task_feedback_submitted', { feedback, mode: smartTaskPrompt.mode });
     setDismissedSmartTaskIds((prev) => prev.filter((id) => id !== habitId));
     setSmartTaskPrompt(null);
   }, [setHabits, smartTaskPrompt]);
@@ -210,6 +212,7 @@ export default function IndexScreen() {
           text: t('common.yes'),
           onPress: () => {
             duplicateHabit(habit.id);
+            posthog.capture('habit_duplicated', { habit_type: habit.tipo ?? 'task' });
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           },
         },
@@ -404,6 +407,7 @@ export default function IndexScreen() {
   const handleSelectDayScope = useCallback(
     (scope: typeof OGGI_TODAY_KEY | typeof DOMANI_TOMORROW_KEY | typeof IERI_YESTERDAY_KEY) => {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      posthog.capture('day_scope_changed', { scope });
       setActiveFolder(scope);
     },
     [setActiveFolder]
@@ -1022,7 +1026,13 @@ export default function IndexScreen() {
                         folderNameNow === DOMANI_TOMORROW_KEY ||
                         folderNameNow === IERI_YESTERDAY_KEY;
                       const hasCustomFolders = folders.some(folder => (folder.name ?? '').trim().length > 0);
-                      const baseFallback: typeof sortMode = isDayVirtualTab ? sortMode : 'creation';
+                      const isRealFolder =
+                        folderNameNow !== null &&
+                        folderNameNow !== OGGI_TODAY_KEY &&
+                        folderNameNow !== DOMANI_TOMORROW_KEY &&
+                        folderNameNow !== IERI_YESTERDAY_KEY;
+                      const baseFallback: typeof sortMode =
+                        isDayVirtualTab ? sortMode : (isRealFolder ? 'priority' : 'creation');
                       const rawCurrent: typeof sortMode =
                         folderNameNow !== null
                           ? (sortModeByFolder[folderNameNow] ?? baseFallback)
@@ -1042,20 +1052,17 @@ export default function IndexScreen() {
                         creation: 'Data di creazione',
                         time: 'Orario',
                         color: 'Ordine per colore',
+                        priority: t('index.sortPriority'),
                         folder: 'Ordine per cartelle',
                         alphabetical: 'Ordine alfabetico',
                         custom: 'Ordine libero (Trascina)',
                       };
-                      const isRealFolder =
-                        folderNameNow !== null &&
-                        folderNameNow !== OGGI_TODAY_KEY &&
-                        folderNameNow !== DOMANI_TOMORROW_KEY &&
-                        folderNameNow !== IERI_YESTERDAY_KEY;
                       const options: any[] = [
                         { text: 'Annulla', style: 'cancel' },
                         { text: sel('Data di creazione', 'creation'), onPress: () => setCurrent('creation') },
                         { text: sel('Orario', 'time'), onPress: () => setCurrent('time') },
                         { text: sel('Ordine per colore', 'color'), onPress: () => setCurrent('color') },
+                        { text: sel(t('index.sortPriority'), 'priority'), onPress: () => setCurrent('priority') },
                       ];
                       if (!isRealFolder && hasCustomFolders) {
                         options.push({ text: sel('Ordine per cartelle', 'folder'), onPress: () => setCurrent('folder') });
@@ -1532,6 +1539,7 @@ export default function IndexScreen() {
                   { text: 'Annulla', style: 'cancel' },
                   {
                     text: 'Elimina', style: 'destructive', onPress: () => {
+                      posthog.capture('habit_deleted', { count: selectedIds.size, bulk: true });
                       selectedIds.forEach(id => removeHabit(id));
                       setSelectedIds(new Set());
                       setSelectionMode(false);

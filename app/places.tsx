@@ -9,6 +9,7 @@ import { Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { canAskLocationPermission, requestLocationPermissionsAsync } from '@/lib/location';
+import { posthog } from '@/lib/posthog';
 
 const EDIT_ICON_CENTERING = { transform: [{ translateX: 2 }, { translateY: -2 }] } as const;
 
@@ -109,6 +110,7 @@ export default function PlacesScreen() {
         p.id === editing.id ? { ...p, name: trimmedName, lat: latNum, lng: lngNum, radiusMeters: radiusNum } : p
       );
       await persist(next);
+      posthog.capture('place_updated', { radius_meters: radiusNum });
     } else {
       const next: Place = {
         id: createStableId(),
@@ -118,6 +120,7 @@ export default function PlacesScreen() {
         radiusMeters: radiusNum,
       };
       await persist([...places, next]);
+      posthog.capture('place_created', { radius_meters: radiusNum });
     }
     startNew();
   }
@@ -152,6 +155,7 @@ export default function PlacesScreen() {
           onPress: async () => {
             const next = places.filter(p => p.id !== id);
             await persist(next);
+            posthog.capture('place_deleted');
             if (editing && editing.id === id) startNew();
           },
         },

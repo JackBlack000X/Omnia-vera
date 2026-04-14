@@ -59,6 +59,16 @@ export type HabitTipo = 'task' | 'abitudine' | 'avviso' | 'evento' | 'viaggio' |
 
 export type HealthMetric = 'sleep' | 'steps' | 'distance' | 'activeEnergy';
 
+export type HabitPriority = 'maximum' | 'medium' | 'minimum';
+
+export const HABIT_PRIORITY_LEVELS: HabitPriority[] = ['maximum', 'medium', 'minimum'];
+
+export const DEFAULT_HABIT_PRIORITY: HabitPriority = 'medium';
+
+export function isHabitPriority(value: unknown): value is HabitPriority {
+  return value === 'maximum' || value === 'medium' || value === 'minimum';
+}
+
 export type SmartTaskConfig = {
   enabled: boolean;
   intervalDays: number;
@@ -94,6 +104,7 @@ export type Habit = {
   id: string;
   text: string;
   order: number;
+  priority?: HabitPriority;
   schedule?: HabitSchedule;
   timeOverrides?: Record<string, string | { start: string; end: string }>; // date YYYY-MM-DD -> 'HH:MM' or { start, end }
   color?: string; // hex color for card/background

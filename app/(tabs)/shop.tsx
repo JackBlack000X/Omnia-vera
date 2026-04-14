@@ -1,4 +1,5 @@
 import { SCREEN_HORIZONTAL_PADDING, TOP_SECTION_HORIZONTAL_PADDING } from '@/components/index/indexStyles';
+import { posthog } from '@/lib/posthog';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassView } from 'expo-glass-effect';
 import { useRouter } from 'expo-router';
@@ -45,7 +46,7 @@ export default function ShopScreen() {
         <View style={styles.content}>
           <View style={styles.optionsContainer}>
             <View style={styles.optionGroup}>
-              <TouchableOpacity style={styles.optionButton} activeOpacity={0.86} onPress={() => {}}>
+              <TouchableOpacity style={styles.optionButton} activeOpacity={0.86} onPress={() => { posthog.capture('shop_item_tapped', { item: 'themes' }); }}>
                 <GlassView
                   glassEffectStyle="regular"
                   colorScheme="dark"
