@@ -1911,6 +1911,8 @@ export default function OggiScreen() {
           scrollEventThrottle={16}
           indicatorStyle="white"
           contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+          automaticallyAdjustsScrollIndicatorInsets={false}
         >
          <View style={[styles.timelineContent, { height: contentHeight }]}> 
              {/* Grid Lines & Hours */}

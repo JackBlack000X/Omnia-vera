@@ -1164,6 +1164,9 @@ export default function IndexScreen() {
             horizontal
             style={styles.foldersScrollView}
             showsHorizontalScrollIndicator={false}
+            contentInsetAdjustmentBehavior="never"
+            automaticallyAdjustContentInsets={false}
+            automaticallyAdjustsScrollIndicatorInsets={false}
             scrollEnabled={foldersScrollEnabled}
             contentContainerStyle={styles.foldersScroll}
             onContentSizeChange={(contentWidth) => {
@@ -1376,6 +1379,9 @@ export default function IndexScreen() {
               contentContainerStyle={[styles.listContainer, activeTheme === 'futuristic' && { paddingHorizontal: 6 }]}
               style={[activeTheme === 'futuristic' && { marginHorizontal: -6 }]}
               containerStyle={styles.dragListContainer}
+              contentInsetAdjustmentBehavior="never"
+              automaticallyAdjustContentInsets={false}
+              automaticallyAdjustsScrollIndicatorInsets={false}
               showsVerticalScrollIndicator={false}
               dragItemOverflow
               autoscrollThreshold={TASKS_DRAG_AUTOSCROLL_THRESHOLD}

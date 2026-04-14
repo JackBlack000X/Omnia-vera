@@ -563,6 +563,9 @@ export default function CalendarScreen() {
         getItemLayout={getItemLayout}
         initialScrollIndex={initialMonthIndex >= 0 ? initialMonthIndex : 0}
         contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        automaticallyAdjustsScrollIndicatorInsets={false}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true}
         maxToRenderPerBatch={3}
