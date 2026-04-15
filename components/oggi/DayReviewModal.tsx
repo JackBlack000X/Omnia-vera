@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 export type ReviewHabitItem = {
   id: string;
@@ -20,37 +21,87 @@ type Props = {
   onClose: () => void;
 };
 
-const MISSED_HABIT_REASONS = [
-  'Non ho avuto tempo',
-  'Me ne sono dimenticato/a',
-  'Non avevo energie',
-  "C'è stato un imprevisto",
-  'Non mi sentivo bene',
-  'Avevo altre priorità',
-  'Non ero nel posto giusto',
-  'Non ne avevo voglia',
-] as const;
+type PresetReasonId =
+  | 'noTime'
+  | 'forgot'
+  | 'noEnergy'
+  | 'unexpected'
+  | 'unwell'
+  | 'otherPriorities'
+  | 'wrongPlace'
+  | 'noMotivation';
 
-const CUSTOM_REASON_OPTION = 'Altro';
+const LEGACY_PRESET_REASON_LABELS: Record<PresetReasonId, string> = {
+  noTime: 'Non ho avuto tempo',
+  forgot: 'Me ne sono dimenticato/a',
+  noEnergy: 'Non avevo energie',
+  unexpected: "C'è stato un imprevisto",
+  unwell: 'Non mi sentivo bene',
+  otherPriorities: 'Avevo altre priorità',
+  wrongPlace: 'Non ero nel posto giusto',
+  noMotivation: 'Non ne avevo voglia',
+};
+
+const PRESET_REASON_IDS = [
+  'noTime',
+  'forgot',
+  'noEnergy',
+  'unexpected',
+  'unwell',
+  'otherPriorities',
+  'wrongPlace',
+  'noMotivation',
+] as const satisfies readonly PresetReasonId[];
+
+const PRESET_REASON_TOKEN_PREFIX = 'preset:';
+const CUSTOM_REASON_OPTION = 'custom' as const;
+
+const MISSED_HABIT_REASON_KEYS: Record<PresetReasonId, string> = {
+  noTime: 'dayReview.reasons.noTime',
+  forgot: 'dayReview.reasons.forgot',
+  noEnergy: 'dayReview.reasons.noEnergy',
+  unexpected: 'dayReview.reasons.unexpected',
+  unwell: 'dayReview.reasons.unwell',
+  otherPriorities: 'dayReview.reasons.otherPriorities',
+  wrongPlace: 'dayReview.reasons.wrongPlace',
+  noMotivation: 'dayReview.reasons.noMotivation',
+};
+
+type SelectedReason = PresetReasonId | typeof CUSTOM_REASON_OPTION | null;
 
 type ReviewDraft = {
   rating: number | null;
   comment: string | null;
-  selectedReason: string | null;
+  selectedReason: SelectedReason;
   customReason: string;
 };
 
-function isPresetReason(comment: string | null | undefined): comment is (typeof MISSED_HABIT_REASONS)[number] {
-  return Boolean(comment) && MISSED_HABIT_REASONS.some(reason => reason === comment);
+function getPresetReasonToken(reasonId: PresetReasonId): string {
+  return `${PRESET_REASON_TOKEN_PREFIX}${reasonId}`;
+}
+
+function getPresetReasonIdFromComment(comment: string | null | undefined): PresetReasonId | null {
+  if (!comment) return null;
+
+  if (comment.startsWith(PRESET_REASON_TOKEN_PREFIX)) {
+    const reasonId = comment.slice(PRESET_REASON_TOKEN_PREFIX.length) as PresetReasonId;
+    return Object.prototype.hasOwnProperty.call(LEGACY_PRESET_REASON_LABELS, reasonId) ? reasonId : null;
+  }
+
+  const match = (Object.entries(LEGACY_PRESET_REASON_LABELS) as [PresetReasonId, string][])
+    .find(([, legacyLabel]) => legacyLabel === comment);
+
+  return match?.[0] ?? null;
 }
 
 function createReviewDraft(item: Pick<ReviewHabitItem, 'completed' | 'rating' | 'comment'>): ReviewDraft {
   const comment = item.completed ? null : (item.comment ?? null);
-  const customReason = comment && !isPresetReason(comment) ? comment : '';
+  const presetReasonId = getPresetReasonIdFromComment(comment);
+  const customReason = comment && !presetReasonId ? comment : '';
   return {
     rating: item.rating ?? null,
-    comment,
-    selectedReason: isPresetReason(comment) ? comment : customReason.trim() ? CUSTOM_REASON_OPTION : null,
+    comment: presetReasonId ? getPresetReasonToken(presetReasonId) : comment,
+    selectedReason: presetReasonId ?? (customReason.trim() ? CUSTOM_REASON_OPTION : null),
     customReason,
   };
 }
@@ -85,6 +136,7 @@ function isLightColor(hex: string): boolean {
 }
 
 export default function DayReviewModal({ visible, date, dateLabel, items, onConfirm, onClose }: Props) {
+  const { t } = useTranslation();
   const [reviews, setReviews] = useState<Record<string, ReviewDraft>>(() => {
     const init: Record<string, ReviewDraft> = {};
     for (const item of items) {
@@ -92,6 +144,11 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
     }
     return init;
   });
+
+  const reasonOptions = PRESET_REASON_IDS.map(reasonId => ({
+    id: reasonId,
+    label: t(MISSED_HABIT_REASON_KEYS[reasonId]),
+  }));
 
   useEffect(() => {
     if (!visible) return;
@@ -106,7 +163,7 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
     setReviews(prev => ({ ...prev, [id]: { ...prev[id], rating } }));
   };
 
-  const selectReason = (id: string, reason: string) => {
+  const selectReason = (id: string, reason: Exclude<SelectedReason, null>) => {
     setReviews(prev => {
       const current = prev[id];
       if (!current) return prev;
@@ -138,7 +195,7 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
         [id]: {
           ...current,
           selectedReason: reason,
-          comment: reason,
+          comment: getPresetReasonToken(reason),
         },
       };
     });
@@ -177,7 +234,7 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.title}>Revisione giornaliera</Text>
+          <Text style={styles.title}>{t('dayReview.title')}</Text>
           <Text style={styles.dateLabel}>{dateLabel}</Text>
 
           <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -204,18 +261,18 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
                     <StarRating value={rev.rating} onChange={v => setRating(item.id, v)} />
                     {!item.completed && (
                       <View style={styles.reasonSection}>
-                        <Text style={styles.reasonLabel}>Perché non l&apos;hai fatta?</Text>
+                        <Text style={styles.reasonLabel}>{t('dayReview.missedReasonLabel')}</Text>
                         <View style={styles.reasonChips}>
-                          {[...MISSED_HABIT_REASONS, CUSTOM_REASON_OPTION].map(reason => {
-                            const selected = rev.selectedReason === reason;
+                          {[...reasonOptions, { id: CUSTOM_REASON_OPTION, label: t('dayReview.customReasonOption') }].map(reason => {
+                            const selected = rev.selectedReason === reason.id;
                             return (
                               <TouchableOpacity
-                                key={reason}
+                                key={reason.id}
                                 style={[styles.reasonChip, selected && styles.reasonChipSelected]}
-                                onPress={() => selectReason(item.id, reason)}
+                                onPress={() => selectReason(item.id, reason.id)}
                               >
                                 <Text style={[styles.reasonChipText, selected && styles.reasonChipTextSelected]}>
-                                  {reason}
+                                  {reason.label}
                                 </Text>
                               </TouchableOpacity>
                             );
@@ -224,7 +281,7 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
                         {rev.selectedReason === CUSTOM_REASON_OPTION && (
                           <TextInput
                             style={styles.commentInput}
-                            placeholder="Scrivi tu..."
+                            placeholder={t('dayReview.customReasonPlaceholder')}
                             placeholderTextColor="#666"
                             value={rev.customReason}
                             onChangeText={text => setCustomReason(item.id, text)}
@@ -240,7 +297,7 @@ export default function DayReviewModal({ visible, date, dateLabel, items, onConf
           </ScrollView>
 
           <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
-            <Text style={styles.confirmBtnText}>Conferma</Text>
+            <Text style={styles.confirmBtnText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </View>
       </View>

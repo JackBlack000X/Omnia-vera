@@ -406,6 +406,22 @@ export const commonIt = {
     tooLate: 'Troppo tardi',
     later: 'Più tardi',
   },
+  dayReview: {
+    title: 'Revisione giornaliera',
+    missedReasonLabel: "Perché non l'hai fatta?",
+    customReasonOption: 'Altro',
+    customReasonPlaceholder: 'Scrivi tu...',
+    reasons: {
+      noTime: 'Non ho avuto tempo',
+      forgot: 'Me ne sono dimenticato/a',
+      noEnergy: 'Non avevo energie',
+      unexpected: "C'è stato un imprevisto",
+      unwell: 'Non mi sentivo bene',
+      otherPriorities: 'Avevo altre priorità',
+      wrongPlace: 'Non ero nel posto giusto',
+      noMotivation: 'Non ne avevo voglia',
+    },
+  },
   modalLogic: {
     mergeTitle: 'Combina con task esistente?',
     mergeMessage: 'Esiste una task con stesso nome e colore. Vuoi combinarle?',

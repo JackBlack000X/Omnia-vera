@@ -406,6 +406,22 @@ export const commonDe = {
     tooLate: 'Zu spät',
     later: 'Später',
   },
+  dayReview: {
+    title: 'Tagesrückblick',
+    missedReasonLabel: 'Warum hast du sie nicht erledigt?',
+    customReasonOption: 'Andere',
+    customReasonPlaceholder: 'Schreib es selbst...',
+    reasons: {
+      noTime: 'Ich hatte keine Zeit',
+      forgot: 'Ich habe es vergessen',
+      noEnergy: 'Ich hatte keine Energie',
+      unexpected: 'Etwas Unvorhergesehenes ist passiert',
+      unwell: 'Ich habe mich nicht gut gefühlt',
+      otherPriorities: 'Ich hatte andere Prioritäten',
+      wrongPlace: 'Ich war nicht am richtigen Ort',
+      noMotivation: 'Ich hatte keine Lust',
+    },
+  },
   modalLogic: {
     mergeTitle: 'Mit vorhandener Aufgabe zusammenführen?',
     mergeMessage: 'Es gibt eine Aufgabe mit gleichem Namen und Farbe. Zusammenführen?',

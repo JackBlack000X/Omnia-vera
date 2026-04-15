@@ -406,6 +406,22 @@ export const commonEn = {
     tooLate: 'Too late',
     later: 'Later',
   },
+  dayReview: {
+    title: 'Daily review',
+    missedReasonLabel: "Why didn't you do it?",
+    customReasonOption: 'Other',
+    customReasonPlaceholder: 'Write your own...',
+    reasons: {
+      noTime: "I didn't have time",
+      forgot: 'I forgot',
+      noEnergy: "I didn't have the energy",
+      unexpected: 'Something unexpected happened',
+      unwell: "I wasn't feeling well",
+      otherPriorities: 'I had other priorities',
+      wrongPlace: "I wasn't in the right place",
+      noMotivation: "I didn't feel like it",
+    },
+  },
   modalLogic: {
     mergeTitle: 'Merge with existing task?',
     mergeMessage: 'A task with the same name and color exists. Merge them?',

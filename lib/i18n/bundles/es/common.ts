@@ -406,6 +406,22 @@ export const commonEs = {
     tooLate: 'Demasiado tarde',
     later: 'Más tarde',
   },
+  dayReview: {
+    title: 'Revisión diaria',
+    missedReasonLabel: '¿Por qué no la hiciste?',
+    customReasonOption: 'Otro',
+    customReasonPlaceholder: 'Escríbelo tú...',
+    reasons: {
+      noTime: 'No tuve tiempo',
+      forgot: 'Se me olvidó',
+      noEnergy: 'No tenía energía',
+      unexpected: 'Surgió un imprevisto',
+      unwell: 'No me sentía bien',
+      otherPriorities: 'Tenía otras prioridades',
+      wrongPlace: 'No estaba en el lugar adecuado',
+      noMotivation: 'No me apetecía',
+    },
+  },
   modalLogic: {
     mergeTitle: '¿Fusionar con tarea existente?',
     mergeMessage: 'Existe una tarea con el mismo nombre y color. ¿Fusionarlas?',

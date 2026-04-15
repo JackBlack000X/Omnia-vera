@@ -406,6 +406,22 @@ export const commonFr = {
     tooLate: 'Trop tard',
     later: 'Plus tard',
   },
+  dayReview: {
+    title: 'Révision quotidienne',
+    missedReasonLabel: "Pourquoi ne l'avez-vous pas faite ?",
+    customReasonOption: 'Autre',
+    customReasonPlaceholder: 'Écris-le toi-même...',
+    reasons: {
+      noTime: "Je n'ai pas eu le temps",
+      forgot: "Je l'ai oubliée",
+      noEnergy: "Je n'avais pas l'énergie",
+      unexpected: 'Il y a eu un imprévu',
+      unwell: 'Je ne me sentais pas bien',
+      otherPriorities: "J'avais d'autres priorités",
+      wrongPlace: "Je n'étais pas au bon endroit",
+      noMotivation: "Je n'en avais pas envie",
+    },
+  },
   modalLogic: {
     mergeTitle: 'Fusionner avec une tâche existante ?',
     mergeMessage: 'Une tâche avec le même nom et la même couleur existe. Fusionner ?',

@@ -1,6 +1,7 @@
 import type { SmartTaskFeedback } from '@/lib/smartTask';
 import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 type Props = {
   visible: boolean;
@@ -10,15 +11,15 @@ type Props = {
   onClose: () => void;
 };
 
-const OPTIONS: Record<Props['mode'], { label: string; value: SmartTaskFeedback; color: string }[]> = {
+const OPTIONS: Record<Props['mode'], { labelKey: string; value: SmartTaskFeedback; color: string }[]> = {
   completed: [
-    { label: 'Giusta cosi', value: 'justRight', color: '#22c55e' },
-    { label: 'Troppo presto', value: 'tooEarly', color: '#f59e0b' },
-    { label: 'Troppo tardi', value: 'tooLate', color: '#ef4444' },
+    { labelKey: 'smartTask.justRight', value: 'justRight', color: '#22c55e' },
+    { labelKey: 'smartTask.tooEarly', value: 'tooEarly', color: '#f59e0b' },
+    { labelKey: 'smartTask.tooLate', value: 'tooLate', color: '#ef4444' },
   ],
   overdue: [
-    { label: 'Troppo presto', value: 'tooEarly', color: '#f59e0b' },
-    { label: 'Troppo tardi', value: 'tooLate', color: '#ef4444' },
+    { labelKey: 'smartTask.tooEarly', value: 'tooEarly', color: '#f59e0b' },
+    { labelKey: 'smartTask.tooLate', value: 'tooLate', color: '#ef4444' },
   ],
 };
 
@@ -29,16 +30,17 @@ export default function SmartTaskFeedbackModal({
   onSelect,
   onClose,
 }: Props) {
+  const { t } = useTranslation();
   const description =
     mode === 'completed'
-      ? 'Hai completato questa smart task. Se la frequenza e giusta puoi confermarla e il toggle si spegne da solo.'
-      : 'La data e passata senza completarla. Dimmi se e comparsa troppo presto o troppo tardi e regolo la prossima occorrenza.';
+      ? t('smartTask.completedDesc')
+      : t('smartTask.overdueDesc');
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => {}}>
-          <Text style={styles.eyebrow}>Smart task</Text>
+          <Text style={styles.eyebrow}>{t('smartTask.eyebrow')}</Text>
           <Text style={styles.title}>{habitTitle}</Text>
           <Text style={styles.description}>{description}</Text>
 
@@ -49,13 +51,13 @@ export default function SmartTaskFeedbackModal({
                 onPress={() => onSelect(option.value)}
                 style={[styles.optionButton, { borderColor: option.color }]}
               >
-                <Text style={[styles.optionLabel, { color: option.color }]}>{option.label}</Text>
+                <Text style={[styles.optionLabel, { color: option.color }]}>{t(option.labelKey)}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
           <TouchableOpacity onPress={onClose} style={styles.laterButton}>
-            <Text style={styles.laterText}>Piu tardi</Text>
+            <Text style={styles.laterText}>{t('smartTask.later')}</Text>
           </TouchableOpacity>
         </Pressable>
       </Pressable>
